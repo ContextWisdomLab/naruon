@@ -252,6 +252,23 @@ describe("ApiClient", () => {
     });
   });
 
+  it.each([false, undefined, null, "true", "false", 1, {}, []].map((authenticationFlag) => ({ authenticationFlag })))("rejects session claims without explicit true authentication ($authenticationFlag)", async ({ authenticationFlag }) => {
+    vi.stubGlobal("fetch", mockFetchResponse({
+      authenticated: authenticationFlag,
+      claims: { userId: "stale-user", organizationId: "org-acme", workspaceId: "workspace-acme" },
+    }));
+    await expect(new ApiClient().getServerSessionClaims()).resolves.toEqual({
+      userId: null, organizationId: null, workspaceId: null,
+    });
+  });
+
+  it.each([null, false, 1, "invalid", []].map((responseBody) => ({ responseBody })))("keeps malformed session bodies anonymous ($responseBody)", async ({ responseBody }) => {
+    vi.stubGlobal("fetch", mockFetchResponse(responseBody));
+    await expect(new ApiClient().getServerSessionClaims()).resolves.toEqual({
+      userId: null, organizationId: null, workspaceId: null,
+    });
+  });
+
   it("throws sanitized API errors for every HTTP method", async () => {
     const calls: Array<[string, () => Promise<unknown>]> = [];
     const client = new ApiClient();

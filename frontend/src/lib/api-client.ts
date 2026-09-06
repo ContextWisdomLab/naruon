@@ -77,7 +77,8 @@ export class ApiClient {
       });
       if (!response.ok) return ANONYMOUS_SESSION_CLAIMS;
 
-      const body = await response.json() as { claims?: Partial<SessionClaims> };
+      const body = await response.json() as { authenticated?: unknown; claims?: Partial<SessionClaims> };
+      if (body.authenticated !== true) return ANONYMOUS_SESSION_CLAIMS;
       const claims = body.claims ?? {};
       return {
         userId: typeof claims.userId === 'string' ? claims.userId : null,

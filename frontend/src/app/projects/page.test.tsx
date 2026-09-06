@@ -478,8 +478,67 @@ describe("ProjectsPage", () => {
     expect(container.textContent).not.toContain("correction-alpha-1");
   });
 
-  it("renders an actionable fallback when project evidence fails", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => jsonResponse({ detail: "failed" }, false, 500)));
+  it("does not render empty metrics while project sources are pending", async () => {
+    const pendingSources = Promise.withResolvers<void>();
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      await pendingSources.promise;
+      const requestPath = String(input);
+      if (requestPath === "/auth/session") return jsonResponse({ authenticated: true, claims: { userId: "alice", organizationId: "org-acme" } });
+      if (requestPath === "/api/projects/candidates") return jsonResponse({ candidates: [] });
+      return jsonResponse([]);
+    }));
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => { root?.render(<ProjectsPage />); });
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("불러오는 중");
+    expect(container.textContent).not.toContain("원본 연결 작업 대기열");
+    expect(container.querySelector('[aria-label="프로젝트 마일스톤"]')).toBeNull();
+    await act(async () => { pendingSources.resolve(); });
+    await flushAsyncWork();
+    expect(container.textContent).toContain("원본 연결 작업 대기열");
+    expect(container.querySelector('[aria-label="프로젝트 마일스톤"]')).not.toBeNull();
+  });
+
+  it.each([
+    { sourcePath: "/api/webdav/folders", responseBody: {} },
+    { sourcePath: "/api/webdav/folders", responseBody: [null] },
+    { sourcePath: "/api/tasks", responseBody: {} },
+    { sourcePath: "/api/tasks", responseBody: [null] },
+    { sourcePath: "/api/tasks", responseBody: [{ id: "task-invalid", title: "Invalid task", status: "unknown", priority: "normal" }] },
+    { sourcePath: "/api/projects/candidates", responseBody: {} },
+    { sourcePath: "/api/projects/candidates", responseBody: { candidates: [null] } },
+    { sourcePath: "/api/projects/candidates", responseBody: { candidates: [{ project_uid: "project-invalid", title: {} }] } },
+    { sourcePath: "/auth/session", responseBody: { authenticated: false } },
+    { sourcePath: "/auth/session", responseBody: { authenticated: false, claims: { userId: "alice", organizationId: "org-acme" } } },
+  ])("rejects malformed successful response from $sourcePath ($responseBody)", async ({ sourcePath, responseBody }) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const requestPath = String(input);
+      if (requestPath === sourcePath) return jsonResponse(responseBody);
+      if (requestPath === "/auth/session") return jsonResponse({ authenticated: true, claims: { userId: "alice", organizationId: "org-acme" } });
+      if (requestPath === "/api/projects/candidates") return jsonResponse({ candidates: [] });
+      return jsonResponse([]);
+    }));
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => { root?.render(<ProjectsPage />); });
+    await flushAsyncWork();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("프로젝트 근거를 불러오지 못했습니다");
+    expect(container.querySelector('[aria-label="프로젝트 마일스톤"]')).toBeNull();
+    expect(container.textContent).not.toContain("원본 연결 작업 대기열");
+  });
+
+  it.each(["/api/webdav/folders", "/api/tasks", "/api/projects/candidates", "/auth/session"])("keeps %s failure distinct from empty data and retries", async (failedPath) => {
+    let sourceUnavailable = true;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const requestPath = String(input);
+      if (requestPath === failedPath && sourceUnavailable) return jsonResponse({ detail: "failed" }, false, 500);
+      if (requestPath === "/auth/session") return jsonResponse({ authenticated: true, claims: { userId: "alice", organizationId: "org-acme" } });
+      if (requestPath === "/api/projects/candidates") return jsonResponse({ candidates: [] });
+      if (requestPath === "/api/webdav/folders" || requestPath === "/api/tasks") return jsonResponse([]);
+      return jsonResponse({}, false, 404);
+    }));
 
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -494,7 +553,17 @@ describe("ProjectsPage", () => {
     expect(
       Array.from(container.querySelectorAll('a[href="/data"]')).some((link) => link.textContent?.includes("원본 연결") || link.textContent?.includes("새 프로젝트")),
     ).toBe(true);
+    expect(container.textContent).not.toContain("원본 연결 작업 대기열");
+    expect(container.querySelector('[aria-label="프로젝트 마일스톤"]')).toBeNull();
+    expect(container.textContent).not.toContain("서명된 개인 워크스페이스");
+    const retryButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "다시 불러오기");
+    expect(retryButton).toBeDefined();
+    sourceUnavailable = false;
+    await act(async () => { retryButton?.click(); });
+    await flushAsyncWork();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(container.textContent).toContain("원본 연결 작업 대기열");
+    expect(container.querySelector('[aria-label="프로젝트 마일스톤"]')).not.toBeNull();
   });
 
   it("renders an actionable empty state when a project has no linked tasks", async () => {

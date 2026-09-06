@@ -154,6 +154,52 @@ function safeText(value: string | null | undefined, fallback = '') {
   return toSafeReactText(value, fallback).trim() || fallback;
 }
 
+function isSourceRecord(sourceValue: unknown): sourceValue is Record<string, unknown> {
+  return sourceValue !== null && typeof sourceValue === 'object' && !Array.isArray(sourceValue);
+}
+
+function hasTextFields(sourceRecord: Record<string, unknown>, fieldNames: string[]) {
+  return fieldNames.every((fieldName) => typeof sourceRecord[fieldName] === 'string');
+}
+
+function isNullableText(sourceValue: unknown) {
+  return sourceValue === null || typeof sourceValue === 'string';
+}
+
+function isProjectFolder(sourceValue: unknown): sourceValue is ProjectFolder {
+  return isSourceRecord(sourceValue)
+    && hasTextFields(sourceValue, ['folder_uid', 'project_name', 'webdav_path', 'owner_user_id'])
+    && isNullableText(sourceValue.organization_id);
+}
+
+function isProjectTask(sourceValue: unknown): sourceValue is TicketTask {
+  return isSourceRecord(sourceValue)
+    && hasTextFields(sourceValue, ['id', 'title', 'source_type', 'created_at', 'updated_at'])
+    && typeof sourceValue.status === 'string' && ['open', 'in_progress', 'blocked', 'done'].includes(sourceValue.status)
+    && typeof sourceValue.priority === 'string' && ['low', 'normal', 'high', 'urgent'].includes(sourceValue.priority)
+    && isNullableText(sourceValue.source_email_id)
+    && isNullableText(sourceValue.related_thread_id);
+}
+
+function isProjectCandidate(sourceValue: unknown): sourceValue is ProjectCandidate {
+  return isSourceRecord(sourceValue)
+    && hasTextFields(sourceValue, ['candidate_uid', 'project_uid', 'title', 'status_code'])
+    && typeof sourceValue.score === 'number' && Number.isFinite(sourceValue.score)
+    && sourceValue.score >= 0 && sourceValue.score <= 1
+    && ['object_count', 'requirement_count', 'issue_count', 'milestone_count', 'deliverable_count', 'participant_count', 'source_segment_count'].every((fieldName) => {
+      const fieldValue = sourceValue[fieldName];
+      return typeof fieldValue === 'number' && Number.isSafeInteger(fieldValue) && fieldValue >= 0;
+    })
+    && Array.isArray(sourceValue.representative_object_uids)
+    && sourceValue.representative_object_uids.every((objectUid) => typeof objectUid === 'string')
+    && Array.isArray(sourceValue.citation_bundle)
+    && sourceValue.citation_bundle.every((citationValue) => isSourceRecord(citationValue)
+      && hasTextFields(citationValue, ['content_segment_uid', 'source_kind', 'source_record_uid', 'safe_text_excerpt'])
+      && isNullableText(citationValue.heading_path) && isNullableText(citationValue.segment_path)
+      && typeof citationValue.ordinal_index === 'number' && Number.isSafeInteger(citationValue.ordinal_index))
+    && isNullableText(sourceValue.updated_at);
+}
+
 function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '날짜 미정';
@@ -324,6 +370,7 @@ export function ProjectsLayout() {
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const [lastCorrection, setLastCorrection] = useState<ProjectCorrectionResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sourceRetryRevision, setSourceRetryRevision] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ProjectViewMode>('프로젝트 상세');
@@ -345,9 +392,16 @@ export function ProjectsLayout() {
     ])
       .then(([folderRows, taskRows, candidateRows, claims]) => {
         if (cancelled) return;
-        setFolders(Array.isArray(folderRows) ? folderRows : []);
-        setTasks(Array.isArray(taskRows) ? taskRows : []);
-        setSemanticCandidates(candidateRows && Array.isArray(candidateRows.candidates) ? candidateRows.candidates : []);
+        if (!claims.userId) throw new Error('Project session unavailable');
+        if (!Array.isArray(folderRows) || !folderRows.every(isProjectFolder)
+          || !Array.isArray(taskRows) || !taskRows.every(isProjectTask)
+          || !isSourceRecord(candidateRows) || !Array.isArray(candidateRows.candidates)
+          || !candidateRows.candidates.every(isProjectCandidate)) {
+          throw new Error('Project source response invalid');
+        }
+        setFolders(folderRows);
+        setTasks(taskRows);
+        setSemanticCandidates(candidateRows.candidates);
         setProjectScope({
           userId: claims.userId,
           organizationId: claims.organizationId,
@@ -368,7 +422,7 @@ export function ProjectsLayout() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [sourceRetryRevision]);
 
   const authorizedFolders = useMemo(
     () => folders.filter((folder) => isAuthorizedToViewProject(folder, projectScope)),
@@ -559,6 +613,27 @@ export function ProjectsLayout() {
     }
   }
 
+  if (loading || error) {
+    return (
+      <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto bg-background p-4 text-foreground md:p-6">
+        <h1 className="text-xl font-bold">프로젝트 워크스페이스</h1>
+        <p role={loading ? 'status' : 'alert'} className="break-keep rounded-lg border border-border bg-card p-4">
+          {loading ? '프로젝트 근거를 불러오는 중입니다.' : error}
+        </p>
+        {!loading && (
+          <div className="flex flex-wrap gap-3">
+            <button type="button" onClick={() => {
+              setLoading(true);
+              setError(null);
+              setSourceRetryRevision((currentRevision) => currentRevision + 1);
+            }} className="min-h-10 rounded-md bg-primary px-4 font-semibold text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40">다시 불러오기</button>
+            <a href="/data" className="flex min-h-10 items-center rounded-md border border-border px-4 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40">원본 연결</a>
+          </div>
+        )}
+      </main>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-0 min-w-0 overflow-x-hidden bg-background text-foreground">
       <aside className="hidden w-72 shrink-0 flex-col overflow-y-auto border-r border-border bg-card lg:flex">
@@ -575,9 +650,6 @@ export function ProjectsLayout() {
         </div>
 
         <div className="flex-1 space-y-1 p-3">
-          {loading ? (
-            <div role="status" className="rounded-lg border border-border bg-background p-3 text-sm font-semibold text-muted-foreground">프로젝트 근거를 불러오는 중입니다.</div>
-          ) : null}
           {projects.map((project) => (
             <button
               key={project.id}
@@ -646,12 +718,6 @@ export function ProjectsLayout() {
 
         <div role="region" aria-label="프로젝트 내용" className="grid flex-1 gap-6 overflow-y-auto p-4 md:p-6 lg:grid-cols-3">
           <div className="min-w-0 space-y-6 lg:col-span-2">
-            {error ? (
-              <div role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
-                {error}
-              </div>
-            ) : null}
-
             {activeSemanticCandidate ? (
               <section aria-label="프로젝트 관계 맥락 상태" className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
                 <div className="flex flex-col gap-3 border-b border-border p-5 md:flex-row md:items-center md:justify-between">

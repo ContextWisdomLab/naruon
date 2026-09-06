@@ -63,6 +63,71 @@ describe("ProjectsLayout accessibility", () => {
     vi.clearAllMocks();
   });
 
+  it.each(["success", "failure"])("separates evidence loading from review saving (%s)", async (outcome) => {
+    const traceObject = {
+      object_uid: "project_object:requirement",
+      object_type: "requirement",
+      title: "Review requirement",
+      summary: "Source-backed requirement",
+      status_code: "needs_review",
+      confidence: 0.87,
+      source_segment_uids: [],
+      citation_bundle: [],
+      attributes: {},
+    };
+    const evidence = { ...traceObject, project_uid: candidate.project_uid };
+    const pendingEvidence = Promise.withResolvers<typeof evidence>();
+    const pendingSave = Promise.withResolvers<unknown>();
+    const projectPath = "/api/projects/project_candidate%3Aalpha";
+    apiClientMock.get.mockImplementation((requestPath: string) => {
+      if (requestPath === "/api/webdav/folders" || requestPath === "/api/tasks") return Promise.resolve([]);
+      if (requestPath === "/api/projects/candidates") return Promise.resolve({ candidates: [candidate] });
+      if (requestPath === `${projectPath}/traceability`) {
+        return Promise.resolve({ project_uid: candidate.project_uid, candidate, objects: [traceObject], edges: [] });
+      }
+      if (requestPath === `${projectPath}/evidence/project_object%3Arequirement`) return pendingEvidence.promise;
+      return Promise.reject(new Error(`Unexpected GET path: ${requestPath}`));
+    });
+    apiClientMock.getServerSessionClaims.mockResolvedValue({ userId: "alice", organizationId: "org-acme" });
+    apiClientMock.post.mockReturnValue(pendingSave.promise);
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => { root?.render(<ProjectsLayout />); });
+    await flushAsyncWork();
+    const saveButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "문단 근거 검토 저장",
+    );
+    expect(saveButton).toBeDefined();
+    expect(saveButton?.disabled).toBe(true);
+    expect(saveButton?.getAttribute("aria-busy")).toBe("false");
+    saveButton?.click();
+    expect(apiClientMock.post).not.toHaveBeenCalled();
+    await act(async () => { pendingEvidence.resolve(evidence); await pendingEvidence.promise; });
+    expect(saveButton?.disabled).toBe(false);
+    expect(saveButton?.getAttribute("aria-busy")).toBe("false");
+    await act(async () => { saveButton?.click(); });
+    expect(saveButton?.disabled).toBe(true);
+    expect(saveButton?.getAttribute("aria-busy")).toBe("true");
+    expect(saveButton?.textContent).toBe("검토 저장 중");
+    saveButton?.click();
+    expect(apiClientMock.post).toHaveBeenCalledTimes(1);
+    expect(apiClientMock.post).toHaveBeenCalledWith(`${projectPath}/corrections`, expect.objectContaining({
+      object_uid: traceObject.object_uid, correction_action: "mark_evidence_reviewed",
+    }));
+    await act(async () => {
+      if (outcome === "success") {
+        pendingSave.resolve({ object_uid: traceObject.object_uid, after_json: { status_code: "approved" }, created_at: candidate.updated_at });
+      } else {
+        pendingSave.reject(new Error("Save unavailable"));
+      }
+    });
+    expect(saveButton?.disabled).toBe(false);
+    expect(saveButton?.getAttribute("aria-busy")).toBe("false");
+    expect(saveButton?.textContent).toBe("문단 근거 검토 저장");
+    if (outcome === "failure") expect(container.querySelector('[role="alert"]')?.textContent).toContain("저장하지 못했습니다");
+  });
+
   it("announces candidate confirmation as busy while the request is pending", async () => {
     let resolveConfirmation: ((value: typeof candidate) => void) | undefined;
     const pendingConfirmation = new Promise<typeof candidate>((resolve) => {

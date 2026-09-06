@@ -969,7 +969,7 @@ export function ProjectsLayout() {
                               type="button"
                               onClick={handleMarkEvidenceReviewed}
                               disabled={correctionSubmitting || evidenceLoading}
-                              aria-busy={correctionSubmitting || evidenceLoading}
+                              aria-busy={correctionSubmitting}
                               className="mt-3 min-h-9 w-full rounded-md bg-primary px-3 text-xs font-bold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-secondary disabled:text-muted-foreground"
                             >
                               {correctionSubmitting ? '검토 저장 중' : '문단 근거 검토 저장'}

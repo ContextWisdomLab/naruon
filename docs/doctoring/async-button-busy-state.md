@@ -55,3 +55,33 @@ src/components/data-layout/DocumentRepositoryTab.busy-state.test.tsx`.
 This is mocked API/DOM evidence, not browser, screen-reader, full-suite, build,
 hosted, or protected-merge acceptance. Those results must be attached to the
 final immutable candidate separately before delivery is claimed.
+
+## Unsaved project memo safety repair (2026-09-07)
+
+The separate generic memo editor called `saveProjectEvidence`, which only set
+a success message. Its page test and full-product smoke script mistook that
+message for persistence. This is distinct from the semantic object's review
+correction POST and must not be credited as a working save feature.
+
+The inspected contracts are `backend/api/webdav.py` (folder reads and separately
+scoped materialization intents), `backend/api/projects.py` (semantic object
+corrections), and `project_registration.apply_project_correction` (candidate
+group/object membership). They do not establish a generic folder/backlog memo
+and source-selection persistence contract. Reinterpreting the memo as an
+arbitrary graph object's summary or replacing its attributes would change the
+domain meaning and ownership boundary, so that workaround is not used.
+
+The immediate repair removes the false-success handler, disables the unsupported
+save, labels the local preview unsaved, and explains that a refresh loses the
+draft. The existing page regression first failed on the enabled save button;
+it now checks unavailable saving, no POST and no success message. Smoke evidence
+labels distinguish unavailable saving from persistence and no longer claim a
+saved memo. This safety repair does not complete the product requirement.
+
+The remaining product Gap requires a Naruon-owned versioned memo/source contract,
+stable project identity including non-graph projects, tenant/workspace and source
+authorization, audited writes, conflict handling, and reload/readback persistence
+with real PostgreSQL and actual-browser evidence. Failed-source readiness and
+zero-value metric rendering are separate unresolved findings. Parent `1b465`'s
+build and error-screen inspection do not validate this new runtime delta; new-head
+full/build/visual evidence remains required before delivery.

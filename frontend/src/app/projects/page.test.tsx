@@ -161,6 +161,8 @@ describe("ProjectsPage", () => {
     expect(evidenceNote).not.toBeNull();
     expect(evidenceSource).not.toBeNull();
     expect(saveButton).toBeDefined();
+    expect(saveButton?.disabled).toBe(true);
+    expect(container.textContent).toContain("메모 저장은 아직 지원하지 않습니다. 입력 내용은 이 화면에서만 유지되며 새로고침하면 사라집니다.");
 
     await act(async () => {
       setNativeValue(evidenceNote!, "이사회 승인 근거와 WebDAV 경계를 함께 검토합니다.");
@@ -173,7 +175,8 @@ describe("ProjectsPage", () => {
     await act(async () => {
       saveButton!.click();
     });
-    expect(container.textContent).toContain("프로젝트 근거가 저장되었습니다: 문서 근거");
+    expect(container.textContent).not.toContain("프로젝트 근거가 저장되었습니다");
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
     expect(container.textContent).toContain("이사회 승인 근거와 WebDAV 경계를 함께 검토합니다.");
   });
 

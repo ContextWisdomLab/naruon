@@ -333,7 +333,6 @@ export function ProjectsLayout() {
   });
   const [evidenceDraft, setEvidenceDraft] = useState('WebDAV 프로젝트 폴더를 작업 경계로 사용합니다.');
   const [evidenceSource, setEvidenceSource] = useState<ProjectEvidenceSource>('webdav_folder');
-  const [evidenceSaveStatus, setEvidenceSaveStatus] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -391,7 +390,7 @@ export function ProjectsLayout() {
   const projectBoundaryLabel = getProjectBoundaryLabel(activeProject);
   const workspaceScopeLabel = getWorkspaceScopeLabel(projectScope);
   const selectedEvidenceOption = projectEvidenceSourceOptions.find((option) => option.value === evidenceSource) ?? projectEvidenceSourceOptions[0];
-  const savedEvidenceNote = safeText(evidenceDraft, '근거 메모 없음');
+  const evidenceDraftPreview = safeText(evidenceDraft, '근거 메모 없음');
   const currentTraceability = traceability?.project_uid === activeSemanticCandidate?.project_uid ? traceability : null;
   const currentObjects = useMemo(() => currentTraceability?.objects ?? [], [currentTraceability?.objects]);
   const groupedObjects = useMemo(() => groupProjectTraceObjects(currentObjects), [currentObjects]);
@@ -478,10 +477,6 @@ export function ProjectsLayout() {
       cancelled = true;
     };
   }, [selectedEvidenceKey, selectedEvidenceObjectUid, selectedEvidenceProjectUid]);
-
-  function saveProjectEvidence() {
-    setEvidenceSaveStatus(`프로젝트 근거가 저장되었습니다: ${selectedEvidenceOption.label}`);
-  }
 
   async function handleConfirmCandidate() {
     if (!activeSemanticCandidate || confirmSubmitting) return;
@@ -1140,7 +1135,7 @@ export function ProjectsLayout() {
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
                   <h2 className="font-bold text-base">근거 편집</h2>
-                  <p className="mt-1 text-xs font-semibold text-muted-foreground">판매 심사용 판단 근거와 연결 원본을 저장합니다.</p>
+                  <p id="project-evidence-unsaved" className="mt-1 text-xs font-semibold text-muted-foreground">메모 저장은 아직 지원하지 않습니다. 입력 내용은 이 화면에서만 유지되며 새로고침하면 사라집니다.</p>
                 </div>
                 <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">{selectedEvidenceOption.label}</span>
               </div>
@@ -1149,10 +1144,10 @@ export function ProjectsLayout() {
                 <textarea
                   id="project-evidence-note"
                   aria-label="프로젝트 근거 메모"
+                  aria-describedby="project-evidence-unsaved"
                   value={evidenceDraft}
                   onChange={(event) => {
                     setEvidenceDraft(event.target.value);
-                    setEvidenceSaveStatus(null);
                   }}
                   className="min-h-24 resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm font-semibold leading-6 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 />
@@ -1162,10 +1157,10 @@ export function ProjectsLayout() {
                 <select
                   id="project-evidence-source"
                   aria-label="연결 원본 변경"
+                  aria-describedby="project-evidence-unsaved"
                   value={evidenceSource}
                   onChange={(event) => {
                     setEvidenceSource(event.target.value as ProjectEvidenceSource);
-                    setEvidenceSaveStatus(null);
                   }}
                   className="min-h-10 rounded-lg border border-input bg-background px-3 text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 >
@@ -1176,15 +1171,12 @@ export function ProjectsLayout() {
               </label>
               <p className="mt-2 text-xs font-semibold text-muted-foreground">{selectedEvidenceOption.description}</p>
               <div className="mt-4 rounded-lg border border-border bg-background p-3 text-xs font-semibold leading-5 text-muted-foreground">
-                <span className="block font-bold text-foreground">저장 대상 근거</span>
-                {savedEvidenceNote}
+                <span className="block font-bold text-foreground">미저장 메모 미리보기</span>
+                {evidenceDraftPreview}
               </div>
-              <button type="button" onClick={saveProjectEvidence} className="mt-4 flex min-h-10 w-full items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-bold text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40">
+              <button type="button" disabled aria-describedby="project-evidence-unsaved" className="mt-4 flex min-h-10 w-full items-center justify-center gap-2 rounded-md bg-secondary px-3 text-sm font-bold text-muted-foreground disabled:cursor-not-allowed">
                 <CheckCircle2 className="size-4" /> 근거 저장
               </button>
-              {evidenceSaveStatus ? (
-                <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800">{evidenceSaveStatus}</p>
-              ) : null}
             </section>
 
             <section aria-label="연결된 자원" className="rounded-2xl border border-border bg-card p-5 shadow-sm">

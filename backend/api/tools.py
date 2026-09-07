@@ -1,12 +1,12 @@
 import base64
 import hashlib
 import inspect
+import ipaddress
 import json
 import logging
 import re
 import unicodedata
 import urllib.parse
-import ipaddress
 import uuid
 from collections import Counter
 from collections.abc import Callable
@@ -109,7 +109,7 @@ class ToolUpdate(BaseModel):
     description: Optional[str] = Field(
         default=None, description="도구에 대한 상세 설명"
     )
-    category: Optional[str] = Field(default=None, description="도구의 분류")
+    category: Optional[Dict[str, Any]] = Field(default=None, description="도구의 분류")
     parameters: Optional[Dict[str, Any]] = Field(
         default=None, description="도구 실행에 필요한 파라미터 스키마"
     )
@@ -754,13 +754,12 @@ registry.register(
 )
 
 
-
 async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
     text = params.get("text") or ""
     if len(text) > ANALYSIS_TEXT_MAX_CHARS:
         raise ValueError(f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters")
 
-    base_pattern = re.compile(r'https?://[^\s"\'<>]+')
+    base_pattern = re.compile(r'https?://[^\s"\'<>]+', re.IGNORECASE)
     raw_urls = base_pattern.findall(text)
 
     cleaned_urls = []
@@ -774,61 +773,39 @@ async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
             if url_str == original:
                 break
 
-
         try:
             parsed = urllib.parse.urlsplit(url_str)
             if not parsed.netloc or not parsed.hostname:
                 continue
             _ = parsed.port
 
-            # Syntactic-only validation of the hostname
             host = parsed.hostname
             is_valid_host = False
-
-            # Check if it's a valid IP literal (v4 or v6)
-            try:
-                ip_str = host.strip("[]")
-                # Ensure it's not trying to parse something like 999.999.999.999 as IDNA because the ipaddress check fails.
-                # If it looks like an IP address format but fails ipaddress parsing, we should reject it instead of falling back to DNS label checks.
-                if re.match(r'^[\d.]+$', ip_str) or ":" in ip_str:
+            ip_str = host.strip("[]")
+            if re.fullmatch(r"[\d.]+", ip_str) or ":" in ip_str:
+                try:
                     ipaddress.ip_address(ip_str)
-                    is_valid_host = True
-                else:
-                    # It's not an IP literal structure, let DNS labels check handle it
-                    pass
-            except ValueError:
-                # It looks like an IP but is invalid (e.g. 999.999.999.999)
-                continue
+                except ValueError:
+                    continue
+                is_valid_host = True
 
-            # If not an IP, validate as DNS labels
             if not is_valid_host:
                 try:
-                    # Convert to IDNA to safely check length and syntax
                     idna_host = host.encode("idna").decode("ascii")
-                    if len(idna_host) > 253 or len(idna_host) == 0:
-                        continue
+                except UnicodeError:
+                    continue
+                if not 1 <= len(idna_host) <= 253:
+                    continue
 
-                    labels = idna_host.split(".")
-                    # Require at least two labels (e.g. example.com, not just "example")
-                    if len(labels) < 2:
-                        continue
-
-                    label_pattern = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$")
-                    valid_labels = True
-                    for label in labels:
-                        if not label_pattern.match(label):
-                            valid_labels = False
-                            break
-
-                    if valid_labels:
-                        is_valid_host = True
-                except Exception:  # nosec B110 - We safely ignore parsing/encoding exceptions as it just means the host is invalid.
-                    # IDNA encoding errors or other issues
-                    pass
+                label_pattern = re.compile(
+                    r"^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$"
+                )
+                if all(label_pattern.fullmatch(label) for label in idna_host.split(".")):
+                    is_valid_host = True
 
             if is_valid_host:
                 cleaned_urls.append(url_str)
-        except ValueError:  # nosec B112 - Invalid port strings trigger ValueError from parsed.port, which safely means it's not a URL.
+        except ValueError:  # parsed.port rejects malformed port text.
             continue
 
     urls = list(dict.fromkeys(cleaned_urls))
@@ -860,7 +837,6 @@ registry.register(
     ),
     uuid_v4_generator_handler,
 )
-
 
 
 @router.get("/tools", response_model=list[ToolInfo])

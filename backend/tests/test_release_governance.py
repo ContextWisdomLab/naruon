@@ -854,6 +854,7 @@ def test_backend_dockerfile_uses_modern_env_syntax() -> None:
     assert "http://127.0.0.1:8000/" in dockerfile
     assert "http://127.0.0.1:3000/" in dockerfile
     assert "useradd --system --create-home --home-dir /home/appuser" in dockerfile
+    assert "--key SYS_UID_MAX=10001 --uid 10001 --gid appuser --shell /usr/sbin/nologin" in dockerfile
     backend_cmd = 'CMD ["python", "scripts/start_backend.py", "--host", "0.0.0.0", "--port", "8000"]'
     assert dockerfile.find("USER appuser") < dockerfile.find(backend_cmd)
     assert dockerfile.rfind("USER appuser") < dockerfile.find(

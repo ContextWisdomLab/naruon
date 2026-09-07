@@ -16,7 +16,7 @@ COPY VERSION /app/VERSION
 COPY backend /app/
 
 RUN groupadd --system --gid 10001 appuser \
-    && useradd --system --create-home --home-dir /home/appuser --uid 10001 --gid appuser --shell /usr/sbin/nologin appuser \
+    && useradd --system --create-home --home-dir /home/appuser --key SYS_UID_MAX=10001 --uid 10001 --gid appuser --shell /usr/sbin/nologin appuser \
     && chown -R appuser:appuser /app
 USER appuser
 

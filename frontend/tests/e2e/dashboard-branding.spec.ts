@@ -1190,7 +1190,10 @@ test('renders data WebDAV writeback intent and document materialization status',
       && request.method() === 'POST'
     );
   }, { timeout: 60_000 });
-  await page.getByRole('button', { name: 'WebDAV 문서 실행 요청' }).click();
+  await page.getByRole('button', { name: '고객 WebDAV에 문서 쓰기' }).click();
+  const writeConfirmation = page.getByRole('alertdialog', { name: '고객 WebDAV에 문서를 쓰시겠습니까?' });
+  await expect(writeConfirmation).toContainText('이 작업은 고객 원본 저장소를 변경합니다.');
+  await writeConfirmation.getByRole('button', { name: 'WebDAV 쓰기 확인' }).click();
   const desktopMaterializationCall = await desktopMaterializationRequest;
   const desktopMaterializationHeaders = desktopMaterializationCall.headers();
   expectBrowserCookieSession(desktopMaterializationHeaders, expectedNaruonToken);

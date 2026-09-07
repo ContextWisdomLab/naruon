@@ -135,7 +135,11 @@ test('live data workspace reaches backend-backed WebDAV and document APIs withou
     );
   });
   await page
-    .getByRole('button', { name: 'WebDAV 문서 실행 요청' })
+    .getByRole('button', { name: '고객 WebDAV에 문서 쓰기' })
+    .click();
+  await page
+    .getByRole('alertdialog', { name: '고객 WebDAV에 문서를 쓰시겠습니까?' })
+    .getByRole('button', { name: 'WebDAV 쓰기 확인' })
     .click();
   const webdavMaterializationResponse = await materializationResponse;
   expect(webdavMaterializationResponse.status()).toBeLessThan(400);

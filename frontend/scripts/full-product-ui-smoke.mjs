@@ -1253,11 +1253,12 @@ async function runCriticalInteractionSmoke(page, routeSpec, viewportSpec) {
   }
 
   if (routeSpec.name === "data") {
-    await page.getByRole("button", { name: "임베딩 재생성 의도", exact: true }).click();
+    await page.getByRole("button", { name: "임베딩 재생성 요청 등록", exact: true }).click();
     await page.getByText("Embedding regeneration intent recorded", { exact: false }).waitFor({ state: "visible", timeout: 10_000 });
-    await page.getByRole("button", { name: "HWP 변환 의도", exact: true }).click();
+    await page.getByRole("button", { name: "HWP 변환 요청 등록", exact: true }).click();
     await page.getByText("HWP conversion intent recorded", { exact: false }).waitFor({ state: "visible", timeout: 10_000 });
-    await page.getByRole("button", { name: "WebDAV 문서 실행 요청", exact: true }).click();
+    await page.getByRole("button", { name: "고객 WebDAV에 문서 쓰기", exact: true }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "WebDAV 쓰기 확인", exact: true }).click();
     await page.getByText("WebDAV materialization executed by the connector.", { exact: false }).waitFor({ state: "visible", timeout: 10_000 });
     await page.getByText("외부 쓰기 실행됨", { exact: false }).waitFor({ state: "visible", timeout: 10_000 });
     await page.getByRole("button", { name: "WebDAV 반영 의도 점검", exact: true }).click();

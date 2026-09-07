@@ -23,6 +23,7 @@ import {
   DataQualitySurfaceResponse,
   EmailFileImportResponse,
   DataDocumentActionResponse,
+  DocumentActionKind,
   duplicateImportCandidates
 } from './data-layout/types';
 import {
@@ -65,6 +66,7 @@ export function DataLayout() {
   const [emailImportResult, setEmailImportResult] = useState<EmailFileImportResponse | null>(null);
   const [emailImportFiles, setEmailImportFiles] = useState<File[]>([]);
   const [documentActionStatus, setDocumentActionStatus] = useState<DocumentActionStatus>('idle');
+  const [documentActionPendingAction, setDocumentActionPendingAction] = useState<DocumentActionKind | null>(null);
   const [documentActionResult, setDocumentActionResult] = useState<DataDocumentActionResponse | null>(null);
   const [documentUploadFiles, setDocumentUploadFiles] = useState<File[]>([]);
   const [dataSurfaceStatus, setDataSurfaceStatus] = useState<DataSurfaceStatus>('loading');
@@ -229,21 +231,25 @@ export function DataLayout() {
   const requestDocumentUpload = useCallback(async () => {
     const [file] = documentUploadFiles;
     if (!file) {
+      setDocumentActionPendingAction(null);
       setDocumentActionStatus('error');
       return;
     }
 
     // 50MB file size limit
     if (file.size > 50 * 1024 * 1024) {
+      setDocumentActionPendingAction(null);
       setDocumentActionStatus('error');
       return;
     }
 
+    setDocumentActionPendingAction('upload');
     setDocumentActionStatus('loading');
     setDocumentActionResult(null);
     try {
       const documentType = getDocumentTypeForFile(file);
       if (!isTextDocumentUploadType(documentType)) {
+        setDocumentActionPendingAction(null);
         setDocumentActionStatus('error');
         return;
       }
@@ -257,22 +263,25 @@ export function DataLayout() {
         },
       );
       setDocumentActionResult(result);
+      setDocumentActionPendingAction(null);
       setDocumentActionStatus('success');
       setDataSurfaceStatus('loading');
       await loadDataQualitySurface();
     } catch (error: unknown) {
       const status = getApiErrorStatus(error);
+      setDocumentActionPendingAction(null);
       setDocumentActionStatus(status === 401 || status === 403 ? 'auth' : 'error');
     }
   }, [documentUploadFiles, loadDataQualitySurface]);
 
   const requestDocumentAction = useCallback(async (
-    action: 'reparse' | 'embedding-regeneration-intent' | 'hwp-conversion-intent' | 'webdav-materialization-intent',
+    action: Exclude<DocumentActionKind, 'upload'>,
   ) => {
     const asset = dataQualitySurface?.repository_assets.find((candidate) => (
       candidate.asset_key === selectedRepositoryAssetKey
     )) ?? dataQualitySurface?.repository_assets[0] ?? null;
     if (!asset || asset.asset_type !== 'workspace_document') {
+      setDocumentActionPendingAction(null);
       setDocumentActionStatus('error');
       return;
     }
@@ -280,10 +289,12 @@ export function DataLayout() {
       account.source_id === selectedWebdavSourceId && account.writeback_enabled
     ))?.source_id ?? webdavAccounts.find((account) => account.writeback_enabled)?.source_id;
     if (action === 'webdav-materialization-intent' && (webdavAccountStatus !== 'ready' || !targetSourceId)) {
+      setDocumentActionPendingAction(null);
       setDocumentActionStatus('error');
       return;
     }
 
+    setDocumentActionPendingAction(action);
     setDocumentActionStatus('loading');
     setDocumentActionResult(null);
     try {
@@ -294,12 +305,26 @@ export function DataLayout() {
           : {},
       );
       setDocumentActionResult(result);
+      setDocumentActionPendingAction(null);
+      if (action === 'webdav-materialization-intent' && !result.provider_write_executed) {
+        setDocumentActionStatus('connector_error');
+        return;
+      }
       setDocumentActionStatus('success');
       setDataSurfaceStatus('loading');
       await loadDataQualitySurface();
     } catch (error: unknown) {
       const status = getApiErrorStatus(error);
-      setDocumentActionStatus(status === 401 || status === 403 ? 'auth' : 'error');
+      setDocumentActionPendingAction(null);
+      setDocumentActionStatus(
+        status === 401 || status === 403
+          ? 'auth'
+          : status === 409
+            ? 'conflict'
+            : status === 422
+              ? 'invalid'
+              : 'error',
+      );
     }
   }, [
     dataQualitySurface,
@@ -315,7 +340,6 @@ export function DataLayout() {
   const canRequestWebdavWriteback = webdavAccountStatus === 'ready';
   const isUniqueThreadLoading = uniqueThreadStatus === 'loading';
   const isEmailImportLoading = emailImportStatus === 'loading';
-  const isDocumentActionLoading = documentActionStatus === 'loading';
   const selectedWebdavAccount = webdavAccounts.find((account) => (
     account.source_id === selectedWebdavSourceId && account.writeback_enabled
   )) ?? webdavAccounts.find((account) => account.writeback_enabled) ?? null;
@@ -440,7 +464,7 @@ export function DataLayout() {
               emailImportResult={emailImportResult}
               handleDocumentFileChange={handleDocumentFileChange}
               requestDocumentUpload={requestDocumentUpload}
-              isDocumentActionLoading={isDocumentActionLoading}
+              documentActionPendingAction={documentActionPendingAction}
               documentUploadFiles={documentUploadFiles}
               documentActionStatus={documentActionStatus}
               documentActionResult={documentActionResult}

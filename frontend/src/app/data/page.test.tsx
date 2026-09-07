@@ -1903,7 +1903,7 @@ describe("DataPage", () => {
     expect(container.textContent).toContain("decision-note.md");
     expect(container.textContent).toContain("의도만 기록");
 
-    for (const buttonLabel of ["재파싱 실행", "임베딩 재생성 의도", "HWP 변환 의도"]) {
+    for (const buttonLabel of ["파싱 완료로 표시", "임베딩 재생성 요청 등록", "HWP 변환 요청 등록"]) {
       const button = Array.from(container.querySelectorAll("button")).find((candidate) =>
         candidate.textContent?.includes(buttonLabel),
       );
@@ -1919,11 +1919,27 @@ describe("DataPage", () => {
     expect(container.textContent).toContain("HWP conversion intent recorded");
 
     const materializeButton = Array.from(container.querySelectorAll("button")).find((candidate) =>
-      candidate.textContent?.includes("WebDAV 문서 실행 요청"),
+      candidate.textContent?.includes("고객 WebDAV에 문서 쓰기"),
     );
     expect(materializeButton).toBeDefined();
     await act(async () => {
       materializeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("webdav-materialization-intent"))).toBe(false);
+    expect(container.textContent).toContain("운영 문서 원본에 현재 문서를 기록합니다");
+
+    const cancelWriteButton = Array.from(container.querySelectorAll("button")).find((candidate) => candidate.textContent === "취소");
+    await act(async () => {
+      cancelWriteButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("webdav-materialization-intent"))).toBe(false);
+
+    await act(async () => {
+      materializeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const confirmWriteButton = Array.from(container.querySelectorAll("button")).find((candidate) => candidate.textContent === "WebDAV 쓰기 확인");
+    await act(async () => {
+      confirmWriteButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
     const materializeCall = fetchMock.mock.calls.find(([input]) => (
@@ -1963,6 +1979,160 @@ describe("DataPage", () => {
     expect(container.textContent).not.toContain("etag-webdav-primary");
     expect(container.textContent).not.toContain("/Naruon/Data/roadmap.md-opaque.md");
     expect(container.textContent).not.toContain("runner_req_data_doc_1");
+  });
+
+  it("shows loading feedback only on the document action that is pending", async () => {
+    const fetchMock = mockWebdavFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<DataPage />);
+    });
+
+    const originalFetch = fetchMock.getMockImplementation();
+    const reparsePath = "/api/data/documents/doc_repository_ready/reparse";
+    let releaseReparse: (() => void) | null = null;
+    const pendingReparse = new Promise<ReturnType<typeof jsonResponse>>((resolve) => {
+      releaseReparse = () => resolve(jsonResponse({
+        document_id: "doc_repository_ready",
+        workspace_id: "workspace-org-acme",
+        document_name: "roadmap.md",
+        document_type: "text/markdown",
+        document_status: "parsed",
+        content_chars: 128,
+        provider_write_executed: false,
+        provenance: "server-authoritative",
+        audit_event: "data.document.reparsed",
+        message: "Document parse metadata refreshed in the signed workspace scope.",
+      }));
+    });
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === reparsePath) return pendingReparse;
+      return originalFetch?.(input, init) ?? Promise.reject(new Error("missing fetch implementation"));
+    });
+
+    const findButton = (label: string) => Array.from(container?.querySelectorAll("button") ?? []).find((candidate) => (
+      candidate.textContent?.includes(label)
+    ));
+    const reparseButton = findButton("파싱 완료로 표시");
+    const embeddingButton = findButton("임베딩 재생성 요청 등록");
+    const hwpButton = findButton("HWP 변환 요청 등록");
+    const materializeButton = findButton("고객 WebDAV에 문서 쓰기");
+    expect(reparseButton).toBeDefined();
+    expect(embeddingButton).toBeDefined();
+    expect(hwpButton).toBeDefined();
+    expect(materializeButton).toBeDefined();
+
+    await act(async () => {
+      reparseButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(reparseButton?.getAttribute("aria-busy")).toBe("true");
+    expect(reparseButton?.textContent).toContain("상태 변경 중");
+    const documentFileInput = container?.querySelector('input[accept=".txt,.md,.markdown,text/plain,text/markdown"]');
+    expect(documentFileInput).toHaveProperty("disabled", true);
+    for (const button of [embeddingButton, hwpButton, materializeButton]) {
+      expect(button?.getAttribute("aria-busy")).toBe("false");
+      expect(button?.disabled).toBe(true);
+      expect(button?.textContent).not.toContain("요청 등록 중");
+      expect(button?.textContent).not.toContain("WebDAV에 쓰는 중");
+    }
+
+    await act(async () => {
+      releaseReparse?.();
+      await pendingReparse;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  });
+
+  it.each([
+    [409, "문서 처리가 아직 끝나지 않았습니다. 처리가 완료된 후 재시도하세요."],
+    [422, "쓸 수 있는 문서 내용 또는 WebDAV 저장소를 확인한 후 재시도하세요."],
+    [401, "로그인이 만료되었습니다. 다시 로그인한 후 재시도하세요."],
+    [500, "문서 작업을 완료하지 못했습니다. 잠시 후 재시도하세요."],
+  ])("shows a bounded actionable document error for HTTP %s and allows retry", async (status, message) => {
+    const fetchMock = mockWebdavFetch();
+    const originalFetch = fetchMock.getMockImplementation();
+    let attempts = 0;
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input).endsWith("/doc_repository_ready/reparse")) {
+        attempts += 1;
+        return Promise.resolve(jsonResponse({}, false, status));
+      }
+      return originalFetch?.(input, init) ?? Promise.reject(new Error("missing fetch implementation"));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<DataPage />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const findReparseButton = () => Array.from(container?.querySelectorAll("button") ?? []).find((candidate) => candidate.textContent?.includes("파싱 완료로 표시"));
+    await act(async () => {
+      findReparseButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain(message);
+    expect(findReparseButton()?.disabled).toBe(false);
+
+    await act(async () => {
+      findReparseButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(attempts).toBe(2);
+  });
+
+  it("reports a connector failure after explicit WebDAV write confirmation", async () => {
+    const fetchMock = mockWebdavFetch();
+    const originalFetch = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input).endsWith("/doc_repository_ready/webdav-materialization-intent")) {
+        return Promise.resolve(jsonResponse({
+          document_id: "doc_repository_ready",
+          workspace_id: "workspace-org-acme",
+          document_name: "roadmap.md",
+          document_type: "text/markdown",
+          document_status: "parsed",
+          content_chars: 128,
+          provider_write_executed: false,
+          provenance: "server-authoritative",
+          audit_event: "data.document.webdav_materialization.dispatch_failed",
+          error_code: "connector_unavailable",
+          message: "dispatch failed",
+        }));
+      }
+      return originalFetch?.(input, init) ?? Promise.reject(new Error("missing fetch implementation"));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<DataPage />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const writeButton = Array.from(container.querySelectorAll("button")).find((candidate) => candidate.textContent?.includes("고객 WebDAV에 문서 쓰기"));
+    await act(async () => writeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const confirmButton = Array.from(container.querySelectorAll("button")).find((candidate) => candidate.textContent === "WebDAV 쓰기 확인");
+    await act(async () => {
+      confirmButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain("WebDAV 쓰기를 완료하지 못했습니다. 연결 상태를 확인한 후 재시도하거나 관리자에게 문의하세요.");
+    expect(container.textContent).not.toContain("connector_unavailable");
   });
 
   it("loads signed data quality surface without public identity headers", async () => {

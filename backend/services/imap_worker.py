@@ -1,3 +1,4 @@
+from core.safe_logging import redacted_exception_info
 import asyncio
 import datetime
 import logging
@@ -167,8 +168,10 @@ class ImapSyncWorker:
                 await self._sync()
             except asyncio.CancelledError:
                 break
-            except Exception:
-                logger.error("Error in ImapSyncWorker loop", exc_info=True)
+            except Exception as e:
+                logger.error(
+                    "Error in ImapSyncWorker loop", exc_info=redacted_exception_info(e)
+                )
 
             # Sleep for 1 minute before the next sync
             if self._is_running:

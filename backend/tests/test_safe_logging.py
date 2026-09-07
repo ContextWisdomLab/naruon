@@ -1,20 +1,22 @@
 """Regression tests for secret-safe exception logging."""
 
 import logging
+import base64
 
 from core.safe_logging import redacted_exception_info
 
+_t = "token="
+_v = "super-secret-value"
 
-def _raise_secret_bearing_exception(message: str) -> None:
-    raise RuntimeError(message)
+def _raise_secret_bearing_exception() -> None:
+    # Build it dynamically to avoid literal string matching the source code
+    raise RuntimeError("provider " + _t + _v)
 
 
 def test_redacted_exception_info_keeps_traceback_without_exception_message() -> None:
     """Preserve diagnostic frames while replacing secret-bearing exception text."""
-    secret = "super" + "-secret-value"
-    message = f"provider token={secret}"
     try:
-        _raise_secret_bearing_exception(message)
+        _raise_secret_bearing_exception()
     except RuntimeError as exc:
         exc_info = redacted_exception_info(exc)
 
@@ -29,7 +31,7 @@ def test_redacted_exception_info_keeps_traceback_without_exception_message() -> 
     )
     rendered = logging.Formatter("%(message)s").format(record)
 
-    assert secret not in rendered
+    assert "super-secret-value" not in rendered
     assert "token=" not in rendered
     assert "Exception details redacted" in rendered
     assert "_raise_secret_bearing_exception" in rendered

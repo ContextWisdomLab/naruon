@@ -1,3 +1,4 @@
+from core.safe_logging import redacted_exception_info
 import asyncio
 import logging
 import poplib
@@ -46,8 +47,10 @@ class Pop3SyncWorker:
                 await self._sync()
             except asyncio.CancelledError:
                 break
-            except Exception:
-                logger.error("Error in Pop3SyncWorker loop", exc_info=True)
+            except Exception as e:
+                logger.error(
+                    "Error in Pop3SyncWorker loop", exc_info=redacted_exception_info(e)
+                )
 
             if self._is_running:
                 try:

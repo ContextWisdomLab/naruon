@@ -38,7 +38,7 @@ async def import_eml_file(session, eml_file: Path) -> bool:
     try:
         parsed = parse_eml(eml_file)
     except Exception:
-        logger.error(f"Failed to parse {eml_file}", exc_info=True)
+        logger.error("Fixture email parsing failed")
         return False
 
     existing = await session.execute(
@@ -56,7 +56,7 @@ async def import_eml_file(session, eml_file: Path) -> bool:
     try:
         body_emb = await generate_fixture_embedding(body_text)
     except Exception:
-        logger.error(f"Failed to generate embedding for {eml_file}", exc_info=True)
+        logger.error("Fixture email body embedding failed")
         return False
 
     thread_id = await assign_thread_id(
@@ -94,17 +94,14 @@ async def import_eml_file(session, eml_file: Path) -> bool:
                 )
             )
         except Exception:
-            logger.error(
-                f"Failed to generate embedding for attachment {att['filename']}",
-                exc_info=True,
-            )
+            logger.error("Fixture attachment embedding failed")
 
     session.add(email_obj)
     try:
         await session.commit()
     except Exception:
         await session.rollback()
-        logger.error(f"Failed to commit {eml_file}", exc_info=True)
+        logger.error("Fixture email commit failed")
         return False
     logger.info(
         f"Imported {eml_file.name} with {len(parsed.get('attachments', []))} attachments."

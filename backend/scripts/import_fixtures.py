@@ -43,7 +43,7 @@ async def process_zip_file(zip_path: str | Path, session: AsyncSession):
             try:
                 email_data = parse_eml(file_path)
             except Exception:
-                logger.error(f"Failed to parse {file_path}", exc_info=True)
+                logger.error("Fixture archive email parsing failed")
                 continue
 
             chunks = chunk_text(email_data["body"])
@@ -70,10 +70,7 @@ async def process_zip_file(zip_path: str | Path, session: AsyncSession):
                             STORAGE_EMBEDDING_DIMENSION,
                         )
                 except Exception:
-                    logger.error(
-                        f"Failed to generate embedding for {email_data['message_id']}",
-                        exc_info=True,
-                    )
+                    logger.error("Fixture archive email embedding failed")
 
             # Upsert into database
             thread_id = await assign_thread_id(

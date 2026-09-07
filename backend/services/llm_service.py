@@ -7,6 +7,7 @@ from urllib.parse import urlsplit, urlunsplit
 from openai import AsyncOpenAI
 from core.config import settings
 from core.exceptions import LLMServiceError
+from core.safe_logging import redacted_exception_info
 from services.circuit_breaker import provider_circuit_breaker
 from services.retry import retry_transient
 from pydantic import BaseModel, Field
@@ -80,9 +81,12 @@ async def extract_action_items_and_summary(
                 operation_name="summary extraction",
             ),
         )
-    except Exception as e:
-        logger.error("Error calling LLM API for extraction", exc_info=True)
-        raise LLMServiceError(f"LLM API error during extraction: {e}") from e
+    except Exception as exc:
+        logger.error(
+            "Error calling LLM API for extraction",
+            exc_info=redacted_exception_info(exc),
+        )
+        raise LLMServiceError("LLM API request failed during extraction") from None
     finally:
         await client.close()
 
@@ -146,9 +150,12 @@ async def translate_email_body(
                 operation_name="translation",
             ),
         )
-    except Exception as e:
-        logger.error("Error calling LLM API for translation", exc_info=True)
-        raise LLMServiceError(f"LLM API error during translation: {e}") from e
+    except Exception as exc:
+        logger.error(
+            "Error calling LLM API for translation",
+            exc_info=redacted_exception_info(exc),
+        )
+        raise LLMServiceError("LLM API request failed during translation") from None
     finally:
         await client.close()
 
@@ -188,9 +195,12 @@ async def draft_reply(
                 selected_model,
                 messages,
             )
-        except Exception as e:
-            logger.error("Error calling LLM API for drafting", exc_info=True)
-            raise LLMServiceError(f"LLM API error during drafting: {e}") from e
+        except Exception as exc:
+            logger.error(
+                "Error calling LLM API for drafting",
+                exc_info=redacted_exception_info(exc),
+            )
+            raise LLMServiceError("LLM API request failed during drafting") from None
         finally:
             await http_client.aclose()
 
@@ -210,9 +220,12 @@ async def draft_reply(
                 operation_name="reply drafting",
             ),
         )
-    except Exception as e:
-        logger.error("Error calling LLM API for drafting", exc_info=True)
-        raise LLMServiceError(f"LLM API error during drafting: {e}") from e
+    except Exception as exc:
+        logger.error(
+            "Error calling LLM API for drafting",
+            exc_info=redacted_exception_info(exc),
+        )
+        raise LLMServiceError("LLM API request failed during drafting") from None
     finally:
         await client.close()
 

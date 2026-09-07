@@ -1302,6 +1302,7 @@ export function SettingsLayout() {
                     <button
                       type="submit"
                       disabled={accountSaving || !accountReady}
+                      aria-disabled={accountSaving || !accountReady}
                       aria-busy={accountSaving}
                       title={accountSaving ? "저장 중입니다" : !accountReady ? "입력값이 부족합니다" : "계정 설정 저장"}
                       className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-foreground px-5 py-2 text-sm font-bold text-background hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60"
@@ -1437,6 +1438,7 @@ export function SettingsLayout() {
                       type="button"
                       onClick={handleRunnerTokenRotate}
                       disabled={runnerRotating}
+                      aria-disabled={runnerRotating}
                       aria-busy={runnerRotating}
                       title={runnerRotating ? "등록 토큰을 회전 중입니다" : "등록 토큰을 회전합니다"}
                       className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2 text-sm font-bold text-background hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60"

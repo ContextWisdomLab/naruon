@@ -18,6 +18,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCKER_PUBLISH_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "docker-publish.yml"
 
 
+def test_image_context_excludes_project_virtual_environments() -> None:
+    """Keep local host packages out of backend COPY and image build contexts."""
+    ignore_patterns = (REPO_ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+    assert "**/.venv" in ignore_patterns
+
+
 def _component_entry(workflow: dict[object, object], job_name: str, component: str) -> dict[str, object]:
     """Return one named image-matrix entry from a release workflow job."""
     jobs = workflow["jobs"]

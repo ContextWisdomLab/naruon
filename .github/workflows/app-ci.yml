@@ -6,6 +6,7 @@ on:
       - develop
       - master
       - "release/**"
+      - "**"
   push:
     branches:
       - develop

@@ -46,7 +46,9 @@ TxtResolver = Callable[[str], list[str]]
 HttpClientFactory = Callable[[], Any]
 
 _MALFORMED_PERCENT_TRIPLET = re.compile(r"%(?![0-9A-Fa-f]{2})")
+_PERCENT_TRIPLET = re.compile(r"%([0-9A-Fa-f]{2})")
 _REMAINING_PERCENT_TRIPLET = re.compile(r"%[0-9A-Fa-f]{2}")
+_RFC3986_RESERVED_CHARACTERS = frozenset(":/?#[]@!$&'()*+,;=")
 
 
 @dataclass(frozen=True)
@@ -221,8 +223,27 @@ def _default_txt_resolver(name: str) -> list[str]:
     return records
 
 
+def _execution_path_preserving_reserved_escapes(path: str) -> str:
+    """Decode safe path octets while retaining encoded RFC 3986 reserved data."""
+
+    def protect_reserved(match: re.Match[str]) -> str:
+        octet = int(match.group(1), 16)
+        character = chr(octet)
+        if character not in _RFC3986_RESERVED_CHARACTERS:
+            return match.group(0)
+        # The context path itself must start with a structural slash. An
+        # encoded leading slash is therefore canonicalized, while later
+        # reserved escapes remain data exactly as the provider advertised.
+        if match.start() == 0 and character == "/":
+            return match.group(0)
+        return f"%25{match.group(1).upper()}"
+
+    protected_path = _PERCENT_TRIPLET.sub(protect_reserved, path)
+    return unquote(protected_path, errors="strict")
+
+
 def _txt_context_path(records: list[str]) -> str | None:
-    """Extract and validate a singly decoded RFC 6764 TXT ``path`` hint."""
+    """Validate one decode of an RFC 6764 TXT ``path`` and preserve wire identity."""
     for record in records:
         for part in record.split(";"):
             key, _, value = part.strip().partition("=")
@@ -233,6 +254,7 @@ def _txt_context_path(records: list[str]) -> str | None:
                 continue
             try:
                 decoded_path = unquote(path, errors="strict")
+                execution_path = _execution_path_preserving_reserved_escapes(path)
             except UnicodeDecodeError:
                 continue
             if _REMAINING_PERCENT_TRIPLET.search(decoded_path):
@@ -250,7 +272,7 @@ def _txt_context_path(records: list[str]) -> str | None:
                 )
                 and all(category(ch) != "Cc" for ch in decoded_path)
             ):
-                return decoded_path
+                return execution_path
     return None
 
 

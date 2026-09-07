@@ -46,8 +46,8 @@ class Pop3SyncWorker:
                 await self._sync()
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                logger.error(f"Error in Pop3SyncWorker loop: {e}", exc_info=True)
+            except Exception:
+                logger.error("Error in Pop3SyncWorker loop", exc_info=True)
 
             if self._is_running:
                 try:
@@ -57,16 +57,18 @@ class Pop3SyncWorker:
 
     async def _sync(self):
         async with AsyncSessionLocal() as session:
-            result = await session.execute(select(TenantConfig).where(TenantConfig.pop3_server.isnot(None)))
+            result = await session.execute(
+                select(TenantConfig).where(TenantConfig.pop3_server.isnot(None))
+            )
             configs = result.scalars().all()
-            
+
         semaphore = asyncio.Semaphore(10)
         tasks = []
         for config in configs:
             if not config.pop3_server or not config.pop3_port:
                 continue
             tasks.append(self._sync_tenant(config, semaphore))
-            
+
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -195,7 +197,5 @@ class Pop3SyncWorker:
 
     def _bytes_line(self, line: bytes | str) -> bytes:
         return (
-            line
-            if isinstance(line, bytes)
-            else line.encode("utf-8", errors="replace")
+            line if isinstance(line, bytes) else line.encode("utf-8", errors="replace")
         )

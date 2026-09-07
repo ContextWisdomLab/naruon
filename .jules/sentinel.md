@@ -138,3 +138,7 @@
 **Vulnerability:** The `_safe_filename` function in `backend/services/attachment_parser.py` used `pathlib.Path().name` to strip directory components from attachment filenames, but failed to normalize backslashes beforehand. This allowed attackers to use Windows-style path separators (e.g., `..\..\upload`) to bypass path validation on POSIX systems.
 **Learning:** Checking for traversal sequences using `pathlib.Path().name` may leave the result vulnerable if the input path can contain Windows-style path separators but the program interprets it dynamically or decodes payloads using backslashes, because POSIX `pathlib` treats backslashes as valid filename characters, not separators.
 **Prevention:** Always convert backslashes to forward slashes before parsing filenames using `pathlib.Path().name`.
+## 2026-09-08 - Prevent Exception Information Leakage
+**Vulnerability:** Exception objects were string-interpolated directly into log messages (e.g., `logger.error(f"Error: {e}")`). This can leak sensitive internal information, such as API keys in request errors, full stack traces, or database credentials, into the application logs.
+**Learning:** String interpolation of exception objects may inadvertently expose sensitive data that attackers could exploit if they gain access to logs.
+**Prevention:** Use standard exception logging mechanisms like `logger.error("Error occurred", exc_info=True)` which securely logs the stack trace to internal monitoring systems without printing sensitive local variables directly into the formatted log string.

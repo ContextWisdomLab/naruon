@@ -738,6 +738,15 @@ def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_
     assert (
         "needs.deploy_preflight.outputs.aks_kubeconfig_configured == 'true'" in workflow
     )
+    assert "concurrency:" in workflow
+    assert (
+        "docker-publish-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}"
+        in workflow
+    )
+    assert (
+        "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in workflow
+    )
+    assert "cancel-in-progress: true" not in workflow.split("jobs:", 1)[0]
 
 
 def test_frontend_dockerfile_builds_and_starts_production_artifact() -> None:

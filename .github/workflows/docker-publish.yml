@@ -13,6 +13,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # First-attempt PR validations share a generation key so a newer event
+  # supersedes only another first attempt. Manual reruns add their stable
+  # run_id and therefore cannot cancel, or be cancelled by, a newer PR event.
+  # Tag publication is unique per run and cancel-in-progress remains false.
+  group: docker-publish-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && github.run_attempt == 1 && 'first-attempt' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   REGISTRY: ghcr.io
   # Keep the explicit opt-in as belt-and-suspenders. The real warning removal

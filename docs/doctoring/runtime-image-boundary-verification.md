@@ -134,6 +134,11 @@ rollout 실패 시 두 객체의 소유권을 먼저 확인하고 frontend, back
 다시 조회하도록 고쳤다. 이 검사는 관측 시점의 확인이며 두 객체를 원자적으로
 잠그거나 마지막 조회 이후의 변경까지 막지는 않는다.
 수정 후 복구 검사 전체는 13 passed, 30.10초, exit 0이었다.
+후속 검사에서는 frontend의 tag 기반 이전 상태, metadata 변경, 조회 시 객체 누락을
+각각 주입했다. 세 경우 모두 backend를 포함한 양쪽 객체가 그대로이고 patch·복구·
+성공 표시가 없음을 확인했다. 기존 kubectl double을 확장한 복구 검사 전체는
+16 passed, 45.72초, exit 0이었다. 이 결과는 최초 배포 지원이 아니라 사전 거부의
+검증이며 tag-to-digest 전환 절차 개발은 여전히 남아 있다.
 
 전체 객체 replace 대안은 기각했다. server dry-run이 추가한 last-applied annotation이
 spec 복구 뒤 남는 반례가 unit test에서 실패했다. spec-only patch로 바꾸고 명시적인

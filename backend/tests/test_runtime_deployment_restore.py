@@ -66,7 +66,7 @@ def test_restore_uses_owned_spec_and_atomic_resource_version(
             assert "patch" not in final_state["calls"]
 
 
-@pytest.mark.parametrize("scenario", ["deployed", "frontend_rollout_failed", "backend_drift", "frontend_response_lost", "restored_frontend_drift"])
+@pytest.mark.parametrize("scenario", ["deployed", "frontend_rollout_failed", "backend_drift", "frontend_response_lost", "restored_frontend_drift", "frontend_tag_baseline", "frontend_metadata_change", "frontend_missing"])
 def test_partial_deployment_restores_only_confirmed_owned_resources(
     tmp_path: Path, scenario: str
 ) -> None:
@@ -80,7 +80,11 @@ def test_partial_deployment_restores_only_confirmed_owned_resources(
             "metadata": {"name": image_component, "namespace": "naruon-dev", "uid": "unit-" + image_component, "resourceVersion": "old-version"},
             "spec": {"replicas": 2, "revisionHistoryLimit": 10, "template": {"spec": {"containers": [{"name": image_component, "image": "ghcr.io/unit/" + image_component + "@sha256:" + "a" * 64}]}}},
         }
+        if image_component == "frontend" and scenario == "frontend_tag_baseline":
+            resource_states[image_component]["spec"]["template"]["spec"]["containers"][0]["image"] = "ghcr.io/unit/frontend:old-version"
         desired_state = copy.deepcopy(resource_states[image_component])
+        if image_component == "frontend" and scenario == "frontend_metadata_change":
+            desired_state["metadata"]["labels"] = {"release_owner": "changed-owner"}
         desired_state["spec"]["replicas"] = 3
         del desired_state["spec"]["revisionHistoryLimit"]
         desired_state["spec"]["template"]["spec"]["containers"][0]["image"] = "ghcr.io/unit/" + image_component + "@sha256:" + "b" * 64
@@ -106,6 +110,14 @@ def test_partial_deployment_restores_only_confirmed_owned_resources(
     )
     final_state = json.loads(state_path.read_text())
     assert not kubeconfig_path.exists()
+    if scenario in {"frontend_tag_baseline", "frontend_metadata_change", "frontend_missing"}:
+        assert result.returncode != 0
+        assert final_state["applied_components"] == []
+        assert final_state["restored_components"] == []
+        assert "patch" not in final_state["calls"]
+        assert final_state["resources"] == prior_states
+        assert "verified" not in result.stdout + result.stderr
+        return
     assert final_state["applied_components"] == ["backend", "frontend"]
     for image_component in ("backend", "frontend"):
         assert final_state["resources"][image_component]["metadata"].get("annotations", {}) == prior_states[image_component]["metadata"].get("annotations", {})

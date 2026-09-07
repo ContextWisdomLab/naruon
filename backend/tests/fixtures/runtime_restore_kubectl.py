@@ -24,12 +24,13 @@ if "resources" in test_state:
     test_state["operations"].append([operation_name, image_component])
 exit_code = 0
 if operation_name == "get":
-    if test_state["scenario"] == "missing_resource":
+    if test_state["scenario"] == "missing_resource" or (test_state["scenario"] == "frontend_missing" and image_component == "frontend"):
         exit_code = 1
     else:
         print(json.dumps(test_state["current"]))
 elif operation_name == "apply" and "--dry-run=server" in command_args:
     proposed_state = copy.deepcopy(test_state["current"])
+    proposed_state["metadata"].update(desired_state["metadata"])
     proposed_state["spec"] = desired_state["spec"]
     proposed_state["spec"]["revisionHistoryLimit"] = 10
     proposed_state["metadata"].setdefault("annotations", {})["kubectl.kubernetes.io/last-applied-configuration"] = "unit-dry-run-annotation"

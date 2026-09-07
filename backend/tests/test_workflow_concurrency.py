@@ -20,12 +20,16 @@ def _load_workflow(workflow_name: str) -> dict[str, object]:
     return parsed
 
 
-def test_bandit_cancels_only_superseded_pull_request_runs() -> None:
-    """Keep manual and push scans independent while deduplicating PR scans."""
+def test_bandit_coalesces_pr_and_protected_branch_push_scans() -> None:
+    """Cancel superseded PR and push scans; keep manual dispatch unique."""
     concurrency = _load_workflow("bandit.yml").get("concurrency")
 
     assert isinstance(concurrency, dict)
-    assert concurrency == {
-        "group": "bandit-security-scan-${{ github.repository }}-${{ github.event_name == 'pull_request' && github.run_attempt == 1 && github.event.pull_request.number || github.run_id }}",
-        "cancel-in-progress": "${{ github.event_name == 'pull_request' && github.run_attempt == 1 }}",
-    }
+    group = concurrency.get("group")
+    assert isinstance(group, str)
+    assert "bandit-security-scan-${{ github.repository }}-" in group
+    assert "github.event.pull_request.number" in group
+    assert "github.event_name == 'push' && format('push-{0}', github.ref_name)" in group
+    assert "github.run_id" in group
+    assert "github.run_attempt" not in group
+    assert concurrency.get("cancel-in-progress") is True

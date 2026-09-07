@@ -8,8 +8,17 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: bandit-security-scan-${{ github.repository }}-${{ github.event_name == 'pull_request' && github.run_attempt == 1 && github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.run_attempt == 1 }}
+  # Workflow-level admission: a job-level group never coalesces while the run
+  # is queued behind the organization job ceiling. Push scans share one group
+  # per protected branch so a newer develop/master head retires the older
+  # scan. workflow_dispatch keeps github.run_id and is not cancelled by a
+  # sibling. This is a security scan, not merge/release/deploy.
+  group: >-
+    bandit-security-scan-${{ github.repository }}-${{
+    github.event.pull_request.number ||
+    (github.event_name == 'push' && format('push-{0}', github.ref_name)) ||
+    github.run_id }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

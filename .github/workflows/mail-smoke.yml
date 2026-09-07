@@ -6,6 +6,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # One live mailbox/DAV smoke at a time. Do not cancel an in-flight run:
+  # this workflow holds seeded credentials and talks to customer-adjacent
+  # servers, and it is not a merge/release/deploy publication path.
+  group: mail-smoke-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   smoke:
     runs-on: [self-hosted, mail-egress]

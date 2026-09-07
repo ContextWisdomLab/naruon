@@ -400,6 +400,10 @@ def test_stepsecurity_remediation_adds_pinned_audit_hardening() -> None:
     assert harden_runner_ref in mail_smoke_workflow
     assert "egress-policy: block" in mail_smoke_workflow
     assert "allowed-endpoints:" in mail_smoke_workflow
+    assert "concurrency:" in mail_smoke_workflow
+    assert "mail-smoke-${{ github.repository }}" in mail_smoke_workflow
+    assert "cancel-in-progress: false" in mail_smoke_workflow
+    assert "cancel-in-progress: true" not in mail_smoke_workflow.split("jobs:", 1)[0]
 
     dependency_review_workflow = read_repo_text(
         ".github/workflows/dependency-review.yml"

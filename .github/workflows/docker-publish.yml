@@ -376,6 +376,27 @@ jobs:
             printf -- '- Digest: %s\n' "$IMAGE_DIGEST"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Prepare deployment digest
+        if: matrix.component == 'backend' || matrix.component == 'frontend'
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          if [[ ! "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            printf 'Invalid published image digest\n' >&2
+            exit 1
+          fi
+          mkdir "$RUNNER_TEMP/runtime-digest"
+          printf '%s\n' "$IMAGE_DIGEST" > "$RUNNER_TEMP/runtime-digest/image-digest.txt"
+
+      - name: Upload deployment digest
+        id: upload_digest
+        if: matrix.component == 'backend' || matrix.component == 'frontend'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: runtime-digest-${{ github.sha }}-${{ github.run_attempt }}-${{ matrix.component }}
+          path: ${{ runner.temp }}/runtime-digest/image-digest.txt
+          if-no-files-found: error
+
   deploy_preflight:
     name: Detect AKS deploy configuration
     needs: publish_images

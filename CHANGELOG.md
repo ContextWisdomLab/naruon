@@ -2,6 +2,18 @@
 - 긴 이메일·첨부 본문을 의미 단위 청크로 임베딩한 뒤 기존 email/attachment 벡터 계약으로 평균화하고, 청크 요청·벡터 누적을 제한된 창으로 처리합니다. OpenAI `text-embedding-3-*`에는 저장 차원(`1536`)을 직접 요청하도록 보강했습니다. 합성 메일 fixture 5건(70청크)과 provider 요청 계약으로 1,536차원 벡터 경로를 검증했으며, 실행 시 선택한 임베딩 제공자에 본문·파싱된 첨부 텍스트를 전송할 수 있습니다. 회사 기밀 데이터는 fixture·commit·PR·log에 포함하지 않습니다.
 - EmailDetail 테스트가 지원하지 않는 스레드 병합/분리 버튼을 `textContent`뿐 아니라 `aria-label`과 `title` 접근 가능 이름으로도 검출하도록 바꿔, 아이콘 전용 버튼 회귀를 놓치지 않습니다.
 
+### 감사 가능한 데이터 위생 도구
+
+- `url_evidence_extractor`는 HTTP(S) URL을 네트워크 요청 없이 파싱하고 원문
+  위치, IDNA/IPv6 호스트, userinfo·percent-encoding 경고, 결정적 중복 목록을
+  반환합니다.
+- `contact_data_redactor`는 ASCII 이메일과 한국/E.164 호환 전화번호만
+  결정적 placeholder로 치환하고 원문·치환 span 및 detector version을
+  반환합니다. 지원하지 않는 PII는 제거되었다고 주장하지 않습니다.
+- 두 도구 모두 signed import working ceiling과 같은 입력 64 MiB까지 처리하며,
+  URL 후보/개수 상한으로 대형 문서에서도 작업량을 통제합니다. 실패에는 안정적인
+  `error_code`를 반환합니다. 실행은 기존 서명 세션 도구 API를 그대로 사용합니다.
+
 ### 캘린더 충돌 (Status-weighted conflicts)
 
 - 상태 가중 일정 충돌 평가가 RFC 5545 `VEVENT` 증거를 직접 받습니다.

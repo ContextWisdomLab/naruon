@@ -20,12 +20,13 @@ from core.url_validation import (
 )
 from services.llm_provider_urls import build_pinned_https_async_client
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SerializerFunctionWrapHandler, model_serializer
 
 router = APIRouter(prefix="/api", tags=["tools"])
 logger = logging.getLogger(__name__)
 ToolHandler = Callable[[Dict[str, Any]], Any]
 MAX_TOOL_FAILURE_MESSAGE_CHARS = 500
+_ERROR_CODE_PATTERN = re.compile(r"[a-z][a-z0-9_]{2,63}")
 
 
 def _tool_code_fingerprint(code: str) -> str:
@@ -71,6 +72,27 @@ def _safe_tool_failure_message(exc: Exception) -> str:
             break
     message = "".join(escaped)[:MAX_TOOL_FAILURE_MESSAGE_CHARS]
     return message or "Tool execution failed"
+
+
+def _validated_error_code(exc: Exception) -> str | None:
+    """Return only a bounded machine-code string from a tool exception."""
+    candidate = getattr(exc, "error_code", None)
+    if not isinstance(candidate, str) or _ERROR_CODE_PATTERN.fullmatch(candidate) is None:
+        return None
+    return candidate
+
+
+def _url_evidence_validation_error_code(
+    code: str, parameters: dict[str, Any]
+) -> str | None:
+    """Map URL evidence request-shape failures to stable public codes."""
+    if code != "url_evidence_extractor":
+        return None
+    if "text" not in parameters:
+        return "url_evidence_text_required"
+    if not isinstance(parameters["text"], str):
+        return "url_evidence_invalid_text"
+    return None
 
 
 class ToolInfo(BaseModel):
@@ -125,9 +147,24 @@ class ExecuteRequest(BaseModel):
 
 
 class ExecuteResponse(BaseModel):
+    """Stable public envelope returned by tool execution endpoints."""
+
     status: str = Field(..., description="실행 상태 (예: success, failed)")
     result: Any = Field(..., description="실행 결과 데이터")
     message: Optional[str] = Field(default=None, description="결과 메시지")
+    error_code: Optional[str] = Field(
+        default=None, description="예상된 실패의 안정적인 기계 판독 오류 코드"
+    )
+
+    @model_serializer(mode="wrap")
+    def _serialize_response(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        """Omit absent error codes to preserve the existing response shape."""
+        payload = handler(self)
+        if self.error_code is None:
+            payload.pop("error_code", None)
+        return payload
 
 
 class ToolRegistry:
@@ -706,6 +743,8 @@ _KEYWORD_STOPWORDS = frozenset(
         "합니다",
     }
 )
+
+
 def _normalize_analysis_text(value: str) -> str:
     """Normalize user text for deterministic, multilingual rule matching."""
     if len(value) > ANALYSIS_TEXT_MAX_CHARS:
@@ -767,7 +806,6 @@ registry.register(
     ),
     uuid_v4_generator_handler,
 )
-
 
 
 @router.get("/tools", response_model=list[ToolInfo])
@@ -889,4 +927,8 @@ async def execute_tool(code: str, request: ExecuteRequest) -> ExecuteResponse:
             status="failed",
             result=None,
             message=_safe_tool_failure_message(e),
+            error_code=(
+                _validated_error_code(e)
+                or _url_evidence_validation_error_code(code, request.parameters)
+            ),
         )

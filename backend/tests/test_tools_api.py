@@ -15,6 +15,7 @@ os.environ.setdefault("AUTH_SESSION_HMAC_SECRET", secrets.token_urlsafe(48))
 
 from api.tools import (
     MAX_TOOL_FAILURE_MESSAGE_CHARS,
+    ExecuteResponse,
     ExecuteRequest,
     ToolInfo,
     ToolRegistry,
@@ -379,6 +380,7 @@ async def test_execute_tool_handler_error():
     assert data["status"] == "failed"
     assert data["result"] is None
     assert "Simulated error" in data["message"]
+    assert "error_code" not in data
 
 
 @pytest.mark.asyncio
@@ -434,6 +436,83 @@ def test_safe_tool_failure_message_escapes_controls_and_bounds_output():
     assert len(message) == MAX_TOOL_FAILURE_MESSAGE_CHARS
     assert "\t" not in message
     assert "\x01" not in message
+
+
+def test_execute_response_serialization_omits_absent_code_and_keeps_stable_code():
+    """The model and HTTP envelope omit null codes but preserve valid codes."""
+    without_code = ExecuteResponse(status="failed", result=None, message="failed")
+    assert without_code.model_dump() == {
+        "status": "failed",
+        "result": None,
+        "message": "failed",
+    }
+
+    with_code = ExecuteResponse(
+        status="failed",
+        result=None,
+        message="failed",
+        error_code="stable_failure",
+    )
+    assert with_code.model_dump()["error_code"] == "stable_failure"
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_rejects_untrusted_error_code_attributes():
+    """Exception attributes must be valid strings before entering the response."""
+    class InvalidErrorCode(ValueError):
+        error_code = {"secret": "must not escape"}
+
+    def error_handler(_params):
+        raise InvalidErrorCode("invalid code")
+
+    try:
+        registry.register(
+            ToolInfo(
+                code="invalid_code_tool",
+                name="Invalid Code Tool",
+                description="Test tool",
+                category="Test",
+            ),
+            error_handler,
+        )
+        response = await execute_tool(
+            "invalid_code_tool", ExecuteRequest(parameters={})
+        )
+    finally:
+        registry.unregister("invalid_code_tool")
+
+    assert response.error_code is None
+
+
+def test_execute_tool_http_json_includes_valid_error_code():
+    """The HTTP response includes a validated stable error code."""
+    class StableError(ValueError):
+        error_code = "stable_failure"
+
+    def error_handler(_params):
+        raise StableError("stable failure")
+
+    try:
+        registry.register(
+            ToolInfo(
+                code="stable_code_tool",
+                name="Stable Code Tool",
+                description="Test tool",
+                category="Test",
+            ),
+            error_handler,
+        )
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/tools/stable_code_tool/execute",
+                headers={"Authorization": f"Bearer {_signed_session_token()}"},
+                json={"parameters": {}},
+            )
+    finally:
+        registry.unregister("stable_code_tool")
+
+    assert response.status_code == 200
+    assert response.json()["error_code"] == "stable_failure"
 
 
 def test_execute_tool_sync_handler_success():

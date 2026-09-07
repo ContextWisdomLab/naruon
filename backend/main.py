@@ -7,7 +7,9 @@ from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from api.auth import get_auth_context, preload_oidc_jwks
+from api.contact_data_redactor import register_contact_data_redactor
 from api.search import router as search_router
+from api.url_evidence_tool import register_url_evidence_tool
 from api.llm import router as llm_router
 from api.calendar import router as calendar_router
 from api.calendar_conflicts import router as calendar_conflicts_router
@@ -41,6 +43,9 @@ from services.pop3_worker import Pop3SyncWorker
 from services.provider_writeback_retry_service import ProviderWritebackRetryWorker
 from services.reply_sla_scheduler import ReplySlaScheduler
 from prometheus_fastapi_instrumentator import Instrumentator
+
+register_contact_data_redactor()
+register_url_evidence_tool()
 
 imap_worker = ImapSyncWorker()
 pop3_worker = Pop3SyncWorker()

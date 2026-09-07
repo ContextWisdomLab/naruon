@@ -17,9 +17,6 @@ on:
       pr_number:
         description: Pull request number to evaluate
         required: true
-      base_sha:
-        description: Trusted base commit SHA for manual recovery runs
-        required: false
 
 permissions:
   contents: read
@@ -59,7 +56,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TRUSTED_PR_NUMBER: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.event.inputs.pr_number || '' }}
-          TRUSTED_BASE_SHA: ${{ github.event.inputs.base_sha || '' }}
         run: |
           set -euo pipefail
 
@@ -169,17 +165,12 @@ jobs:
             exit 1
           fi
 
-          trusted_ref=""
-          if [[ "${TRUSTED_BASE_SHA:-}" =~ ^[0-9a-f]{40}$ ]]; then
-            trusted_ref="$TRUSTED_BASE_SHA"
-            echo "Using event-provided trusted governance base SHA ${trusted_ref}."
-          else
-            trusted_ref="$(gh_api_with_retry "repos/${GITHUB_REPOSITORY}/pulls/${TRUSTED_PR_NUMBER}" --jq '.base.sha')"
-          fi
+          trusted_ref="$(gh_api_with_retry "repos/${GITHUB_REPOSITORY}/pulls/${TRUSTED_PR_NUMBER}" --jq '.base.sha')"
           if [[ ! "$trusted_ref" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::Trusted governance ref must be a full commit SHA." >&2
             exit 1
           fi
+          echo "Using live PR base governance SHA ${trusted_ref}."
 
           trusted_workspace="$RUNNER_TEMP/trusted-governance"
           trusted_archive="$RUNNER_TEMP/trusted-governance.tar.gz"

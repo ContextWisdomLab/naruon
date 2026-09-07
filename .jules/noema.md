@@ -1,0 +1,3 @@
+## 2024-09-06 - Noema Review CI Workflow
+**Learning:** The Noema CI workflow in this repository dispatches a remote scan and can intermittently fail due to external infrastructure issues such as 502 Bad Gateway timeouts from the LLM provider ('Noema gateway transport failed: HTTPError: HTTP Error 502: Bad Gateway'). This is not a real code failure but a transient service outage.
+**Action:** When encountering this specific Noema error, no code changes are required. Simply re-trigger or wait for the asynchronous CI job to finish. For the agent loop, pushing a small commit to re-trigger or just submitting again is appropriate.

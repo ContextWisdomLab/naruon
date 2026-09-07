@@ -380,13 +380,36 @@ describe("SettingsLayout", () => {
     expect(container.textContent).toContain("Connector heartbeat");
     expect(container.textContent).toContain("계측 준비");
 
+
     const rotateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("등록 토큰 회전"));
     expect(rotateButton).toBeTruthy();
+    expect(rotateButton?.hasAttribute("disabled")).toBe(false);
+    expect(rotateButton?.hasAttribute("aria-disabled")).toBe(false);
+    expect(rotateButton?.getAttribute("aria-busy")).toBe("false");
+
+    let clickPromise;
+    act(() => {
+      clickPromise = rotateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      // We don't await the promise right away to test the busy state
+    });
+
+    // Test the loading state
+    expect(rotateButton?.hasAttribute("disabled")).toBe(true);
+    expect(rotateButton?.hasAttribute("aria-disabled")).toBe(false);
+    expect(rotateButton?.getAttribute("aria-busy")).toBe("true");
+
     await act(async () => {
-      rotateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await clickPromise;
       await Promise.resolve();
       await Promise.resolve();
     });
+
+    // Test the completion state
+    expect(rotateButton?.hasAttribute("disabled")).toBe(false);
+    expect(rotateButton?.hasAttribute("aria-disabled")).toBe(false);
+    expect(rotateButton?.getAttribute("aria-busy")).toBe("false");
+
+
 
     const rotateCall = vi.mocked(fetch).mock.calls.find(([input, init]) => String(input) === "/api/runner-config/rotate" && init?.method === "POST");
     expect(rotateCall?.[1]?.credentials).toBe("same-origin");
@@ -561,13 +584,34 @@ describe("SettingsLayout", () => {
     expect(container.textContent).toContain("저장된 secret 유지");
     expect(container.textContent).toContain("Naruon은 메일함 용량이나 SMTP/IMAP 서버를 제공하지 않습니다");
 
+
     const saveButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "계정 설정 저장");
     expect(saveButton).toBeTruthy();
+    expect(saveButton?.hasAttribute("disabled")).toBe(false);
+    expect(saveButton?.hasAttribute("aria-disabled")).toBe(false);
+    expect(saveButton?.getAttribute("aria-busy")).toBe("false");
+
+    let savePromise;
+    act(() => {
+      savePromise = saveButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    // Test the loading state
+    expect(saveButton?.hasAttribute("disabled")).toBe(true);
+    expect(saveButton?.hasAttribute("aria-disabled")).toBe(false);
+    expect(saveButton?.getAttribute("aria-busy")).toBe("true");
+
     await act(async () => {
-      saveButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await savePromise;
       await Promise.resolve();
       await Promise.resolve();
     });
+
+    // Test the completion state
+    expect(saveButton?.hasAttribute("disabled")).toBe(false);
+    expect(saveButton?.hasAttribute("aria-disabled")).toBe(false);
+    expect(saveButton?.getAttribute("aria-busy")).toBe("false");
+
 
     const putCall = vi.mocked(fetch).mock.calls.find(([input, init]) => String(input) === "/api/accounts/config" && init?.method === "PUT");
     expect(putCall).toBeTruthy();

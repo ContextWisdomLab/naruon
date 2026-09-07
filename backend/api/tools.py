@@ -753,6 +753,30 @@ registry.register(
 )
 
 
+
+async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
+    text = params.get("text") or ""
+    if len(text) > ANALYSIS_TEXT_MAX_CHARS:
+        raise ValueError(f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters")
+
+    url_pattern = re.compile(
+        r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\)]|(?:%[0-9a-fA-F][0-9a-fA-F]))+(?<![,.])'
+    )
+    urls = list(dict.fromkeys(url_pattern.findall(text)))
+    return {"urls": urls, "url_count": len(urls)}
+
+
+registry.register(
+    ToolInfo(
+        code="url_extractor",
+        name="URL 추출기 (URL Extractor)",
+        description="텍스트 본문에서 URL을 찾아 중복 없이 추출합니다.",
+        category="이메일 분석",
+        parameters={"text": "string"},
+    ),
+    url_extractor_handler,
+)
+
 async def uuid_v4_generator_handler(params: Dict[str, Any]) -> Dict[str, str]:
     return {"uuid": str(uuid.uuid4())}
 

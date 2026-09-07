@@ -136,14 +136,4 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
           NARUON_FULL_PRODUCT_BASE_URL: "http://127.0.0.1:3001"
           NARUON_FULL_PRODUCT_SCREENSHOT_DIR: "/tmp/naruon-full-product-smoke"
-          NARUON_FULL_PRODUCT_VIEWPORTS: "all"
         run: cd frontend && pnpm run full:smoke
-
-      - name: Upload full product screenshots
-        if: ${{ success() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: full-product-ui-${{ github.run_id }}-${{ github.run_attempt }}
-          path: /tmp/naruon-full-product-smoke-*/*.png
-          if-no-files-found: error
-          retention-days: 7

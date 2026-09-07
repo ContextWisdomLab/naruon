@@ -179,6 +179,31 @@ PR에 따로 기록한다. 실제 클러스터 쓰기는 실행하지 않았다.
 release의 동일 대상 직렬화, 오래된 release 거부, 환경 승인, DB를 포함한 readiness,
 정상 인증을 거친 제품 화면의 Visual Inspection은 아직 별도로 완료해야 한다.
 
+## Readiness 구현과 문서의 불일치 조사
+
+2026-09-07에 `82d230fa6c7f10b2f311464e59ca9b47823f40f5`를 조사했다.
+DeepWiki는 CHANGELOG의 `/healthz`·`/readyz` 추가 기록으로 구현·배포를 추정했지만,
+현재 `backend/main.py`에는 root 응답만 있고 언급된 `backend/core/observability.py`도
+없다. 현재 코드의 `db/session.py`에는 주 DB와 읽기 전용 engine이 따로 있으며
+request session의 종료와 application engine의 종료는 서로 다른 수명 주기다.
+
+실제 앱에 기존 httpx ASGITransport로 요청한 결과 `/`는 200, `/healthz`와
+`/readyz`는 404였다. `python -W error` 실행은 exit 0으로 종료됐다.
+환경을 비운 뒤 unit 설정과 연결하지 않는 DB 주소를 제공했고, lifespan·worker를
+실행하거나 실제 DB·메일·provider에 접근하지 않았다. 따라서 이는 라우트 부재의
+재현이지 네트워크 서버·DB readiness 검증은 아니다. 앞선 TestClient 재현은 같은
+응답을 보였지만 StarletteDeprecationWarning이 있어 clean 근거에서 제외했다.
+
+로컬 Git history의 `a9214ca2`와 과거 release branch
+`release/ci-cd-governance-20260509`의 tip
+`3abc06f268aef6d151ddd06c54ac817277129fc4`에는 `/readyz`에서 기존 engine으로
+`SELECT 1`을 실행하는 선행 코드가 있다. 해당 commit은 관측한 보호 develop의
+ancestor가 아니다. 기존 2026-05-11 release 계획도 이 branch를 통째로 병합하지
+말고 필요한 변경을 검증해 이식하도록 기록했다. 현재 선행 PR 상태는 GitHub API
+사용량 제한으로 확인하지 못했다. 선행 변경을 폐기하거나 새 owner가 없다고 단정하지
+않고 PR·승계 범위를 먼저 확인한다. 이후에는 liveness와 dependency readiness를
+분리하고, 실제 격리 PostgreSQL에서 성공·장애·연결 정리를 검증해야 한다.
+
 ## 이미지 경계 참고 문헌
 
 Kubernetes Authors. (n.d.-a). *Kubernetes API concepts*. Retrieved September 7,

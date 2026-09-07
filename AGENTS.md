@@ -110,6 +110,9 @@ in this repo.
 
 ## Release governance defaults
 
+- CHANGELOG나 저장소 요약이 endpoint를 구현·배포됐다고 설명해도 현재 라우트와
+  실제 응답을 확인한다. 과거 branch의 코드를 찾으면 선행 PR과 유효 delta를 추적하고,
+  문서에 적힌 `/readyz`나 root 200을 DB readiness 근거로 승계하지 않는다.
 - 부분 배포 복구는 이전 image만 바꾸는 작업이 아니다. 같은 실행에서 `umask 077`로
   이전 spec과 실제 적용 응답·readback을 확보하고 UID·spec 소유권을 확인한다.
   정방향 변경과 복구 모두 UID·resourceVersion 조건부 patch를 사용한다. 다른 writer의

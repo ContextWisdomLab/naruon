@@ -13,6 +13,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Workflow-level admission so superseded PR image validations coalesce
+  # before they occupy an org job slot. Tag publication is merge/release
+  # work: cancel-in-progress stays false on push so an in-flight v* publish
+  # is not discarded.
+  group: docker-publish-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   REGISTRY: ghcr.io
   # Keep the explicit opt-in as belt-and-suspenders. The real warning removal

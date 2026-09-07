@@ -754,8 +754,6 @@ registry.register(
 
 
 
-import urllib.parse
-
 async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
     text = params.get("text") or ""
     if len(text) > ANALYSIS_TEXT_MAX_CHARS:
@@ -781,7 +779,7 @@ async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
                 continue
             _ = parsed.port
             cleaned_urls.append(url_str)
-        except Exception:
+        except ValueError:  # nosec B112 - Invalid port strings trigger ValueError from parsed.port, which safely means it's not a URL.
             continue
 
     urls = list(dict.fromkeys(cleaned_urls))

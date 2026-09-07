@@ -59,7 +59,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TRUSTED_PR_NUMBER: ${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.event.inputs.pr_number || '' }}
-          TRUSTED_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.workflow_run.pull_requests[0].base.sha || github.event.inputs.base_sha || '' }}
+          TRUSTED_BASE_SHA: ${{ github.event.inputs.base_sha || '' }}
         run: |
           set -euo pipefail
 

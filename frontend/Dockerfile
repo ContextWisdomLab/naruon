@@ -74,4 +74,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || '3000')).then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))"
 
 # Render injects $PORT at runtime
-CMD sh -c "exec ./node_modules/.bin/next start --hostname 0.0.0.0 --port ${PORT:-3000}"
+CMD ["sh", "-c", "exec ./node_modules/.bin/next start --hostname 0.0.0.0 --port \"${PORT:-3000}\""]

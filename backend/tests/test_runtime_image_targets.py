@@ -8,6 +8,7 @@ cannot silently turn the backend artifact back into the combined runtime.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import yaml
@@ -62,3 +63,18 @@ def test_release_workflow_selects_explicit_independent_runtime_targets() -> None
     )
     assert "FROM backend-runtime AS combined-runtime" in root_dockerfile
     assert " AS frontend-runtime" in frontend_dockerfile.splitlines()[0]
+
+
+def test_frontend_command_executes_next_without_an_outer_shell() -> None:
+    """Keep runtime PORT expansion while replacing the sole shell with Next."""
+    frontend_dockerfile = (REPO_ROOT / "frontend" / "Dockerfile").read_text(
+        encoding="utf-8"
+    )
+    command_lines = [line for line in frontend_dockerfile.splitlines() if line.startswith("CMD ")]
+    assert len(command_lines) == 1
+    command_args = json.loads(command_lines[0].removeprefix("CMD "))
+    assert command_args == [
+        "sh",
+        "-c",
+        'exec ./node_modules/.bin/next start --hostname 0.0.0.0 --port "${PORT:-3000}"',
+    ]

@@ -110,6 +110,13 @@ in this repo.
 
 ## Release governance defaults
 
+- 자동 배포 요청이 있으면 조건 충족 후 기존 canonical release workflow로
+  배포까지 진행한다. 보호 브랜치의 exact SHA, 필수 검사·독립 승인,
+  패키지 소유권·버전·배포 대상·환경 승인과 rollback 경로를 먼저 검증한다.
+  PyPI·Rust registry 키의 존재는 배포 적격성이나 권한 우회를 뜻하지 않는다.
+  Secrets는 이름·workflow 연결·접근 범위만 확인하고 값은 읽거나 출력하지 않는다.
+  레지스트리 게시 성공과 실제 서비스 배포를 구분하며 immutable digest/version,
+  설치·소비 결과, 배포 revision, readiness와 실제 사용자 흐름을 각각 기록한다.
 - GitHub Actions used by governed workflows must be pinned to full commit SHAs
   with a trailing version comment, for example `# v6`; major-only refs such as
   `@v6` are not allowed in release or security workflows.
@@ -380,6 +387,14 @@ in this repo.
 - Do not close a PR merely to reach zero open PRs. Close only with explicit user
   direction, no valid delta, a malicious change, or a verified successor that
   carries the predecessor's complete delta and records the lineage.
+- 미완료 이슈는 `Refs`와 남은 수용 기준으로 참조한다. 부정문에서도 자동 종료
+  키워드와 이슈 번호의 조합을 쓰지 않는다. 병합 전 `closingIssuesReferences`를
+  조회해 실제 완료된 수용 기준과 대조한다. #1365에서 부정문이 #1022 자동 종료로
+  해석된 사례처럼, 문장의 의도만으로 GitHub 동작을 추정하지 않는다.
+- 작업 중 재현·수리한 반복 오류는 같은 owner의 `AGENTS.md`에 지속 반영한다.
+  재사용할 규칙과 적용 스킬·절차만 남기고 exact-head 로그·실험·실패 이력은
+  기존 PR·doctoring·Gap 원장에 연결한다. 일시적인 큐 상태를 영구 규칙으로
+  만들거나 기존 규칙을 중복 복사하지 않으며 문서 검사와 실제 렌더 검수를 수행한다.
 - Keep the handoff in the existing PR and `docs/product-technical-gap-baseline.md`:
   owner, worktree, full head/base SHAs, changed contract, reproduction command,
   exit status, pass/fail/skip counts, evidence link, and next safe action. Record

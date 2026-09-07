@@ -36,6 +36,45 @@ async def test_url_evidence_preserves_unicode_spans_and_normalizes_hosts() -> No
 
 
 @pytest.mark.asyncio
+async def test_url_evidence_validates_dns_and_ip_host_syntax_without_network() -> None:
+    """Accept enterprise/IDNA hosts while rejecting malformed DNS/IP syntax."""
+    text = (
+        "single http://intranet/health "
+        "uppercase HTTPS://EXAMPLE.COM/path "
+        "idna https://예시.한국/경로 "
+        "malformed-dots https://example..com/path "
+        "malformed-leading-hyphen https://-example.com/path "
+        "malformed-trailing-hyphen https://example-.com/path "
+        "malformed-underscore https://example_test.com/path "
+        "malformed-percent https://example%zz.com/path "
+        "malformed-ip https://999.999.999.999/path"
+    )
+
+    result = await registry.invoke_tool("url_evidence_extractor", {"text": text})
+    by_raw = {match["raw_value"]: match for match in result["matches"]}
+
+    assert by_raw["http://intranet/health"]["validation_status"] == "valid"
+    assert by_raw["HTTPS://EXAMPLE.COM/path"]["validation_status"] == "valid"
+    assert by_raw["HTTPS://EXAMPLE.COM/path"]["normalized_value"] == (
+        "https://example.com/path"
+    )
+    assert by_raw["https://예시.한국/경로"]["validation_status"] == "valid"
+    assert by_raw["https://예시.한국/경로"]["host_value"].startswith("xn--")
+
+    malformed = (
+        "https://example..com/path",
+        "https://-example.com/path",
+        "https://example-.com/path",
+        "https://example_test.com/path",
+        "https://example%zz.com/path",
+        "https://999.999.999.999/path",
+    )
+    for raw_value in malformed:
+        assert by_raw[raw_value]["validation_status"] == "rejected_malformed_uri"
+        assert "malformed_uri" in by_raw[raw_value]["warning_codes"]
+
+
+@pytest.mark.asyncio
 async def test_url_evidence_deduplicates_values_without_losing_occurrences() -> None:
     """Repeated URLs remain separate span records but have one unique value."""
     text = "https://example.com/a and https://example.com/a"

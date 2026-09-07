@@ -754,14 +754,47 @@ registry.register(
 )
 
 
+_URL_CANDIDATE_PATTERN = re.compile(r'https?://[^\s"\'<>]+', re.IGNORECASE)
+_DNS_LABEL_PATTERN = re.compile(
+    r"^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$"
+)
+_IPISH_HOST_PATTERN = re.compile(r"[\d.]+")
+
+
+def _url_candidate_has_valid_host(url_str: str) -> bool:
+    """Validate an HTTP(S) candidate's host syntax without DNS or network access."""
+    try:
+        parsed = urllib.parse.urlsplit(url_str)
+        _ = parsed.port
+    except ValueError:
+        return False
+    if not parsed.netloc or not parsed.hostname:
+        return False
+
+    host = parsed.hostname
+    ip_str = host.strip("[]")
+    if _IPISH_HOST_PATTERN.fullmatch(ip_str) or ":" in ip_str:
+        try:
+            ipaddress.ip_address(ip_str)
+        except ValueError:
+            return False
+        return True
+
+    try:
+        idna_host = host.encode("idna").decode("ascii")
+    except UnicodeError:
+        return False
+    if not 1 <= len(idna_host) <= 253:
+        return False
+    return all(_DNS_LABEL_PATTERN.fullmatch(label) for label in idna_host.split("."))
+
+
 async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
     text = params.get("text") or ""
     if len(text) > ANALYSIS_TEXT_MAX_CHARS:
         raise ValueError(f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters")
 
-    base_pattern = re.compile(r'https?://[^\s"\'<>]+', re.IGNORECASE)
-    raw_urls = base_pattern.findall(text)
-
+    raw_urls = _URL_CANDIDATE_PATTERN.findall(text)
     cleaned_urls = []
     for url_str in raw_urls:
         while True:
@@ -773,40 +806,8 @@ async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
             if url_str == original:
                 break
 
-        try:
-            parsed = urllib.parse.urlsplit(url_str)
-            if not parsed.netloc or not parsed.hostname:
-                continue
-            _ = parsed.port
-
-            host = parsed.hostname
-            is_valid_host = False
-            ip_str = host.strip("[]")
-            if re.fullmatch(r"[\d.]+", ip_str) or ":" in ip_str:
-                try:
-                    ipaddress.ip_address(ip_str)
-                except ValueError:
-                    continue
-                is_valid_host = True
-
-            if not is_valid_host:
-                try:
-                    idna_host = host.encode("idna").decode("ascii")
-                except UnicodeError:
-                    continue
-                if not 1 <= len(idna_host) <= 253:
-                    continue
-
-                label_pattern = re.compile(
-                    r"^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$"
-                )
-                if all(label_pattern.fullmatch(label) for label in idna_host.split(".")):
-                    is_valid_host = True
-
-            if is_valid_host:
-                cleaned_urls.append(url_str)
-        except ValueError:  # parsed.port rejects malformed port text.
-            continue
+        if _url_candidate_has_valid_host(url_str):
+            cleaned_urls.append(url_str)
 
     urls = list(dict.fromkeys(cleaned_urls))
     return {"urls": urls, "url_count": len(urls)}

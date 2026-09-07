@@ -1208,8 +1208,7 @@ def test_execute_url_extractor():
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
-    assert "https://example.com" in data["result"]["urls"]
-    assert "http://test.com/path" in data["result"]["urls"]
+    assert set(data["result"]["urls"]) == {"https://example.com", "http://test.com/path"}
     assert data["result"]["url_count"] == 2
 
 def test_execute_url_extractor_rejects_oversized_text():

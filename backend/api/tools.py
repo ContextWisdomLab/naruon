@@ -760,7 +760,7 @@ async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError(f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters")
 
     url_pattern = re.compile(
-        r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\)]|(?:%[0-9a-fA-F][0-9a-fA-F]))+(?<![,.])'
+        r'https?://(?:[a-zA-Z0-9\-._~:/?#\[\]@!$&\'()*+,;=]|%[0-9a-fA-F]{2})+(?<![.,;:?!])'
     )
     urls = list(dict.fromkeys(url_pattern.findall(text)))
     return {"urls": urls, "url_count": len(urls)}

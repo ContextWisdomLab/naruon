@@ -110,6 +110,12 @@ in this repo.
 
 ## Release governance defaults
 
+- 배포 이미지의 tag는 게시 artifact의 동일성을 증명하지 않는다. matrix별 digest를
+  같은 실행·revision·attempt의 개별 artifact로 전달하고 두 runtime의 sha256을
+  모두 검증한 뒤 `image@sha256` manifest를 생성한다. 누락·변조·잘못된 digest는
+  credential 설정과 클러스터 변경 전에 실패해야 한다. 원본 manifest와 보안 설정은
+  보존하고 실제 workflow 생성 명령도 테스트한다. artifact 검증은 readiness,
+  배포 직렬화, rollback과 실제 사용자 흐름 검증을 대신하지 않는다.
 - GitHub Actions used by governed workflows must be pinned to full commit SHAs
   with a trailing version comment, for example `# v6`; major-only refs such as
   `@v6` are not allowed in release or security workflows.

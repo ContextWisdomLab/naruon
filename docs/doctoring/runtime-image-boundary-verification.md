@@ -59,7 +59,60 @@ uv run --frozen --offline python -m pytest --noconftest \
 frontend SIGTERM, AMD64·통합 이미지, 배포·rollback, 인증된 제품 화면의 Visual
 Inspection은 별도 근거가 필요하다. 문서의 시각 검수도 제품 검수를 대신하지 않는다.
 
-## 참고 문헌
+## 배포 digest 전달 후속 수리
+
+상태: Proposed. 이 절은 `9b137f25f426743e18fc61125575ec7949d45db8` 위의
+후속 작업이며 앞선 이미지 빌드 기록의 검증 범위를 확대하지 않는다.
+[이슈 #1022의 Linux 재현](https://github.com/ContextualWisdomLab/naruon/issues/1022#issuecomment-5564923743)에서
+기존 manifest 생성 명령은 digest 없이 버전 tag로 두 이미지를 선택했다.
+운영자가 같은 tag를 다른 이미지에 붙이면 배포 결과와 게시 기록이 달라질 수 있다.
+외부 registry의 tag 변경 방지 설정은 이번 조사에서 확인하지 않았다.
+
+선택한 계약은 publisher의 실제 `steps.build.outputs.digest`를 backend/frontend
+각각의 artifact로 전달하는 것이다. 이름에 source SHA, 실행 attempt, component를
+포함하며 같은 실행의 deploy job만 내려받는다. 공통 matrix output은 완료 순서에
+따라 서로 덮어쓸 수 있어 쓰지 않는다. 다운로드 무결성 불일치는 오류로 처리한다.
+누락된 artifact를 이전 실행에서 검색하거나 tag로 되돌리는 fallback은 없다.
+실패 job만 재실행해 현재 attempt의 두 artifact가 모두 없으면 배포를 거부한다.
+재시도는 보호 source와 버전을 재검증한 뒤 게시 matrix 전체를 포함해야 한다.
+
+`scripts/render_release_manifests.sh`는 기존 manifest의 image 필드만 치환한다.
+두 digest의 `sha256:` 및 소문자 64자리 hex, repository owner, VERSION, 두 원본의
+단일 placeholder를 먼저 확인한다. 별도 출력 디렉터리에 두 manifest를 만들고
+deploy workflow는 이 파일만 apply한다. GNU 전용 `sed -i` 대신 stdout 출력을
+사용해 macOS와 Linux의 같은 명령을 검증한다. Python 제품 runtime은 추가하지
+않았고 기존 pytest는 shell과 workflow 계약의 테스트 도구로만 사용한다.
+
+검증 명령은 다음과 같다. 합성 digest는 unit test 입력일 뿐 실제 게시 증거가 아니다.
+
+```sh
+uv run --project backend --frozen --offline python -m pytest --noconftest \
+  backend/tests/test_release_manifest_digests.py \
+  backend/tests/test_runtime_image_targets.py \
+  backend/tests/test_release_governance.py -q -W error
+actionlint .github/workflows/deploy.yml .github/workflows/docker-publish.yml
+shellcheck scripts/render_release_manifests.sh
+```
+
+새 계약의 초기 14개 RED는 renderer와 artifact 전달 부재를 확인했다. 구현 후
+기존 검사 포함 52개가 통과했고, 실제 workflow shell의 정상·backend/frontend
+누락·잘못된 값 5개를 추가한 결과 57 passed, 4.32초, exit 0이었다.
+최종 commit과 이후 검증은 해당 PR 기록에 연결한다.
+
+이 변경만으로 자동 배포가 적격해지지는 않는다. #1365 보호 통합, #1562의
+concurrency 변경과 #1583 action pin의 delta 보존, 실제 artifact 업로드·다운로드,
+환경 승인·release 직렬화·readiness·부분 배포 복구·실제 imageID·정상 인증 흐름은
+별도 수용 기준이다. 아직 tag 발행이나 클러스터 변경을 실행하지 않았다.
+
+### 후속 계약의 근거
+
+GitHub. (n.d.-a). *Upload a build artifact* [Action definition].
+https://github.com/actions/upload-artifact/blob/043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/action.yml
+
+GitHub. (n.d.-b). *Download a build artifact* [Action definition].
+https://github.com/actions/download-artifact/blob/3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/action.yml
+
+## 이미지 경계 참고 문헌
 
 Docker, Inc. (n.d.). *JSONArgsRecommended*. Docker Docs.
 https://docs.docker.com/reference/build-checks/json-args-recommended/

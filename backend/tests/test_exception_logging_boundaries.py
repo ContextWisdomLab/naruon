@@ -4,12 +4,15 @@ import datetime
 import io
 import logging
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+import traceback
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 import import_fixtures
+from core.exceptions import LLMServiceError
 from scripts import import_fixtures as zip_import_fixtures
+from services.llm_service import draft_reply
 
 _SECRET_EXCEPTION_TEXT = "provider token=super-secret-value"
 _SECRET_FIXTURE_PATH = "/private/customer/secret-message.eml"
@@ -83,6 +86,36 @@ def test_process_logging_policy_redacts_exc_info_true_exception_values() -> None
     assert "token=" not in rendered
     assert "Exception details redacted" in rendered
     assert "_render_exc_info_true_log" in rendered
+
+
+@pytest.mark.asyncio
+async def test_llm_service_error_does_not_chain_secret_bearing_provider_text() -> None:
+    fake_http_client = MagicMock()
+    fake_http_client.aclose = AsyncMock()
+    fake_client = MagicMock()
+    fake_client.close = AsyncMock()
+
+    with patch(
+        "services.llm_service.build_llm_provider_http_client",
+        new=AsyncMock(return_value=(None, fake_http_client)),
+    ), patch(
+        "services.llm_service.AsyncOpenAI", return_value=fake_client
+    ), patch(
+        "services.llm_service.provider_circuit_breaker.call",
+        new=AsyncMock(side_effect=RuntimeError(_SECRET_EXCEPTION_TEXT)),
+    ):
+        with pytest.raises(LLMServiceError) as raised:
+            await draft_reply("email body", "draft reply", "test-key")
+
+    rendered = "".join(
+        traceback.format_exception(
+            type(raised.value), raised.value, raised.value.__traceback__
+        )
+    )
+    assert str(raised.value) == "LLM API error during drafting"
+    assert _SECRET_EXCEPTION_TEXT not in rendered
+    assert "token=" not in rendered
+    fake_client.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio

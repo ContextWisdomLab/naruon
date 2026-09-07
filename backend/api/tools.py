@@ -753,36 +753,49 @@ registry.register(
 )
 
 
+_URL_CANDIDATE_PATTERN = re.compile(r"https?://[^\s<>]+", re.IGNORECASE)
+_URL_TRAILING_PROSE = frozenset(".,;:!?\"'”’")
+_URL_CLOSING_DELIMITERS = {")": "(", "]": "[", "}": "{"}
+
+
+def _validated_extracted_url(candidate: str) -> Optional[str]:
+    """Return a prose-trimmed absolute HTTP(S) URL only when it has a valid host."""
+    trimmed = candidate
+    while trimmed and trimmed[-1] in _URL_TRAILING_PROSE:
+        trimmed = trimmed[:-1]
+
+    while trimmed and trimmed[-1] in _URL_CLOSING_DELIMITERS:
+        closing = trimmed[-1]
+        opening = _URL_CLOSING_DELIMITERS[closing]
+        if trimmed.count(closing) <= trimmed.count(opening):
+            break
+        trimmed = trimmed[:-1]
+
+    try:
+        parsed = urllib.parse.urlsplit(trimmed)
+        hostname = parsed.hostname
+        parsed.port
+    except ValueError:
+        return None
+
+    if parsed.scheme.lower() not in {"http", "https"} or not hostname:
+        return None
+    return trimmed
+
 
 async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract unique absolute HTTP(S) URLs while preserving valid URL boundaries."""
     text = params.get("text") or ""
     if len(text) > ANALYSIS_TEXT_MAX_CHARS:
         raise ValueError(f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters")
 
-    base_pattern = re.compile(r'https?://[^\s"\'<>]+')
-    raw_urls = base_pattern.findall(text)
-
-    cleaned_urls = []
-    for url_str in raw_urls:
-        while True:
-            original = url_str
-            url_str = re.sub(r'[,.;:?!]+$', '', url_str)
-            if url_str.endswith(')'):
-                if url_str.count('(') < url_str.count(')'):
-                    url_str = url_str[:-1]
-            if url_str == original:
-                break
-
-        try:
-            parsed = urllib.parse.urlsplit(url_str)
-            if not parsed.netloc:
-                continue
-            _ = parsed.port
-            cleaned_urls.append(url_str)
-        except ValueError:  # nosec B112 - Invalid port strings trigger ValueError from parsed.port, which safely means it's not a URL.
-            continue
-
-    urls = list(dict.fromkeys(cleaned_urls))
+    urls: list[str] = []
+    seen_urls: set[str] = set()
+    for candidate in _URL_CANDIDATE_PATTERN.findall(text):
+        validated = _validated_extracted_url(candidate)
+        if validated and validated not in seen_urls:
+            seen_urls.add(validated)
+            urls.append(validated)
     return {"urls": urls, "url_count": len(urls)}
 
 

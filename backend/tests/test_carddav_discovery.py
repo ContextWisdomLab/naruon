@@ -163,6 +163,35 @@ async def test_malformed_txt_path_is_ignored():
     assert result.base_url == "https://dav.example.com/"
 
 
+@pytest.mark.parametrize(
+    "txt_path",
+    [
+        "/%2e%2e%2fescape",
+        "/%252e%252e%252fescape",
+        "/%5c..%5cescape",
+        "/%255c..%255cescape",
+        "/safe%0aheader",
+    ],
+)
+@pytest.mark.asyncio
+async def test_encoded_unsafe_txt_path_is_ignored(txt_path):
+    response = FakeResponse(404)
+
+    def resolver(name):
+        if name == "_carddavs._tcp.example.com":
+            return [("dav.example.com", 443)]
+        return []
+
+    result = await discover_carddav(
+        "example.com",
+        http_client_factory=_factory(response),
+        srv_resolver=resolver,
+        txt_resolver=lambda name: [f"path={txt_path}"],
+    )
+    assert result is not None
+    assert result.base_url == "https://dav.example.com/"
+
+
 @pytest.mark.asyncio
 async def test_no_discovery_returns_none():
     response = FakeResponse(404)

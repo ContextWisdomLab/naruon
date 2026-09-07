@@ -187,13 +187,22 @@ def test_prompt_crud(auth_client):
     data = resp.json()
     assert data["title"] == "Test Prompt"
     assert data["prompt_uid"].startswith("prompt_")
+    # Identity is the opaque prompt_uid; the sequential DB surrogate must never
+    # be exposed on the API surface (see CLAUDE.md "never expose sequential
+    # database ids").
+    assert "id" not in data
     assert mock_session.items[0].organization_id == "org-acme"
     assert mock_session.items[0].workspace_id == "workspace-org-acme"
 
     # List
     resp = auth_client.get("/api/prompts")
     assert resp.status_code == 200
-    assert len(resp.json()) == 1
+    listed = resp.json()
+    assert len(listed) == 1
+    assert all(
+        "id" not in item and item["prompt_uid"].startswith("prompt_")
+        for item in listed
+    )
 
 
 def test_prompt_list_scopes_shared_prompts_to_current_workspace(auth_client):

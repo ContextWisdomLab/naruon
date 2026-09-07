@@ -36,7 +36,6 @@ class PromptCreate(BaseModel):
 
 
 class PromptResponse(BaseModel):
-    id: int
     prompt_uid: str
     title: str
     description: Optional[str] = None

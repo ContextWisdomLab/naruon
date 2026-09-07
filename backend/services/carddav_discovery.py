@@ -26,10 +26,12 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import re
 import socket
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from unicodedata import category
+from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 
 import httpx
 
@@ -42,6 +44,11 @@ SrvResolver = Callable[[str], list[tuple[str, int]]]
 # character strings (one joined string per record), or an empty iterable.
 TxtResolver = Callable[[str], list[str]]
 HttpClientFactory = Callable[[], Any]
+
+_MALFORMED_PERCENT_TRIPLET = re.compile(r"%(?![0-9A-Fa-f]{2})")
+_PERCENT_TRIPLET = re.compile(r"%([0-9A-Fa-f]{2})")
+_REMAINING_PERCENT_TRIPLET = re.compile(r"%[0-9A-Fa-f]{2}")
+_RFC3986_RESERVED_CHARACTERS = frozenset(":/?#[]@!$&'()*+,;=")
 
 
 @dataclass(frozen=True)
@@ -216,26 +223,56 @@ def _default_txt_resolver(name: str) -> list[str]:
     return records
 
 
+def _execution_path_preserving_reserved_escapes(path: str) -> str:
+    """Decode safe path octets while retaining encoded RFC 3986 reserved data."""
+
+    def protect_reserved(match: re.Match[str]) -> str:
+        octet = int(match.group(1), 16)
+        character = chr(octet)
+        if character not in _RFC3986_RESERVED_CHARACTERS:
+            return match.group(0)
+        # The context path itself must start with a structural slash. An
+        # encoded leading slash is therefore canonicalized, while later
+        # reserved escapes remain data exactly as the provider advertised.
+        if match.start() == 0 and character == "/":
+            return match.group(0)
+        return f"%25{match.group(1).upper()}"
+
+    protected_path = _PERCENT_TRIPLET.sub(protect_reserved, path)
+    return unquote(protected_path, errors="strict")
+
+
 def _txt_context_path(records: list[str]) -> str | None:
-    """Extract and validate the RFC 6764 Section 6 TXT ``path`` hint."""
+    """Validate one decode of an RFC 6764 TXT ``path`` and preserve wire identity."""
     for record in records:
         for part in record.split(";"):
             key, _, value = part.strip().partition("=")
             if key.strip().lower() != "path":
                 continue
             path = value.strip()
+            if _MALFORMED_PERCENT_TRIPLET.search(path):
+                continue
+            try:
+                decoded_path = unquote(path, errors="strict")
+                execution_path = _execution_path_preserving_reserved_escapes(path)
+            except UnicodeDecodeError:
+                continue
+            if _REMAINING_PERCENT_TRIPLET.search(decoded_path):
+                # A second decode would change the request target. Reject the
+                # ambiguous value instead of inventing a recursive decode count.
+                continue
             if (
-                path.startswith("/")
-                and "://" not in path
-                and "\\" not in path
-                and "?" not in path
-                and "#" not in path
+                decoded_path.startswith("/")
+                and "://" not in decoded_path
+                and "\\" not in decoded_path
+                and "?" not in decoded_path
+                and "#" not in decoded_path
                 and all(
-                    segment not in {".", ".."} for segment in path.split("/")
+                    segment not in {".", ".."} for segment in decoded_path.split("/")
                 )
-                and all(ord(ch) >= 32 and ord(ch) != 127 for ch in path)
+                and all(category(ch) != "Cc" for ch in decoded_path)
             ):
-                return path
+                return execution_path
     return None
 
 

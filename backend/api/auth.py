@@ -196,11 +196,12 @@ def build_auth_context(authorization: str | None = None) -> AuthContext:
     """
     Build runtime identity from verified signed session material.
 
-    Client-supplied identity metadata is not authentication material. Only a
-    bearer token signed by the configured control-plane HMAC secret can supply
-    identity, role, organization, group, and workspace claims in the runtime
-    dependency path. Endpoint tests that need fixture identities must continue to
-    use explicit FastAPI dependency overrides.
+    Client-supplied identity metadata is not authentication material. Runtime
+    identity comes only from a bearer token verified by the configured OIDC/JWKS
+    provider or the control-plane HMAC compatibility secret. Admin roles are
+    accepted only from the verified OIDC authority; HMAC compatibility sessions
+    cannot assert admin membership. Endpoint tests that need fixture identities
+    must continue to use explicit FastAPI dependency overrides.
     """
     payload, session_verifier = _verify_signed_session_payload(authorization)
     return _auth_context_from_session_payload(payload, session_verifier)
@@ -374,7 +375,6 @@ def _verify_signed_session_token(token: str) -> tuple[dict[str, Any], SessionVer
             raise _authentication_error()
         try:
             payload = _decode_cached_oidc_session_payload(token)
-            _reject_signed_session_admin_payload(payload)
             return payload, "oidc"
         except Exception:
             raise _authentication_error() from None
@@ -403,16 +403,15 @@ def _verify_signed_session_token(token: str) -> tuple[dict[str, Any], SessionVer
         raise _authentication_error()
     if not isinstance(payload, dict):
         raise _authentication_error()
-    _reject_signed_session_admin_payload(payload)
+    _reject_hmac_admin_payload(payload)
     return payload, "hmac"
 
 
-def _reject_signed_session_admin_payload(payload: dict[str, Any]) -> None:
+def _reject_hmac_admin_payload(payload: dict[str, Any]) -> None:
+    """Reject admin membership claims from the HMAC compatibility credential."""
     role_claim = payload.get("role")
     if not isinstance(role_claim, str):
         raise _authentication_error()
-    # Admin roles require explicit server-side assignment, not externally
-    # supplied HMAC or enterprise OIDC session claims.
     if role_claim in ADMIN_ROLES:
         raise _authentication_error()
 
@@ -512,7 +511,7 @@ def _auth_context_from_session_payload(
     if role_value not in ALLOWED_ROLES:
         raise _authentication_error()
     role = cast(RoleName, role_value)
-    if role in TENANT_ADMIN_ROLES and session_verifier not in ("server", "override"):
+    if role in ADMIN_ROLES and session_verifier not in ("oidc", "server", "override"):
         raise _authentication_error()
     organization_id = _optional_string_claim(payload, "org")
     if organization_id is None:

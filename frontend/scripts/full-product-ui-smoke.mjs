@@ -358,6 +358,7 @@ const task = {
   source_type: "email",
   source_email_id: String(sourceEmail.id),
   related_thread_id: sourceEmail.thread_id,
+  created_at: "2026-07-02T05:00:00Z",
   updated_at: "2026-07-02T05:00:00Z",
 };
 
@@ -369,6 +370,7 @@ const knowledgeTask = {
   source_type: "self_sent_knowledge",
   source_email_id: String(sourceEmail.id),
   related_thread_id: sourceEmail.thread_id,
+  created_at: "2026-07-02T05:10:00Z",
   updated_at: "2026-07-02T05:10:00Z",
 };
 
@@ -380,6 +382,7 @@ const webdavTask = {
   source_type: "webdav",
   source_email_id: String(sourceEmail.id),
   related_thread_id: sourceEmail.thread_id,
+  created_at: "2026-07-02T05:20:00Z",
   updated_at: "2026-07-02T05:20:00Z",
 };
 
@@ -777,12 +780,13 @@ function routeJson(route, body, status = 200) {
   });
 }
 
-async function installRoutes(page) {
+export async function installRoutes(page) {
   let emailSendCount = 0;
   let savedAccountConfig = { ...accountConfig };
   let savedLlmProviders = [{ ...llmProvider }];
 
   await page.route("**/auth/session", (route) => routeJson(route, {
+    authenticated: true,
     claims: {
       userId: "smoke-user",
       organizationId: "org-acme",
@@ -862,6 +866,7 @@ async function installRoutes(page) {
       });
     }
     if (endpoint === "/api/webdav/folders") return routeJson(route, [projectFolder]);
+    if (endpoint === "/api/projects/candidates") return routeJson(route, { candidates: [] });
     if (endpoint === "/api/webdav/accounts") return routeJson(route, [webdavAccount]);
     if (endpoint === "/api/webdav/writeback-intent") {
       return routeJson(route, {

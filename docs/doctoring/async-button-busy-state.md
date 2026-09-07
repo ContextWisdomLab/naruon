@@ -388,3 +388,35 @@ commit/tree 고정, 검증 순서를 지킨다. 검증 중에는 merge를 포함
 실행 시간 개선률이나 timeout의 유일한 원인을 확정할 수는 없다. 계측 출력은
 최종 테스트에서 제거한다. 원래 5파일 25개를 동일 설정으로 다시 검증해야 하며,
 정상 인증 상태의 실제 화면 검증은 여전히 별도 미완료 항목이다.
+
+### hosted Projects smoke의 응답 계약 누락
+
+`cc30ba6c52dd00913dc46ca9ec07682230aee1e8`의 Application CI
+run `34073478896`, frontend job `101595066425`는 2026-09-07 01:40:16 UTC에
+실패했다. `full-product-ui-smoke.mjs:1220`에서 “관련 문서/메일 연결” 링크를
+10000ms 동안 기다렸으나 표시되지 않았다. 로컬 25개 통과는 이 hosted 실패를
+상쇄하지 않는다. 시간 제한을 늘리거나 Projects의 입력 검증을 느슨하게 하지 않는다.
+
+기존 smoke는 `page.route`로 합성 응답을 주입한다. 등록된 `/auth/session` 응답에
+`authenticated: true`가 없고 작업 3개의 `created_at`이 빠져 있었다.
+`/api/projects/candidates`는 handler가 없어 일반 `{ ok: true }`로 응답했다.
+실제 ProjectsLayout은 인증·작업·후보 목록을 모두 검증하므로 정상 링크 대신
+오류 화면을 표시한다. backend의 TicketTaskResponse와 ProjectCandidateListResponse,
+공유 ApiClient의 명시적 인증 계약을 유지하면서 공급 측 응답만 맞춘다.
+
+기존 installRoutes에 export만 추가해 단위 더블로 실제 등록 handler를 호출한다.
+`scripts/full-product-project-contract.test.mjs`의 세 응답 계약과 실제 ProjectsLayout
+준비 상태 단위 회귀는 수리 전 4개 모두 실패했다(54025, 19.93초, 종료코드 1).
+원시 `smoke_source_contract_red.log`는 누락 필드·잘못된 후보 응답·실제 오류 DOM을
+보존한다. 응답 fixture를 별도로 복사하거나 인증 우회 코드를 제품에 넣지 않는다.
+
+이 작업은 합성 자료를 단위 테스트 안에서만 실행한다. 기존 합성 browser smoke를
+실제 고객·provider·서명된 backend의 E2E 또는 Visual Inspection으로 인정하지 않는다.
+hosted smoke 재검증과 승인된 실데이터 경로로의 전환, 정상 인증 화면 VI는 별도
+미완료다. 이 수리로 전체 제품 smoke가 통과했다고 주장하지 않는다.
+
+수리 후 54560의 단위 검증은 네 파일 63개 통과, 33.02초, 종료코드 0이었다.
+새 등록 응답·실제 Projects 단위 4개, 기존 smoke helper 12개, Projects 22개,
+API 클라이언트 25개를 포함한다. `smoke_source_contract_green.log`를 보존했다.
+69169의 변경 두 script ESLint·구문·diff 검사도 종료코드 0이었다.
+이는 작업 트리 검증이며 최종 commit의 독립 hosted 결과와 구분한다.

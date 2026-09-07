@@ -14,12 +14,11 @@ permissions:
   contents: read
 
 concurrency:
-  # Workflow-level admission so superseded PR image validations coalesce
-  # before they occupy an org job slot. Tag publication is merge/release
-  # work: cancel-in-progress stays false on push so an in-flight v* publish
-  # is not discarded.
-  group: docker-publish-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Supersede only first-attempt validations for the same PR. A manual rerun
+  # keeps its run_id so a later PR event cannot cancel an intentional retry.
+  # Tag publication also keeps a unique run identity and is never cancelled.
+  group: docker-publish-${{ github.repository }}-${{ github.event_name == 'pull_request' && github.run_attempt == 1 && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.run_attempt == 1 }}
 
 env:
   REGISTRY: ghcr.io

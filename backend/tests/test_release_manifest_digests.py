@@ -63,6 +63,36 @@ def test_release_renderer_rejects_either_invalid_digest_before_output(
     assert not (tmp_path / "injected").exists()
 
 
+@pytest.mark.parametrize("failure_case", ["backend_missing", "frontend_missing", "backend_duplicate", "frontend_duplicate", "invalid_version", "existing_output"])
+def test_release_renderer_preserves_prior_output_on_source_drift(
+    tmp_path: Path, failure_case: str
+) -> None:
+    """Fail before publishing a second manifest set or overwriting prior evidence."""
+    first_result = run_renderer(tmp_path, BACKEND_DIGEST, FRONTEND_DIGEST)
+    assert first_result.returncode == 0, first_result.stderr
+    prior_output = {path.name: path.read_bytes() for path in (tmp_path / "rendered").iterdir()}
+    if failure_case == "invalid_version":
+        (tmp_path / "VERSION").write_text("not-a-version\n")
+    elif failure_case != "existing_output":
+        component, mutation = failure_case.split("_")
+        source_path = tmp_path / "k8s" / f"{component}-deployment.yaml"
+        source_text = source_path.read_text()
+        image_line = next(line for line in source_text.splitlines() if "image: ghcr.io/" in line)
+        source_path.write_text(source_text.replace(image_line, "" if mutation == "missing" else image_line + "\n" + image_line))
+    output_directory = "rendered" if failure_case == "existing_output" else "next_rendered"
+    result = subprocess.run(
+        ["bash", str(RENDER_SCRIPT), "ContextualWisdomLab", BACKEND_DIGEST, FRONTEND_DIGEST, output_directory],
+        cwd=tmp_path,
+        env={"PATH": os.defpath},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert not (tmp_path / "next_rendered").exists()
+    assert {path.name: path.read_bytes() for path in (tmp_path / "rendered").iterdir()} == prior_output
+
+
 def test_release_workflow_passes_separate_same_revision_artifacts() -> None:
     """Bind producer and deployment consumer without matrix output overwrites."""
     publish = yaml.safe_load((REPO_ROOT / ".github/workflows/docker-publish.yml").read_text())

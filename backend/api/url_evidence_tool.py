@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from ipaddress import IPv6Address
+from ipaddress import ip_address
 from typing import Any
 from urllib.parse import SplitResult, urlsplit
 
@@ -18,6 +18,10 @@ URL_EVIDENCE_DETECTOR_VERSION = "url_evidence_v1"
 
 _CANDIDATE_PATTERN = re.compile(r"(?<![\w@])https?://[^\s<>\"']+", re.IGNORECASE)
 _PERCENT_ESCAPE_PATTERN = re.compile(r"%(?![0-9A-Fa-f]{2})")
+_DNS_LABEL_PATTERN = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$"
+)
+_IPISH_HOST_PATTERN = re.compile(r"[0-9.]+")
 _TERMINAL_PUNCTUATION = frozenset(".,;:!?。！，；：！？")
 _CLOSING_BRACKETS = {")": "(", "]": "[", "}": "{"}
 
@@ -65,10 +69,22 @@ def _trim_candidate(candidate: str) -> str:
 
 
 def _normal_host(host: str) -> str:
-    """Return lowercase IDNA host text, preserving IPv6 address semantics."""
-    if ":" in host:
-        return str(IPv6Address(host))
-    return host.encode("idna").decode("ascii").lower()
+    """Validate and normalize an IP literal or IDNA DNS hostname."""
+    if _IPISH_HOST_PATTERN.fullmatch(host) or ":" in host:
+        return str(ip_address(host))
+
+    idna_host = host.encode("idna").decode("ascii").lower()
+    has_root_dot = idna_host.endswith(".")
+    labels_host = idna_host[:-1] if has_root_dot else idna_host
+    if not labels_host:
+        raise ValueError("missing DNS labels")
+    if len(idna_host) > (254 if has_root_dot else 253):
+        raise ValueError("hostname exceeds DNS length limit")
+    if not all(
+        _DNS_LABEL_PATTERN.fullmatch(label) for label in labels_host.split(".")
+    ):
+        raise ValueError("invalid DNS label")
+    return idna_host
 
 
 def _normalized_url(parsed: SplitResult, host: str, port: int | None) -> str:

@@ -354,3 +354,37 @@ https://react.dev/reference/react/useRef
 
 React. (n.d.). *useEffect*. Retrieved September 7, 2026, from
 https://react.dev/reference/react/useEffect
+
+### 원격 재진입 수리 승계와 검증 순서
+
+`215db677fbf3cf46ec368db9e5ff1d7c23f321c9`는 원격
+`c45ed60bd09000341f2e54fea5683902d44962c5`를 정상 병합했다.
+원격의 validation 이전 재진입 차단을 Symbol 현재 요청 검사로 승계했으며,
+tree `d8314808f10b2888ac9daa7d6afa79a7242d9176`은 앞선
+`ff6f82c6c738611eb78642c727b597a98bab507e`와 동일하다.
+ff6f의 5파일 25개 검증은 24개 통과, 기존 Data 탭 사례의 기본 5000ms timeout
+1개로 실패했다(117.49초). lint와 diff 검사는 통과했지만 전체 GREEN은 아니다.
+
+검증 중 merge를 시작한 실행 순서 오류로 단독 진단 19082가 충돌 표시를 읽고
+PARSE_ERROR, 테스트 0개, 종료코드 1로 끝났다. 이는 제품 회귀나 timeout 진단
+증거가 아니다. 모든 실행 핸들의 terminal 결과 회수, 충돌 해소와 diff 검사,
+commit/tree 고정, 검증 순서를 지킨다. 검증 중에는 merge를 포함한 소스 변경을
+하지 않으며 읽기 전용 조사만 진행한다. 복구 후 같은 tree의 단독 진단 58875는
+1개 통과(1447ms), 전체 4.26초였다. 이 결과로 앞선 25개 실패를 대체하지 않는다.
+
+### 동일 렌더의 불필요한 DOM 순회
+
+`frontend/src/app/data/page.test.tsx`의
+`renders API-backed pipeline embedding and quality tabs`는 품질 탭의 act 완료부터
+스냅샷 복사 버튼 클릭 전까지, 변화 없는 DOM에서 `textContent`를 133번 읽었다.
+각 읽기는 전체 하위 노드의 텍스트를 다시 모은다. 해당 구간만 `qualityPanelText`로
+한 번 읽고 기존 긍정·부정 단언 133개와 기대 문자열을 모두 보존한다. 이후 클릭과
+클립보드 내용 검증, 다른 탭의 렌더, API fixture와 기본 timeout은 바꾸지 않는다.
+
+계측용 시작·종료 시각만 넣은 baseline 83279는 해당 단언 구간 392.934ms,
+테스트 1105ms로 통과했다. 한 번 읽기로 바꾼 비교 10446은 단언 구간의 종료
+시각을 출력하기 전에 기본 timeout으로 실패했다(테스트 10640ms, 전체 48.31초).
+따라서 133회에서 1회로 줄어든 읽기 횟수는 소스로 확인할 수 있지만, 이 관측으로
+실행 시간 개선률이나 timeout의 유일한 원인을 확정할 수는 없다. 계측 출력은
+최종 테스트에서 제거한다. 원래 5파일 25개를 동일 설정으로 다시 검증해야 하며,
+정상 인증 상태의 실제 화면 검증은 여전히 별도 미완료 항목이다.

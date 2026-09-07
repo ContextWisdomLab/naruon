@@ -30,3 +30,7 @@
 
 **Learning:** Using `Array.from(map.values()).slice(0, 5).map(...)` inside a `useMemo` hook causes the full Map to be converted into an array before taking a tiny slice. When the graph data or maps are large, this full O(N) conversion wastes CPU time and creates intermediate garbage.
 **Action:** To avoid O(N) intermediate array allocations in React hooks, replace chained higher-order array methods (like `.map().filter().slice(0, N)` or `Array.from().slice(0, N)`) with a single bounded `for...of` loop that includes an early `break` once the desired subset size is reached.
+
+## 2025-02-13 - Strix security scan failing for gpt-5.4 model ID
+**Learning:** If the `Strix` security scan fails with errors related to the `gpt-5.4` model (e.g., "Function tools with reasoning_effort are not supported for gpt-5.4" or "429 You have no credits remaining"), it means the CI system or backend cannot use this model identifier.
+**Action:** The correct fix is to change the model identifier from `gpt-5.4` to `gpt-4o` in the application configurations (e.g., frontend components and backend tests). Do not bypass the CI scan or downgrade the openai package.

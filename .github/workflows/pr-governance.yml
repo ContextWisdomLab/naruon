@@ -165,18 +165,30 @@ jobs:
             exit 1
           fi
 
-          trusted_default_branch="$(gh_api_with_retry "repos/${GITHUB_REPOSITORY}" --jq '.default_branch')"
-          trusted_default_protected="$(gh_api_with_retry "repos/${GITHUB_REPOSITORY}/branches/${trusted_default_branch}" --jq '.protected')"
+          evaluated_pr_base_sha="$(gh_api_with_retry "repos/${GITHUB_REPOSITORY}/pulls/${TRUSTED_PR_NUMBER}" --jq '.base.sha')"
+          if [[ ! "$evaluated_pr_base_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Evaluated PR base ref must be a full commit SHA." >&2
+            exit 1
+          fi
+
+          repository_owner="${GITHUB_REPOSITORY%%/*}"
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          trusted_default_ref="$(gh_api_with_retry graphql \
+            -f 'query=query($owner:String!,$name:String!){repository(owner:$owner,name:$name){defaultBranchRef{name}}}' \
+            -F "owner=${repository_owner}" \
+            -F "name=${repository_name}" \
+            --jq '.data.repository.defaultBranchRef.name')"
+          trusted_default_protected="$(gh_api_with_retry "repos/${GITHUB_REPOSITORY}/branches/${trusted_default_ref}" --jq '.protected')"
           if [ "$trusted_default_protected" != "True" ] && [ "$trusted_default_protected" != "true" ]; then
             echo "::error::Trusted default branch must be protected before its governance policy can execute." >&2
             exit 1
           fi
-          trusted_ref="$(gh_api_with_retry "repos/${GITHUB_REPOSITORY}/branches/${trusted_default_branch}" --jq '.commit.sha')"
+          trusted_ref="$(gh_api_with_retry "repos/${GITHUB_REPOSITORY}/branches/${trusted_default_ref}" --jq '.commit.sha')"
           if [[ ! "$trusted_ref" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::Trusted governance ref must be a full commit SHA." >&2
             exit 1
           fi
-          echo "Using live protected default governance SHA ${trusted_ref}."
+          echo "Evaluating PR base metadata SHA ${evaluated_pr_base_sha}; executing governance from protected default ${trusted_default_ref}@${trusted_ref}."
 
           trusted_workspace="$RUNNER_TEMP/trusted-governance"
           trusted_archive="$RUNNER_TEMP/trusted-governance.tar.gz"

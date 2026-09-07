@@ -66,7 +66,7 @@ def test_restore_uses_owned_spec_and_atomic_resource_version(
             assert "patch" not in final_state["calls"]
 
 
-@pytest.mark.parametrize("scenario", ["deployed", "frontend_rollout_failed", "backend_drift", "frontend_response_lost"])
+@pytest.mark.parametrize("scenario", ["deployed", "frontend_rollout_failed", "backend_drift", "frontend_response_lost", "restored_frontend_drift"])
 def test_partial_deployment_restores_only_confirmed_owned_resources(
     tmp_path: Path, scenario: str
 ) -> None:
@@ -119,6 +119,11 @@ def test_partial_deployment_restores_only_confirmed_owned_resources(
         for image_component in ("backend", "frontend"):
             assert final_state["resources"][image_component]["spec"] == prior_states[image_component]["spec"]
         assert "rollback_verified" in result.stderr
+    elif scenario == "restored_frontend_drift":
+        assert result.returncode != 0
+        assert final_state["restored_components"] == ["frontend", "backend"]
+        assert final_state["resources"]["frontend"]["spec"]["replicas"] == 99
+        assert "rollback_verified" not in result.stderr
     else:
         assert result.returncode != 0
         assert final_state["restored_components"] == []

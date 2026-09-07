@@ -65,7 +65,7 @@ elif operation_name == "rollout":
         "resources" in test_state and image_component == "frontend"
         and image_component in test_state["applied_components"]
         and image_component not in test_state["restored_components"]
-        and test_state["scenario"] in {"frontend_rollout_failed", "backend_drift"}
+        and test_state["scenario"] in {"frontend_rollout_failed", "backend_drift", "restored_frontend_drift"}
     ):
         exit_code = 1
         if test_state["scenario"] == "backend_drift":
@@ -74,6 +74,8 @@ elif operation_name == "rollout":
         exit_code = 1
     if test_state["scenario"] == "readback_drift":
         test_state["current"]["spec"]["replicas"] = 99
+    if test_state["scenario"] == "restored_frontend_drift" and image_component == "backend" and image_component in test_state["restored_components"]:
+        test_state["resources"]["frontend"]["spec"]["replicas"] = 99
 else:
     exit_code = 2
 state_path.write_text(json.dumps(test_state))

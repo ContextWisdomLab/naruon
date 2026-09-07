@@ -116,6 +116,8 @@ in this repo.
   변경, 재생성, 충돌, 응답 유실은 강제 복구나 재시도 없이 실패로 남긴다.
   서버 dry-run의 last-applied annotation을 그대로 저장하지 말고 spec만 변경한다.
   복구 후 rollout과 최종 UID·spec readback까지 확인해도 원래 배포 job은 실패다.
+  두 객체의 복구가 끝난 뒤 양쪽 UID·spec을 다시 확인한다. 개별 복구 성공을
+  전체 복구 성공으로 합산하지 않으며 두 객체의 복구를 원자적이라고 표현하지 않는다.
   원시 snapshot·kubeconfig는 로그나 artifact로 올리지 않는다. 실제 workflow 호출의
   부분 실패와 cleanup도 테스트하며 unit double을 실제 클러스터 검증으로 보고하지 않는다.
 - 배포 이미지의 tag는 게시 artifact의 동일성을 증명하지 않는다. matrix별 digest를

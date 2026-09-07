@@ -51,6 +51,14 @@ restore_owned_pair() {
       "$snapshot_directory/$image_component.before.json" \
       "$snapshot_directory/$image_component.owned.json" || return 1
   done
+  # Two resources are not atomic; recheck both after the last restoration.
+  for image_component in backend frontend; do
+    [[ -f "$snapshot_directory/$image_component.owned.json" ]] || continue
+    kubectl get deployment "$image_component" -n naruon-dev -o json \
+      > "$snapshot_directory/$image_component.current.json" 2> "$snapshot_directory/command-error" || return 1
+    same_owned_spec "$snapshot_directory/$image_component.before.json" \
+      "$snapshot_directory/$image_component.current.json" || return 1
+  done
 }
 for image_component in backend frontend; do
   kubectl rollout status "deployment/$image_component" -n naruon-dev --timeout=120s \

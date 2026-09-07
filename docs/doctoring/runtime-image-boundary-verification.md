@@ -128,6 +128,12 @@ UID와 resourceVersion을 JSON Patch test로 검사한 뒤 spec만 교체한다.
 rollout 실패 시 두 객체의 소유권을 먼저 확인하고 frontend, backend 순으로 복구한다.
 각 복구의 rollout과 최종 UID·spec readback이 성공해야 `restore_verified`를 출력한다.
 복구 성공은 배포 성공이 아니므로 호출 workflow는 실패 상태를 유지한다.
+독립 검토에서 backend 복구 중 이미 복구한 frontend가 다시 바뀌는 공백을 발견했다.
+추가 회귀는 기존 코드에서 잘못된 `rollback_verified`를 재현했다
+(1 failed, 12 deselected, 31.37초). 두 복구 뒤 이전 snapshot 대비 양쪽 UID·spec을
+다시 조회하도록 고쳤다. 이 검사는 관측 시점의 확인이며 두 객체를 원자적으로
+잠그거나 마지막 조회 이후의 변경까지 막지는 않는다.
+수정 후 복구 검사 전체는 13 passed, 30.10초, exit 0이었다.
 
 전체 객체 replace 대안은 기각했다. server dry-run이 추가한 last-applied annotation이
 spec 복구 뒤 남는 반례가 unit test에서 실패했다. spec-only patch로 바꾸고 명시적인
@@ -169,6 +175,12 @@ release의 동일 대상 직렬화, 오래된 release 거부, 환경 승인, DB�
 정상 인증을 거친 제품 화면의 Visual Inspection은 아직 별도로 완료해야 한다.
 
 ## 이미지 경계 참고 문헌
+
+Kubernetes Authors. (n.d.-a). *Kubernetes API concepts*. Retrieved September 7,
+2026, from https://kubernetes.io/docs/reference/using-api/api-concepts/#updates-to-existing-resources
+
+Kubernetes Authors. (n.d.-b). *kubectl patch*. Retrieved September 7, 2026, from
+https://kubernetes.io/docs/reference/kubectl/generated/kubectl_patch/
 
 Docker, Inc. (n.d.). *JSONArgsRecommended*. Docker Docs.
 https://docs.docker.com/reference/build-checks/json-args-recommended/

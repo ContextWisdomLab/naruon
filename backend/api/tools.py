@@ -109,7 +109,7 @@ class ToolUpdate(BaseModel):
     description: Optional[str] = Field(
         default=None, description="도구에 대한 상세 설명"
     )
-    category: Optional[Dict[str, Any]] = Field(default=None, description="도구의 분류")
+    category: Optional[str] = Field(default=None, description="도구의 분류")
     parameters: Optional[Dict[str, Any]] = Field(
         default=None, description="도구 실행에 필요한 파라미터 스키마"
     )

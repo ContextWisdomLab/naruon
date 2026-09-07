@@ -111,8 +111,7 @@ def test_release_workflow_passes_separate_same_revision_artifacts() -> None:
     render = next(step for step in steps if step.get("id") == "render_manifests")
     assert "scripts/render_release_manifests.sh" in render["run"]
     apply_step = next(step for step in steps if step["name"] == "Apply to AKS")
-    assert '"$RUNNER_TEMP/release-manifests/backend-deployment.yaml"' in apply_step["run"]
-    assert '"$RUNNER_TEMP/release-manifests/frontend-deployment.yaml"' in apply_step["run"]
+    assert 'bash scripts/deploy_runtime_manifests.sh "$RUNNER_TEMP/release-manifests"' in apply_step["run"]
 
 
 @pytest.mark.parametrize("artifact_state", ["valid", "missing_backend", "missing_frontend", "invalid_backend", "invalid_frontend"])

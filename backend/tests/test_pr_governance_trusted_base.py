@@ -18,7 +18,7 @@ def test_all_governance_events_materialize_the_live_protected_default_policy() -
     assert "TRUSTED_BASE_SHA" not in workflow
     assert "pulls/${TRUSTED_PR_NUMBER}" not in workflow
     assert (
-        'gh_api_with_retry "repos/${GITHUB_REPOSITORY}" --jq \'default_branch\''
+        'gh_api_with_retry "repos/${GITHUB_REPOSITORY}" --jq \'.default_branch\''
         in workflow
     )
     assert 'branches/${trusted_default_branch}' in workflow

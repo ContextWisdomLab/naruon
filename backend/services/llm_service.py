@@ -86,7 +86,7 @@ async def extract_action_items_and_summary(
             "Error calling LLM API for extraction",
             exc_info=redacted_exception_info(exc),
         )
-        raise LLMServiceError("LLM API request failed during extraction") from None
+        raise LLMServiceError("LLM API error during extraction") from None
     finally:
         await client.close()
 
@@ -155,7 +155,7 @@ async def translate_email_body(
             "Error calling LLM API for translation",
             exc_info=redacted_exception_info(exc),
         )
-        raise LLMServiceError("LLM API request failed during translation") from None
+        raise LLMServiceError("LLM API error during translation") from None
     finally:
         await client.close()
 
@@ -200,7 +200,7 @@ async def draft_reply(
                 "Error calling LLM API for drafting",
                 exc_info=redacted_exception_info(exc),
             )
-            raise LLMServiceError("LLM API request failed during drafting") from None
+            raise LLMServiceError("LLM API error during drafting") from None
         finally:
             await http_client.aclose()
 
@@ -225,7 +225,7 @@ async def draft_reply(
             "Error calling LLM API for drafting",
             exc_info=redacted_exception_info(exc),
         )
-        raise LLMServiceError("LLM API request failed during drafting") from None
+        raise LLMServiceError("LLM API error during drafting") from None
     finally:
         await client.close()
 

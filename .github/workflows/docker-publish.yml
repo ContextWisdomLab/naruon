@@ -32,6 +32,7 @@ jobs:
           - component: backend
             image: ai_email_client-backend
             dockerfile: Dockerfile
+            target: backend-runtime
             base_dockerfile: Dockerfile
             context: .
             build_args: |
@@ -39,6 +40,7 @@ jobs:
           - component: naruon
             image: naruon
             dockerfile: Dockerfile
+            target: combined-runtime
             base_dockerfile: Dockerfile
             context: .
             build_args: |
@@ -46,6 +48,7 @@ jobs:
           - component: frontend
             image: ai_email_client-frontend
             dockerfile: frontend/Dockerfile
+            target: frontend-runtime
             base_dockerfile: frontend/Dockerfile
             context: .
             build_args: |
@@ -146,8 +149,10 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
           platforms: linux/amd64,linux/arm64
           push: false
+          outputs: type=cacheonly
           build-args: |
             ${{ matrix.build_args }}
             OCI_IMAGE_CREATED=${{ steps.oci.outputs.created }}
@@ -185,6 +190,7 @@ jobs:
           - component: backend
             image: ai_email_client-backend
             dockerfile: Dockerfile
+            target: backend-runtime
             base_dockerfile: Dockerfile
             context: .
             build_args: |
@@ -192,6 +198,7 @@ jobs:
           - component: naruon
             image: naruon
             dockerfile: Dockerfile
+            target: combined-runtime
             base_dockerfile: Dockerfile
             context: .
             build_args: |
@@ -199,6 +206,7 @@ jobs:
           - component: frontend
             image: ai_email_client-frontend
             dockerfile: frontend/Dockerfile
+            target: frontend-runtime
             base_dockerfile: frontend/Dockerfile
             context: .
             build_args: |
@@ -327,6 +335,7 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

@@ -1,4 +1,4 @@
-FROM node:26-slim@sha256:4ebb5ace66f15a24c14c492e01a8beeed4fddf970a856109f5126e703e5fe503
+FROM node:26-slim@sha256:4ebb5ace66f15a24c14c492e01a8beeed4fddf970a856109f5126e703e5fe503 AS frontend-runtime
 
 ARG OCI_IMAGE_CREATED=""
 ARG OCI_IMAGE_AUTHORS="Seongho Bae"
@@ -74,4 +74,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || '3000')).then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))"
 
 # Render injects $PORT at runtime
-CMD sh -c "exec ./node_modules/.bin/next start --hostname 0.0.0.0 --port ${PORT:-3000}"
+CMD ["sh", "-c", "exec ./node_modules/.bin/next start --hostname 0.0.0.0 --port \"${PORT:-3000}\""]

@@ -1,4 +1,5 @@
 .git
+**/.venv
 .next
 node_modules
 frontend/.next

@@ -106,9 +106,18 @@ def test_container_images_cover_all_oci_predefined_image_annotations() -> None:
     root_dockerfile = read_repo_text("Dockerfile")
     frontend_dockerfile = read_repo_text("frontend/Dockerfile")
     docker_publish_workflow = read_repo_text(".github/workflows/docker-publish.yml")
+    backend_stage = root_dockerfile.split("\nFROM ", 2)[1]
+    combined_stage = root_dockerfile.split("FROM backend-runtime AS combined-runtime", 1)[1]
+    assert 'ARG OCI_IMAGE_TITLE="naruon backend"' in backend_stage
+    assert 'ARG OCI_IMAGE_DESCRIPTION="Naruon FastAPI backend runtime image"' in backend_stage
+    assert 'ARG OCI_IMAGE_TITLE="naruon"' in combined_stage
+    assert 'ARG OCI_IMAGE_DESCRIPTION="Naruon combined FastAPI and Next.js runtime image"' in combined_stage
+    assert 'org.opencontainers.image.title="${OCI_IMAGE_TITLE}"' in combined_stage
+    assert 'org.opencontainers.image.description="${OCI_IMAGE_DESCRIPTION}"' in combined_stage
 
     for annotation_key in OCI_PREDEFINED_IMAGE_ANNOTATION_KEYS:
         assert annotation_key in root_dockerfile
+        assert annotation_key in backend_stage
         assert annotation_key in frontend_dockerfile
         assert annotation_key in docker_publish_workflow
 
@@ -762,7 +771,7 @@ def test_frontend_dockerfile_builds_and_starts_production_artifact() -> None:
     assert "ENV POSTCSS_WORKERS=1" in dockerfile
     assert "ENV DISABLE_POSTCSS_WORKERS=true" in dockerfile
     assert (
-        'CMD sh -c "exec ./node_modules/.bin/next start --hostname 0.0.0.0 --port ${PORT:-3000}"'
+        r'CMD ["sh", "-c", "exec ./node_modules/.bin/next start --hostname 0.0.0.0 --port \"${PORT:-3000}\""]'
         in dockerfile
     )
     assert "HEALTHCHECK --interval=30s --timeout=5s" in dockerfile
@@ -845,6 +854,7 @@ def test_backend_dockerfile_uses_modern_env_syntax() -> None:
     assert "http://127.0.0.1:8000/" in dockerfile
     assert "http://127.0.0.1:3000/" in dockerfile
     assert "useradd --system --create-home --home-dir /home/appuser" in dockerfile
+    assert "--key SYS_UID_MAX=10001 --uid 10001 --gid appuser --shell /usr/sbin/nologin" in dockerfile
     backend_cmd = 'CMD ["python", "scripts/start_backend.py", "--host", "0.0.0.0", "--port", "8000"]'
     assert dockerfile.find("USER appuser") < dockerfile.find(backend_cmd)
     assert dockerfile.rfind("USER appuser") < dockerfile.find(

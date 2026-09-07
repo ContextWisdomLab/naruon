@@ -16,6 +16,21 @@ def test_percent_encoded_unicode_path_is_canonicalized() -> None:
 
 
 @pytest.mark.parametrize(
+    ("txt_path", "expected_path"),
+    [
+        ("/users/alice%2Fcalendar", "/users/alice%2Fcalendar"),
+        ("/collections/a%3Bb", "/collections/a%3Bb"),
+    ],
+)
+def test_encoded_reserved_path_characters_preserve_wire_identity(
+    txt_path: str,
+    expected_path: str,
+) -> None:
+    """Validate reserved escapes without turning them into path delimiters."""
+    assert _txt_context_path([f"path={txt_path}"]) == expected_path
+
+
+@pytest.mark.parametrize(
     "txt_path",
     [
         "/literal%252Fsegment",

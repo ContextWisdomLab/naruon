@@ -106,13 +106,13 @@ def test_container_provenance_dependency_pins_match_reviewed_manifests() -> None
         for digest in backend_records[pin]
     )
 
-    assert strix_pins["cryptography"] == "50.0.0"
-    assert strix_pins["protobuf"] == "6.33.6"
-    assert "cryptography==50.0.0" in strix_records
-    assert "protobuf==6.33.6" in strix_records
+    assert strix_pins["cryptography"] == "50.0.1"
+    assert strix_pins["protobuf"] == "7.36.1"
+    assert "cryptography==50.0.1" in strix_records
+    assert "protobuf==7.36.1" in strix_records
     assert all(
         re.fullmatch(r"[0-9a-f]{64}", digest)
-        for pin in ("cryptography==50.0.0", "protobuf==6.33.6")
+        for pin in ("cryptography==50.0.1", "protobuf==7.36.1")
         for digest in strix_records[pin]
     )
 

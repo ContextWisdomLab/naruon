@@ -13,6 +13,11 @@ def test_all_governance_events_materialize_the_live_protected_default_policy() -
 
     assert "github.event.pull_request.base.sha" not in workflow
     assert "github.event.workflow_run.pull_requests[0].base.sha" not in workflow
+    job_if = workflow.split("jobs:", 1)[1].split("steps:", 1)[0]
+    assert "github.event_name == 'workflow_dispatch'" in job_if
+    assert "github.event_name == 'workflow_run'" in job_if
+    assert "github.event.inputs.pr_number != ''" not in job_if
+    assert "github.event.workflow_run.pull_requests[0].number != ''" not in job_if
     assert "base_sha:" not in workflow
     assert "github.event.inputs.base_sha" not in workflow
     assert "TRUSTED_BASE_SHA" not in workflow

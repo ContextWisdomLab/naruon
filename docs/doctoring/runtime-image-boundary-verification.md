@@ -112,7 +112,105 @@ https://github.com/actions/upload-artifact/blob/043fb46d1a93c77aae656e7c1c64a875
 GitHub. (n.d.-b). *Download a build artifact* [Action definition].
 https://github.com/actions/download-artifact/blob/3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c/action.yml
 
+## 기존 배포 쌍의 조건부 복구
+
+상태: Proposed. digest 전달 PR #1586의
+`a48aa3a3e81ba58b2fa55cd758e86b9272455b1a` 위에서 개발한다.
+backend가 정상 갱신된 뒤 frontend rollout이 실패하면 두 runtime의 버전이
+갈라질 수 있다. image만 되돌리면 replica 수나 pod 설정은 새 값으로 남는다.
+따라서 `scripts/deploy_runtime_manifests.sh`가 두 Deployment의 사전 정상 상태와
+전체 spec을 먼저 확인하고, `scripts/restore_runtime_deployment.sh`가 소유권이
+유지된 객체의 이전 spec을 복원하도록 실제 deploy workflow에 연결했다.
+
+두 객체의 server dry-run이 끝나기 전에는 쓰지 않는다. 정방향 변경도 복구도
+UID와 resourceVersion을 JSON Patch test로 검사한 뒤 spec만 교체한다.
+적용 응답과 직후 readback이 일치해야 이 실행이 소유한 상태로 기록한다.
+rollout 실패 시 두 객체의 소유권을 먼저 확인하고 frontend, backend 순으로 복구한다.
+각 복구의 rollout과 최종 UID·spec readback이 성공해야 `restore_verified`를 출력한다.
+복구 성공은 배포 성공이 아니므로 호출 workflow는 실패 상태를 유지한다.
+독립 검토에서 backend 복구 중 이미 복구한 frontend가 다시 바뀌는 공백을 발견했다.
+추가 회귀는 기존 코드에서 잘못된 `rollback_verified`를 재현했다
+(1 failed, 12 deselected, 31.37초). 두 복구 뒤 이전 snapshot 대비 양쪽 UID·spec을
+다시 조회하도록 고쳤다. 이 검사는 관측 시점의 확인이며 두 객체를 원자적으로
+잠그거나 마지막 조회 이후의 변경까지 막지는 않는다.
+수정 후 복구 검사 전체는 13 passed, 30.10초, exit 0이었다.
+후속 검사에서는 frontend의 tag 기반 이전 상태, metadata 변경, 조회 시 객체 누락을
+각각 주입했다. 세 경우 모두 backend를 포함한 양쪽 객체가 그대로이고 patch·복구·
+성공 표시가 없음을 확인했다. 기존 kubectl double을 확장한 복구 검사 전체는
+16 passed, 45.72초, exit 0이었다. 이 결과는 최초 배포 지원이 아니라 사전 거부의
+검증이며 tag-to-digest 전환 절차 개발은 여전히 남아 있다.
+
+전체 객체 replace 대안은 기각했다. server dry-run이 추가한 last-applied annotation이
+spec 복구 뒤 남는 반례가 unit test에서 실패했다. spec-only patch로 바꾸고 명시적인
+label·annotation 변경은 사전 거부한다. 상태 갱신만으로 resourceVersion이 달라져도
+정방향 CAS는 보수적으로 실패할 수 있다. 자동 강제 덮어쓰기보다 안전한 실패를 택했다.
+
+제약은 명확하다. 기존의 정상·digest-pinned Deployment 두 개만 지원한다.
+최초 배포, tag 기반 이전 버전, metadata migration에는 별도 승인된 절차가 필요하다.
+쓰기 응답 유실은 실제 반영 여부를 확정할 수 없으므로 자동 재시도·복구하지 않는다.
+다른 writer의 spec 변경이나 객체 재생성도 복구 대상이 아니다. 운영자가 현재 상태와
+승인된 release 기록을 확인해야 하며 이 도구는 모든 부분 실패의 자동 복구를 약속하지 않는다.
+
+snapshot은 같은 실행의 private 임시 디렉터리에서 `umask 077`로 만들고 종료 시 지운다.
+원시 Kubernetes JSON, command stderr, kubeconfig를 artifact나 로그로 공개하지 않는다.
+이는 지속 보관되는 사고 복구 원장이 아니다. 사고 후에도 필요한 승인된 이전 상태는
+별도의 접근 통제·보존 정책이 있는 운영 기록에서 확보해야 한다.
+
+검증은 실제 workflow의 Apply to AKS shell을 실행하되 kubectl을 unit double로
+대체한다. server default와 annotation 추가, backend 성공 뒤 frontend rollout 실패,
+다른 writer, 응답 유실, 409에 해당하는 충돌, UID 변경, 복구 rollout 실패와 최종
+readback 불일치를 다룬다. 합성 Kubernetes 객체는 unit test에만 쓰며 클러스터
+admission·컨트롤러·네트워크 동작이 검증됐다고 주장하지 않는다.
+
+```sh
+uv run --project backend --frozen --offline python -m pytest --noconftest \
+  backend/tests/test_runtime_deployment_restore.py \
+  backend/tests/test_release_manifest_digests.py \
+  backend/tests/test_runtime_image_targets.py \
+  backend/tests/test_release_governance.py -q -W error
+shellcheck scripts/restore_runtime_deployment.sh scripts/deploy_runtime_manifests.sh
+actionlint .github/workflows/deploy.yml .github/workflows/docker-publish.yml
+```
+
+위 구현의 로컬 검사에서 75 passed, 9.57초, exit 0을 확인했다.
+Ruff·ShellCheck·actionlint도 exit 0이었다. commit 후 고정 SHA 검증은
+PR에 따로 기록한다. 실제 클러스터 쓰기는 실행하지 않았다.
+
+release의 동일 대상 직렬화, 오래된 release 거부, 환경 승인, DB를 포함한 readiness,
+정상 인증을 거친 제품 화면의 Visual Inspection은 아직 별도로 완료해야 한다.
+
+## Readiness 구현과 문서의 불일치 조사
+
+2026-09-07에 `82d230fa6c7f10b2f311464e59ca9b47823f40f5`를 조사했다.
+DeepWiki는 CHANGELOG의 `/healthz`·`/readyz` 추가 기록으로 구현·배포를 추정했지만,
+현재 `backend/main.py`에는 root 응답만 있고 언급된 `backend/core/observability.py`도
+없다. 현재 코드의 `db/session.py`에는 주 DB와 읽기 전용 engine이 따로 있으며
+request session의 종료와 application engine의 종료는 서로 다른 수명 주기다.
+
+실제 앱에 기존 httpx ASGITransport로 요청한 결과 `/`는 200, `/healthz`와
+`/readyz`는 404였다. `python -W error` 실행은 exit 0으로 종료됐다.
+환경을 비운 뒤 unit 설정과 연결하지 않는 DB 주소를 제공했고, lifespan·worker를
+실행하거나 실제 DB·메일·provider에 접근하지 않았다. 따라서 이는 라우트 부재의
+재현이지 네트워크 서버·DB readiness 검증은 아니다. 앞선 TestClient 재현은 같은
+응답을 보였지만 StarletteDeprecationWarning이 있어 clean 근거에서 제외했다.
+
+로컬 Git history의 `a9214ca2`와 과거 release branch
+`release/ci-cd-governance-20260509`의 tip
+`3abc06f268aef6d151ddd06c54ac817277129fc4`에는 `/readyz`에서 기존 engine으로
+`SELECT 1`을 실행하는 선행 코드가 있다. 해당 commit은 관측한 보호 develop의
+ancestor가 아니다. 기존 2026-05-11 release 계획도 이 branch를 통째로 병합하지
+말고 필요한 변경을 검증해 이식하도록 기록했다. 현재 선행 PR 상태는 GitHub API
+사용량 제한으로 확인하지 못했다. 선행 변경을 폐기하거나 새 owner가 없다고 단정하지
+않고 PR·승계 범위를 먼저 확인한다. 이후에는 liveness와 dependency readiness를
+분리하고, 실제 격리 PostgreSQL에서 성공·장애·연결 정리를 검증해야 한다.
+
 ## 이미지 경계 참고 문헌
+
+Kubernetes Authors. (n.d.-a). *Kubernetes API concepts*. Retrieved September 7,
+2026, from https://kubernetes.io/docs/reference/using-api/api-concepts/#updates-to-existing-resources
+
+Kubernetes Authors. (n.d.-b). *kubectl patch*. Retrieved September 7, 2026, from
+https://kubernetes.io/docs/reference/kubectl/generated/kubectl_patch/
 
 Docker, Inc. (n.d.). *JSONArgsRecommended*. Docker Docs.
 https://docs.docker.com/reference/build-checks/json-args-recommended/

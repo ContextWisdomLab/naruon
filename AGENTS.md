@@ -110,6 +110,21 @@ in this repo.
 
 ## Release governance defaults
 
+- CHANGELOG나 저장소 요약이 endpoint를 구현·배포됐다고 설명해도 현재 라우트와
+  실제 응답을 확인한다. 과거 branch의 코드를 찾으면 선행 PR과 유효 delta를 추적하고,
+  문서에 적힌 `/readyz`나 root 200을 DB readiness 근거로 승계하지 않는다.
+- 부분 배포 복구는 이전 image만 바꾸는 작업이 아니다. 같은 실행에서 `umask 077`로
+  이전 spec과 실제 적용 응답·readback을 확보하고 UID·spec 소유권을 확인한다.
+  정방향 변경과 복구 모두 UID·resourceVersion 조건부 patch를 사용한다. 다른 writer의
+  변경, 재생성, 충돌, 응답 유실은 강제 복구나 재시도 없이 실패로 남긴다.
+  서버 dry-run의 last-applied annotation을 그대로 저장하지 말고 spec만 변경한다.
+  복구 후 rollout과 최종 UID·spec readback까지 확인해도 원래 배포 job은 실패다.
+  두 객체의 복구가 끝난 뒤 양쪽 UID·spec을 다시 확인한다. 개별 복구 성공을
+  전체 복구 성공으로 합산하지 않으며 두 객체의 복구를 원자적이라고 표현하지 않는다.
+  사전 검사는 두 대상 모두 끝내고 나서 쓴다. 두 번째 대상의 누락·tag 기반 이전
+  상태·metadata 변경을 주입해 첫 번째 대상에도 patch가 없었는지 검사한다.
+  원시 snapshot·kubeconfig는 로그나 artifact로 올리지 않는다. 실제 workflow 호출의
+  부분 실패와 cleanup도 테스트하며 unit double을 실제 클러스터 검증으로 보고하지 않는다.
 - 배포 이미지의 tag는 게시 artifact의 동일성을 증명하지 않는다. matrix별 digest를
   같은 실행·revision·attempt의 개별 artifact로 전달하고 두 runtime의 sha256을
   모두 검증한 뒤 `image@sha256` manifest를 생성한다. 누락·변조·잘못된 digest는

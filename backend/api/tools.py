@@ -753,49 +753,84 @@ registry.register(
 )
 
 
-_URL_CANDIDATE_PATTERN = re.compile(r"https?://[^\s<>]+", re.IGNORECASE)
-_URL_TRAILING_PROSE = frozenset(".,;:!?\"'”’")
-_URL_CLOSING_DELIMITERS = {")": "(", "]": "[", "}": "{"}
-
-
-def _validated_extracted_url(candidate: str) -> Optional[str]:
-    """Return a prose-trimmed absolute HTTP(S) URL only when it has a valid host."""
-    trimmed = candidate
-    while trimmed and trimmed[-1] in _URL_TRAILING_PROSE:
-        trimmed = trimmed[:-1]
-
-    while trimmed and trimmed[-1] in _URL_CLOSING_DELIMITERS:
-        closing = trimmed[-1]
-        opening = _URL_CLOSING_DELIMITERS[closing]
-        if trimmed.count(closing) <= trimmed.count(opening):
-            break
-        trimmed = trimmed[:-1]
-
-    try:
-        parsed = urllib.parse.urlsplit(trimmed)
-        hostname = parsed.hostname
-        parsed.port
-    except ValueError:
-        return None
-
-    if parsed.scheme.lower() not in {"http", "https"} or not hostname:
-        return None
-    return trimmed
-
 
 async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract unique absolute HTTP(S) URLs while preserving valid URL boundaries."""
     text = params.get("text") or ""
     if len(text) > ANALYSIS_TEXT_MAX_CHARS:
         raise ValueError(f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters")
 
-    urls: list[str] = []
-    seen_urls: set[str] = set()
-    for candidate in _URL_CANDIDATE_PATTERN.findall(text):
-        validated = _validated_extracted_url(candidate)
-        if validated and validated not in seen_urls:
-            seen_urls.add(validated)
-            urls.append(validated)
+    base_pattern = re.compile(r'https?://[^\s"\'<>]+')
+    raw_urls = base_pattern.findall(text)
+
+    cleaned_urls = []
+    for url_str in raw_urls:
+        while True:
+            original = url_str
+            url_str = re.sub(r'[,.;:?!]+$', '', url_str)
+            if url_str.endswith(')'):
+                if url_str.count('(') < url_str.count(')'):
+                    url_str = url_str[:-1]
+            if url_str == original:
+                break
+
+        import ipaddress
+        try:
+            parsed = urllib.parse.urlsplit(url_str)
+            if not parsed.netloc or not parsed.hostname:
+                continue
+            _ = parsed.port
+
+            # Syntactic-only validation of the hostname
+            host = parsed.hostname
+            is_valid_host = False
+
+            # Check if it's a valid IP literal (v4 or v6)
+            try:
+                ip_str = host.strip("[]")
+                # Ensure it's not trying to parse something like 999.999.999.999 as IDNA because the ipaddress check fails.
+                # If it looks like an IP address format but fails ipaddress parsing, we should reject it instead of falling back to DNS label checks.
+                if re.match(r'^[\d.]+$', ip_str) or ":" in ip_str:
+                    ipaddress.ip_address(ip_str)
+                    is_valid_host = True
+                else:
+                    # It's not an IP literal structure, let DNS labels check handle it
+                    pass
+            except ValueError:
+                # It looks like an IP but is invalid (e.g. 999.999.999.999)
+                continue
+
+            # If not an IP, validate as DNS labels
+            if not is_valid_host:
+                try:
+                    # Convert to IDNA to safely check length and syntax
+                    idna_host = host.encode("idna").decode("ascii")
+                    if len(idna_host) > 253 or len(idna_host) == 0:
+                        continue
+
+                    labels = idna_host.split(".")
+                    # Require at least two labels (e.g. example.com, not just "example")
+                    if len(labels) < 2:
+                        continue
+
+                    label_pattern = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$")
+                    valid_labels = True
+                    for label in labels:
+                        if not label_pattern.match(label):
+                            valid_labels = False
+                            break
+
+                    if valid_labels:
+                        is_valid_host = True
+                except Exception:
+                    # IDNA encoding errors or other issues
+                    pass
+
+            if is_valid_host:
+                cleaned_urls.append(url_str)
+        except ValueError:  # nosec B112 - Invalid port strings trigger ValueError from parsed.port, which safely means it's not a URL.
+            continue
+
+    urls = list(dict.fromkeys(cleaned_urls))
     return {"urls": urls, "url_count": len(urls)}
 
 

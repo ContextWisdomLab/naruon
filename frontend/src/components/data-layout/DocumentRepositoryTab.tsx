@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, type ChangeEvent } from 'react';
+import React, { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { HardDrive, Upload, Loader2, FileText, FolderOpen, Database, RefreshCw, CheckCircle2, Server } from 'lucide-react';
 import { toSafeReactText } from '@/lib/safe-text';
 import {
@@ -111,6 +111,57 @@ export function DocumentRepositoryTab({
   isUniqueThreadLoading,
 }: DocumentRepositoryTabProps) {
   const [webdavWriteConfirmationKey, setWebdavWriteConfirmationKey] = useState<string | null>(null);
+  const webdavWriteTriggerRef = useRef<HTMLButtonElement>(null);
+  const webdavWriteCancelRef = useRef<HTMLButtonElement>(null);
+  const webdavWriteConfirmRef = useRef<HTMLButtonElement>(null);
+  const restoreWebdavWriteFocusRef = useRef(false);
+
+  useEffect(() => {
+    if (webdavWriteConfirmationKey === null) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    webdavWriteCancelRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [webdavWriteConfirmationKey]);
+
+  useEffect(() => {
+    if (
+      webdavWriteConfirmationKey === null
+      && documentActionPendingAction === null
+      && restoreWebdavWriteFocusRef.current
+    ) {
+      restoreWebdavWriteFocusRef.current = false;
+      webdavWriteTriggerRef.current?.focus();
+    }
+  }, [documentActionPendingAction, webdavWriteConfirmationKey]);
+
+  const closeWebdavWriteConfirmation = () => {
+    restoreWebdavWriteFocusRef.current = true;
+    setWebdavWriteConfirmationKey(null);
+  };
+
+  const handleWebdavWriteConfirmationKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeWebdavWriteConfirmation();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const first = webdavWriteCancelRef.current;
+    const last = webdavWriteConfirmRef.current;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last?.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first?.focus();
+    }
+  };
 
   const selectedRepositoryAsset = repositoryAssets.find((asset) => asset.asset_key === selectedRepositoryAssetKey)
     ?? repositoryAssets[0]
@@ -245,9 +296,13 @@ return (
                         <button
                           key={account.source_id}
                           type="button"
-                          disabled={!account.writeback_enabled}
+                          disabled={!account.writeback_enabled || documentActionPendingAction !== null}
                           aria-pressed={accountSelected}
-                          onClick={() => setSelectedWebdavSourceId(account.source_id)}
+                          onClick={() => {
+                            if (documentActionPendingAction === null) {
+                              setSelectedWebdavSourceId(account.source_id);
+                            }
+                          }}
                           className={`flex min-w-0 items-start gap-2 rounded-lg border p-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-70 ${
                             accountSelected ? 'border-primary bg-primary/10' : 'border-transparent bg-secondary/50 hover:border-primary/40'
                           }`}
@@ -305,6 +360,7 @@ return (
                   )}
                   {repositoryAssets.map((asset) => {
                     const assetSelected = selectedRepositoryAsset?.asset_key === asset.asset_key;
+                    const assetSelectionLocked = documentActionPendingAction !== null;
 
 
 
@@ -312,17 +368,27 @@ return (
                     <article
                       key={asset.asset_key}
                       role="button"
-                      tabIndex={0}
+                      tabIndex={assetSelectionLocked ? -1 : 0}
                       aria-pressed={assetSelected}
-                      onClick={() => setSelectedRepositoryAssetKey(asset.asset_key)}
+                      aria-disabled={assetSelectionLocked}
+                      onClick={() => {
+                        if (!assetSelectionLocked) {
+                          setSelectedRepositoryAssetKey(asset.asset_key);
+                        }
+                      }}
                       onKeyDown={(event) => {
+                        if (assetSelectionLocked) return;
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault();
                           setSelectedRepositoryAssetKey(asset.asset_key);
                         }
                       }}
-                      className={`cursor-pointer rounded-xl border bg-background p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 ${
-                        assetSelected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+                      className={`rounded-xl border bg-background p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 ${
+                        assetSelectionLocked
+                          ? 'cursor-not-allowed opacity-60'
+                          : assetSelected
+                            ? 'cursor-pointer border-primary bg-primary/5'
+                            : 'cursor-pointer border-border hover:border-primary/40'
                       }`}
                     >
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -427,6 +493,7 @@ return (
                         {documentActionPendingAction === 'hwp-conversion-intent' ? '요청 등록 중' : 'HWP 변환 요청 등록'}
                       </button>
                       <button
+                        ref={webdavWriteTriggerRef}
                         type="button"
                         onClick={() => setWebdavWriteConfirmationKey(currentWebdavWriteConfirmationKey)}
                         disabled={documentActionPendingAction !== null || !selectedWebdavAccount || selectedWorkspaceDocument.state_code !== 'ready'}
@@ -442,21 +509,32 @@ return (
                       </button>
                     </div>
                     {webdavWriteConfirmationKey === currentWebdavWriteConfirmationKey && documentActionPendingAction === null ? (
-                      <div role="alertdialog" aria-modal="true" aria-labelledby="webdav-write-confirmation-title" aria-describedby="webdav-write-confirmation-description" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
-                        <p id="webdav-write-confirmation-title" className="font-bold">고객 WebDAV에 문서를 쓰시겠습니까?</p>
-                        <p id="webdav-write-confirmation-description" className="mt-1 text-sm leading-6">
-                          {selectedWebdavAccountLabel}에 현재 문서를 기록합니다. 기존 파일이 있으면 충돌 조건을 확인하며, 이 작업은 고객 원본 저장소를 변경합니다.
-                        </p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button type="button" onClick={() => setWebdavWriteConfirmationKey(null)} className="min-h-10 rounded-lg border border-border bg-background px-3 py-2 text-sm font-bold">취소</button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setWebdavWriteConfirmationKey(null);
-                              void requestDocumentAction('webdav-materialization-intent');
-                            }}
-                            className="min-h-10 rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground"
-                          >WebDAV 쓰기 확인</button>
+                      <div className="fixed inset-0 z-50">
+                        <div aria-hidden="true" className="absolute inset-0 bg-slate-950/30 backdrop-blur-[1px]" />
+                        <div
+                          role="alertdialog"
+                          aria-modal="true"
+                          aria-labelledby="webdav-write-confirmation-title"
+                          aria-describedby="webdav-write-confirmation-description"
+                          onKeyDown={handleWebdavWriteConfirmationKeyDown}
+                          className="absolute left-1/2 top-1/2 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-2xl"
+                        >
+                          <p id="webdav-write-confirmation-title" className="font-bold">고객 WebDAV에 문서를 쓰시겠습니까?</p>
+                          <p id="webdav-write-confirmation-description" className="mt-1 text-sm leading-6">
+                            {selectedWebdavAccountLabel}에 현재 문서를 기록합니다. 기존 파일이 있으면 충돌 조건을 확인하며, 이 작업은 고객 원본 저장소를 변경합니다.
+                          </p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button ref={webdavWriteCancelRef} type="button" onClick={closeWebdavWriteConfirmation} className="min-h-10 rounded-lg border border-border bg-background px-3 py-2 text-sm font-bold">취소</button>
+                            <button
+                              ref={webdavWriteConfirmRef}
+                              type="button"
+                              onClick={() => {
+                                closeWebdavWriteConfirmation();
+                                void requestDocumentAction('webdav-materialization-intent');
+                              }}
+                              className="min-h-10 rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground"
+                            >WebDAV 쓰기 확인</button>
+                          </div>
                         </div>
                       </div>
                     ) : null}

@@ -1,0 +1,3 @@
+## 2024-09-05 - CodeQL CI Workflow
+**Learning:** The CodeQL CI workflow in this repository dispatches a remote scan and intentionally exits with code 1 (failure) while pending, returning the message 'CodeQL scan dispatched. The dispatch workflow will rerun this exact failed CodeQL job after publishing its terminal verdict.' This is not a real code failure but an asynchronous wait mechanism.
+**Action:** When encountering this specific CodeQL error, no code changes are required. Simply re-trigger or wait for the asynchronous CI job to finish. For the agent loop, pushing a small commit to re-trigger or just submitting again is appropriate.

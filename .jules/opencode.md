@@ -1,0 +1,3 @@
+## 2024-09-06 - OpenCode Review CI Workflow
+**Learning:** The OpenCode CI workflow in this repository dispatches a remote scan and intentionally exits with code 1 (failure) while pending, returning the message 'No APPROVED or CHANGES_REQUESTED from opencode-agent on the current head. The dispatch workflow will rerun this failed job after publishing an authenticated exact-head verdict.' This is not a real code failure but an asynchronous wait mechanism.
+**Action:** When encountering this specific OpenCode error, no code changes are required. Simply re-trigger or wait for the asynchronous CI job to finish. For the agent loop, pushing a small commit to re-trigger or just submitting again is appropriate.

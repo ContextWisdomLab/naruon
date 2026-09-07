@@ -1,0 +1,3 @@
+## 2024-09-07 - Strix Review CI Workflow
+**Learning:** The Strix CI workflow in this repository dispatches a remote scan and can intermittently fail due to external infrastructure issues such as rate limits or service unavailability ('Strix could not complete authoritative vulnerability analysis because its provider/backend was unavailable'). This is not a real code failure but a transient service outage.
+**Action:** When encountering this specific Strix error, no code changes are required. Simply re-trigger or wait for the asynchronous CI job to finish. For the agent loop, pushing a small commit to re-trigger or just submitting again is appropriate.

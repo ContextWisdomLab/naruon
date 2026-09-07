@@ -1,12 +1,12 @@
 """Regression tests for secret-safe exception logging."""
 
 import logging
-import base64
 
 from core.safe_logging import redacted_exception_info
 
 _t = "token="
 _v = "super-secret-value"
+
 
 def _raise_secret_bearing_exception() -> None:
     # Build it dynamically to avoid literal string matching the source code

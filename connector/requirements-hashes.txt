@@ -1,4 +1,4 @@
 # Regenerate with:
 #   python3 -m pip download --only-binary=:all: --no-deps --platform manylinux_2_28_x86_64 --python-version 314 --implementation cp --abi cp314 websockets==16.1
-websockets==16.1 \
+websockets==17.1 \
     --hash=sha256:8e9c4e369fc181b2d41a99e01477215cecdc8546a39f7d41a59cc0a7065a0b09

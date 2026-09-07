@@ -54,6 +54,7 @@ interface DocumentRepositoryTabProps {
   emailImportResult: EmailFileImportResponse | null;
   handleDocumentFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
   requestDocumentUpload: () => void;
+  retryDocumentRefresh: () => void;
   isDocumentActionLoading: boolean;
   activeDocumentAction: ActiveDocumentAction | null;
   documentUploadFiles: File[];
@@ -84,6 +85,7 @@ export function DocumentRepositoryTab({
   emailImportResult,
   handleDocumentFileChange,
   requestDocumentUpload,
+  retryDocumentRefresh,
   isDocumentActionLoading,
   activeDocumentAction,
   documentUploadFiles,
@@ -187,6 +189,7 @@ return (
                         <input
                           type="file"
                           accept=".txt,.md,.markdown,text/plain,text/markdown"
+                          disabled={isDocumentActionLoading}
                           className="sr-only"
                           onChange={handleDocumentFileChange}
                         />
@@ -207,8 +210,16 @@ return (
                       {documentActionStatus === 'idle' && documentUploadFiles.length === 0 && '텍스트, Markdown, HWP 원본을 워크스페이스 문서 근거로 저장합니다.'}
                       {documentActionStatus === 'idle' && documentUploadFiles.length > 0 && `${documentUploadFiles[0]?.name ?? '문서'} 선택됨`}
                       {documentActionStatus === 'loading' && '문서 작업을 처리하는 중입니다.'}
-                      {documentActionStatus === 'auth' && <span className="font-bold text-red-700">signed session이 필요합니다. 공개 identity header로는 문서 작업을 실행할 수 없습니다.</span>}
+                      {documentActionStatus === 'auth' && <span className="font-bold text-red-700">다시 로그인한 뒤 문서 작업 권한을 확인해 주세요.</span>}
                       {documentActionStatus === 'error' && <span className="font-bold text-red-700">문서 작업에 실패했습니다.</span>}
+                      {documentActionStatus === 'refresh_error' && (
+                        <span className="font-bold text-amber-700">요청 결과를 받았지만 목록을 새로 불러오지 못했습니다.</span>
+                      )}
+                      {(documentActionStatus === 'refresh_error' || (isDocumentActionLoading && !activeDocumentAction && documentActionResult)) && (
+                        <button type="button" onClick={() => retryDocumentRefresh()} disabled={isDocumentActionLoading} aria-busy={isDocumentActionLoading} className="mt-2 block rounded-md border border-border px-3 py-2 font-bold disabled:cursor-wait">
+                          목록 다시 불러오기
+                        </button>
+                      )}
                       {documentActionStatus === 'success' && documentActionResult && (
                         <span className="text-foreground">
                           {toSafeReactText(documentActionResult.document_name)} · {toSafeReactText(documentActionResult.message)} · {getWriteBoundaryLabel(documentActionResult.provider_write_executed)}

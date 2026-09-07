@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useEffect, useMemo, type ChangeEvent, type KeyboardEvent } from 'react';
+import { useCallback, useState, useEffect, useMemo, useRef, type ChangeEvent, type KeyboardEvent } from 'react';
 import { Database } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 
@@ -74,6 +74,8 @@ export function DataLayout() {
   const [dataQualitySurface, setDataQualitySurface] = useState<DataQualitySurfaceResponse | null>(null);
   const [dataEvidenceSnapshot, setDataEvidenceSnapshot] = useState<DataEvidenceSnapshotResponse | null>(null);
   const [selectedRepositoryAssetKey, setSelectedRepositoryAssetKey] = useState<string | null>(null);
+  const activeDocumentRequest = useRef<symbol | null>(null);
+  const surfaceRequestRevision = useRef(0);
 
   const webdavAccountMap = useMemo<WebdavAccountLookup>(
     () => new Map(webdavAccounts.map((account, index) => [
@@ -83,42 +85,44 @@ export function DataLayout() {
     [webdavAccounts],
   );
 
-  const loadDataEvidenceSnapshot = useCallback(async () => {
-    try {
-      const snapshot = await apiClient.get<DataEvidenceSnapshotResponse>('/api/data/quality-surface/evidence-snapshot');
-      if (
-        snapshot.snapshot_version !== 'data_quality_evidence_snapshot.v1'
-        || snapshot.privacy_redaction_policy.raw_content_exposed !== false
-      ) {
-        throw new Error('Invalid evidence snapshot response');
-      }
-      setDataEvidenceSnapshot(snapshot);
-      return snapshot;
-    } catch (error: unknown) {
-      console.error('Data evidence snapshot fetch error', getSafeErrorSummary(error));
-      setDataEvidenceSnapshot(null);
-      return null;
-    }
-  }, []);
-
   const loadDataQualitySurface = useCallback(async () => {
+    const requestRevision = ++surfaceRequestRevision.current;
     try {
-      const [data] = await Promise.all([
+      const snapshotResponse = apiClient.get<DataEvidenceSnapshotResponse>('/api/data/quality-surface/evidence-snapshot')
+        .then((snapshot) => {
+          if (snapshot.snapshot_version !== 'data_quality_evidence_snapshot.v1'
+            || snapshot.privacy_redaction_policy.raw_content_exposed !== false) {
+            throw new Error('Invalid evidence snapshot response');
+          }
+          return snapshot;
+        })
+        .catch((error: unknown) => {
+          if (requestRevision === surfaceRequestRevision.current) {
+            console.error('Data evidence snapshot fetch error', getSafeErrorSummary(error));
+          }
+          return null;
+        });
+      const [data, snapshot] = await Promise.all([
         apiClient.get<DataQualitySurfaceResponse>('/api/data/quality-surface'),
-        loadDataEvidenceSnapshot(),
+        snapshotResponse,
       ]);
+      if (requestRevision !== surfaceRequestRevision.current) return false;
       if (!Array.isArray(data.repositories) || !Array.isArray(data.pipeline_stages)) {
         throw new Error('Invalid data quality surface response');
       }
       setDataQualitySurface(data);
+      setDataEvidenceSnapshot(snapshot);
       setDataSurfaceStatus('ready');
+      return true;
     } catch (error: unknown) {
+      if (requestRevision !== surfaceRequestRevision.current) return false;
       console.error('Data quality surface fetch error', getSafeErrorSummary(error));
       setDataQualitySurface(null);
       setDataEvidenceSnapshot(null);
       setDataSurfaceStatus('error');
+      return false;
     }
-  }, [loadDataEvidenceSnapshot]);
+  }, []);
 
   useEffect(() => {
     const dataQualitySurfaceTimer = window.setTimeout(() => {
@@ -143,7 +147,11 @@ export function DataLayout() {
       .then(data => Array.isArray(data) && setProjectFolders(data))
       .catch((error: unknown) => console.error('WebDAV folders fetch error', getSafeErrorSummary(error)));
 
-    return () => window.clearTimeout(dataQualitySurfaceTimer);
+    return () => {
+      window.clearTimeout(dataQualitySurfaceTimer);
+      surfaceRequestRevision.current += 1;
+      activeDocumentRequest.current = null;
+    };
   }, [loadDataQualitySurface]);
 
   const requestWebdavWritebackIntent = useCallback(async () => {
@@ -224,12 +232,14 @@ export function DataLayout() {
   }, [emailImportFiles]);
 
   const handleDocumentFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    if (activeDocumentRequest.current) return;
     setDocumentUploadFiles(Array.from(event.target.files ?? []));
     setDocumentActionResult(null);
     setDocumentActionStatus('idle');
   }, []);
 
   const requestDocumentUpload = useCallback(async () => {
+    if (activeDocumentRequest.current) return;
     const [file] = documentUploadFiles;
     if (!file) {
       setDocumentActionStatus('error');
@@ -248,11 +258,14 @@ export function DataLayout() {
       return;
     }
 
+    const requestIdentity = Symbol('document-upload');
+    activeDocumentRequest.current = requestIdentity;
     setActiveDocumentAction('upload');
     setDocumentActionStatus('loading');
     setDocumentActionResult(null);
     try {
       const documentContent = await file.text();
+      if (activeDocumentRequest.current !== requestIdentity) return;
       const result = await apiClient.post<DataDocumentActionResponse>(
         '/api/data/documents',
         {
@@ -261,21 +274,29 @@ export function DataLayout() {
           document_content: documentContent,
         },
       );
+      if (activeDocumentRequest.current !== requestIdentity) return;
       setDocumentActionResult(result);
-      setDocumentActionStatus('success');
       setDataSurfaceStatus('loading');
-      await loadDataQualitySurface();
+      const refreshSucceeded = await loadDataQualitySurface();
+      if (activeDocumentRequest.current === requestIdentity) {
+        setDocumentActionStatus(refreshSucceeded ? 'success' : 'refresh_error');
+      }
     } catch (error: unknown) {
+      if (activeDocumentRequest.current !== requestIdentity) return;
       const status = getApiErrorStatus(error);
       setDocumentActionStatus(status === 401 || status === 403 ? 'auth' : 'error');
     } finally {
-      setActiveDocumentAction(null);
+      if (activeDocumentRequest.current === requestIdentity) {
+        activeDocumentRequest.current = null;
+        setActiveDocumentAction(null);
+      }
     }
   }, [documentUploadFiles, loadDataQualitySurface]);
 
   const requestDocumentAction = useCallback(async (
     action: DocumentOperation,
   ) => {
+    if (activeDocumentRequest.current) return;
     const asset = dataQualitySurface?.repository_assets.find((candidate) => (
       candidate.asset_key === selectedRepositoryAssetKey
     )) ?? dataQualitySurface?.repository_assets[0] ?? null;
@@ -291,6 +312,8 @@ export function DataLayout() {
       return;
     }
 
+    const requestIdentity = Symbol('document-action');
+    activeDocumentRequest.current = requestIdentity;
     setActiveDocumentAction(action);
     setDocumentActionStatus('loading');
     setDocumentActionResult(null);
@@ -301,15 +324,22 @@ export function DataLayout() {
           ? { target_source_id: targetSourceId, execute_provider: true }
           : {},
       );
+      if (activeDocumentRequest.current !== requestIdentity) return;
       setDocumentActionResult(result);
-      setDocumentActionStatus('success');
       setDataSurfaceStatus('loading');
-      await loadDataQualitySurface();
+      const refreshSucceeded = await loadDataQualitySurface();
+      if (activeDocumentRequest.current === requestIdentity) {
+        setDocumentActionStatus(refreshSucceeded ? 'success' : 'refresh_error');
+      }
     } catch (error: unknown) {
+      if (activeDocumentRequest.current !== requestIdentity) return;
       const status = getApiErrorStatus(error);
       setDocumentActionStatus(status === 401 || status === 403 ? 'auth' : 'error');
     } finally {
-      setActiveDocumentAction(null);
+      if (activeDocumentRequest.current === requestIdentity) {
+        activeDocumentRequest.current = null;
+        setActiveDocumentAction(null);
+      }
     }
   }, [
     dataQualitySurface,
@@ -319,6 +349,24 @@ export function DataLayout() {
     webdavAccounts,
     webdavAccountStatus,
   ]);
+
+  const retryDocumentRefresh = useCallback(async () => {
+    if (activeDocumentRequest.current || !documentActionResult) return;
+    const requestIdentity = Symbol('document-refresh');
+    activeDocumentRequest.current = requestIdentity;
+    setDocumentActionStatus('loading');
+    setDataSurfaceStatus('loading');
+    try {
+      const refreshSucceeded = await loadDataQualitySurface();
+      if (activeDocumentRequest.current === requestIdentity) {
+        setDocumentActionStatus(refreshSucceeded ? 'success' : 'refresh_error');
+      }
+    } finally {
+      if (activeDocumentRequest.current === requestIdentity) {
+        activeDocumentRequest.current = null;
+      }
+    }
+  }, [documentActionResult, loadDataQualitySurface]);
 
   const isWritebackLoading = writebackStatus === 'loading';
   const isWebdavSourceLoading = webdavAccountStatus === 'loading';
@@ -450,6 +498,7 @@ export function DataLayout() {
               emailImportResult={emailImportResult}
               handleDocumentFileChange={handleDocumentFileChange}
               requestDocumentUpload={requestDocumentUpload}
+              retryDocumentRefresh={retryDocumentRefresh}
               isDocumentActionLoading={isDocumentActionLoading}
               activeDocumentAction={activeDocumentAction}
               documentUploadFiles={documentUploadFiles}

@@ -2579,9 +2579,11 @@ describe("DataPage", () => {
   });
 
   it("sanitizes WebDAV source labels that contain opaque source ids", async () => {
+    const consoleError = vi.spyOn(console, "error");
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
       if (path === "/api/data/quality-surface") return jsonResponse(dataQualitySurface);
+      if (path === "/api/data/quality-surface/evidence-snapshot") return jsonResponse(dataEvidenceSnapshot);
       if (path === "/api/webdav/accounts") {
         void init;
         return jsonResponse([
@@ -2617,6 +2619,7 @@ describe("DataPage", () => {
 
     expect(container.textContent).toContain("WebDAV 저장소 1");
     expect(container.textContent).not.toContain("WebDAV source webdav_src_primary");
+    expect(consoleError).not.toHaveBeenCalled();
     expect(container.textContent).not.toContain("webdav_src_primary");
 
     const button = Array.from(container.querySelectorAll("button")).find((candidate) =>
@@ -2635,6 +2638,7 @@ describe("DataPage", () => {
   });
 
   it("lets the user choose a specific WebDAV source and distinguishes If-Match conflicts", async () => {
+    const consoleError = vi.spyOn(console, "error");
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);
       if (path === "/api/webdav/accounts") {
@@ -2655,6 +2659,7 @@ describe("DataPage", () => {
       }
       if (path === "/api/webdav/folders") return jsonResponse([]);
       if (path === "/api/data/quality-surface") return jsonResponse(dataQualitySurface);
+      if (path === "/api/data/quality-surface/evidence-snapshot") return jsonResponse(dataEvidenceSnapshot);
       expect(path).toBe("/api/webdav/writeback-intent");
       expect(JSON.parse(String(init?.body))).toEqual({
         target_source_id: "webdav_src_team",
@@ -2686,6 +2691,7 @@ describe("DataPage", () => {
     });
 
     expect(container.textContent).toContain("If-Match/ETag 충돌");
+    expect(consoleError).not.toHaveBeenCalled();
     expect(container.textContent).not.toContain("webdav_src_team");
   });
 

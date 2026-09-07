@@ -51,6 +51,7 @@ function renderRepository(activeDocumentAction: ActiveDocumentAction | null) {
     emailImportResult: null,
     handleDocumentFileChange: () => undefined,
     requestDocumentUpload: () => undefined,
+    retryDocumentRefresh: () => undefined,
     isDocumentActionLoading: true,
     activeDocumentAction,
     documentUploadFiles: [],

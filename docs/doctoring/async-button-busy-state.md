@@ -220,3 +220,113 @@ The full browser smoke script's region locator was updated but that synthetic
 legacy script was not executed as real-product visual evidence.
 Session 65374 also exited 0 for focused ESLint with `--max-warnings=0`,
 `node --check scripts/full-product-ui-smoke.mjs`, and `git diff --check`.
+
+## 517e560a 이후 문서 쓰기·목록 갱신 수리
+
+정상 merge `517e560a073ebfde087f4477ba0ea8125b7c25ff`는 부모
+`0b28f8e289d50a0aff35565399395d00907fc107`과
+`67fed84c000c86fb1da12560decea2edd13b47b2`의 유효 변경을 보존한다.
+여기에는 보호 브랜치의 첨부파일 경로 우회 방지 수정도 포함된다.
+이 HEAD의 7489 실행은 실패했다. API 25개·busy 3개는 통과했으나 Projects 22개는
+fork worker 응답 timeout으로 실행되지 않았다. 첨부파일 검증 84038은 21개 통과,
+44.88초, 종료코드 0이었다. 집중 lint·구문 검사도 통과했다.
+승인된 동일 HEAD의 Projects 단독 진단 21052는 기본 timeout과 worker 1개를 유지한 채
+22개를 55.63초에 통과했다. 단독 통과로 원래 통합 실행이나 worker 오류의 RCA를
+완료 처리하지 않는다. 원시 진단 파일은
+`/private/tmp/naruon-1352-merge-evidence.ju75sI/`에 있다.
+원래 통합 출력은 도구 stdout 전사이며 전체 원시 로그를 재구성한 자료가 아니다.
+
+### 문제·재현·소유권
+
+원격 `67fed84c`의 미해결 CodeRabbit 리뷰는 두 문서 처리 함수가
+`loadDataQualitySurface()` 종료 전에 성공을 표시하고, finally에서 활성 작업을
+조건 없이 지운다고 지적했다. 호출부를 더 확인하니 `handleDocumentFileChange`도
+업로드 도중 같은 상태를 초기화했다. 동기 요청 잠금이 없어 한 React 이벤트 배치에서
+두 번 호출하면 disabled 상태가 DOM에 반영되기 전에 POST 두 건이 전송된다.
+
+열린 PR 파일 목록은 네 페이지를 모두 조회했으며 잘린 파일 목록은 없었다.
+#1352 외에 #1404(`a1a3d461`, 미리보기), #1449(`e25a3995`, pending 식별·오류 표시),
+#1472(`d396ac49`, 작업별 문구)가 DataLayout을 변경한다.
+파일 중첩은 현재 활동 중인 writer의 존재·부재를 증명하지 않는다.
+#1449의 provider-write-false·409 충돌·422 입력 오류 처리는 유효 delta로 보존한다.
+이번 로컬 수리가 그 기능까지 구현하거나 완전히 승계한 것은 아니다.
+[승계 조정 댓글](https://github.com/ContextualWisdomLab/naruon/pull/1449#issuecomment-5563458717)은
+정상 승계를 요청하며 자동 close·retarget·소스 복사를 허용하지 않는다.
+
+생산 소스를 바꾸기 전 4174 실행에서 5개 단언이 모두 실패했다(31.07초).
+업로드와 재분석은 갱신 중 잠금이 풀렸고, 동기 연속 호출은 POST를 두 번 보냈다.
+파일 선택 변경도 진행 중인 업로드를 풀었으며, 쓰기 성공 뒤 갱신 실패를 구분하는
+안내와 조회 전용 재시도 경로가 없었다. 테스트는 실제 DataLayout·DocumentRepositoryTab을
+렌더링하되 네트워크 자료는 단위 테스트에만 사용한다. 고객 데이터 저장이나
+실제 브라우저 Visual Inspection의 증거로 삼지 않는다.
+
+### 선택한 수리와 보존할 계약
+
+컴포넌트 내부 요청 식별자를 POST와 후속 갱신이 끝날 때까지 유지한다.
+이벤트 처리 함수가 동기적으로 잠금을 얻고, 해당 요청만 종료 상태를 기록하거나
+잠금을 해제한다. 네이티브 파일 입력 disabled와 처리 함수의 guard를 함께 둬
+진행 중 파일 선택 변경을 막았다. 별도 조회 revision은 늦은 초기 응답이나
+이미 떠난 화면의 응답이 목록·스냅샷 상태를 덮어쓰지 못하게 한다.
+이미 전송한 POST의 효과가 취소되거나 rollback된다고 가정하지 않는다.
+
+스냅샷 실패는 부분 성공으로 남아야 한다.
+`frontend/src/app/data/page.test.tsx`의
+`keeps quality checks usable when evidence snapshot fetch fails`가
+스냅샷은 null이어도 품질 목록은 사용할 수 있어야 한다는 기존 계약이다.
+첫 초안은 스냅샷 실패가 두 자료를 모두 무효화하도록 잘못 바꿨다.
+기존 단위 테스트를 확인해 이를 수정했다. 스냅샷의 좁은 오류 진단은 유지하되
+상태 반영은 동일한 최신 조회 revision으로 검사한다.
+
+새 문구는 “요청 결과를 받았지만 목록을 새로 불러오지 못했습니다.”로,
+외부 시스템 쓰기가 완료됐다고 주장하지 않는다. 조회만 재시도하고 이전 POST 결과는
+보존한다. 응답 종류별 intent·provider 오류 문구는 #1449/#1472의 계약과 이어야 하며,
+문구를 맞추려고 같은 POST를 다시 보내서는 안 된다.
+
+### 검증 결과와 실패 기록
+
+첫 수리 실행 22515는 static busy 1개 통과·생명주기 5개 실패였다(38.38초).
+첫 사례가 기본 5초 timeout에 걸렸고 뒤이어 겹친 act 경고와 DOM 부재가 나타났다.
+경고 필터나 timeout 상향은 적용하지 않았다.
+초기 0초 effect 타이머만 명시적으로 진행하고, 실패 뒤 재시도에는 새 응답을 공급하도록
+테스트를 수정했다. 예상된 503 진단의 내용·횟수를 정확히 검사하며 React 경고 같은
+예상 밖 출력을 정상 증거로 받아들이지 않는다.
+
+3713 실행도 4개 통과·3개 실패, 160.44초였다.
+첫 timeout·후속 act 겹침·최신 화면 반영 전 단언이 남았으므로 타이머 제어만으로
+문제가 해결됐다고 볼 수 없다. `data_lifecycle_scheduled_timers.log`에 원시 출력을 보존했다.
+그 뒤 저장소 기존 페이지 테스트의 Promise-resolved JSON stub을 재사용했다.
+단위 테스트가 의도치 않게 Node Response stream의 스케줄링까지 시험하지 않도록 한 조치다.
+비활성 수집·임베딩·품질 탭만 mock하며 실제 DataLayout·DocumentRepositoryTab·ApiClient는
+그대로 실행한다. 전체 탭 통합이나 HTTP decoder를 검증했다고 주장하지 않는다.
+
+12304는 7개 통과, 48.54초, 종료코드 0, React 경고 없음이었다.
+`data_lifecycle_project_fixture.log`와 종료코드 파일을 보존했다.
+늦은 초기 응답 무시와 조회 재시도 성공 후 목록 복원·오류 제거·busy 해제를 포함하지만,
+이 실행은 뒤에 추가한 unmount 회귀보다 앞선다. 52048의 focused ESLint도 종료코드 0이다.
+73925는 기존 스냅샷 부분 성공 사례 1개를 17.07초에 통과했다. 다른 11개는 선택 대상 밖이었다.
+
+26080은 Data 관련 3파일 20개를 34.96초에 통과했지만, 기존 테스트 두 개에서
+스냅샷 응답 mock 누락으로 오류 진단이 남았다. 이를 깨끗한 GREEN으로 기록하지 않는다.
+두 fixture에 기존 스냅샷 응답을 추가하고 예상 밖 console.error가 없다는 단언을 보강했다.
+앞선 실패를 지우지 않으며 전체 프런트엔드 검사·배포·정상 상태 실제 VI는 여전히 별도 증거가 필요하다.
+
+fixture 보강 후 97315는 동일한 Data 관련 3파일 20개를 37.32초에 통과했다.
+종료코드는 0이며 예상 밖 stderr·React 경고는 없었다.
+원시 파일은 `data_lifecycle_complete_fixture.log`, 종료코드 파일은
+`data_lifecycle_complete_fixture_exit.txt`이다. 실행 명령은 frontend에서
+`corepack pnpm exec vitest run --maxWorkers=1 src/components/DataLayout.document-lifecycle.test.tsx src/components/data-layout/DocumentRepositoryTab.busy-state.test.tsx src/app/data/page.test.tsx`이며
+`env -i PATH="$PATH"`로 실행했다. 기본 timeout을 유지했고 제외한 Data 테스트는 없다.
+
+### 공식 문서 근거
+
+React의 ref 계약은 렌더링 상태를 동기 잠금처럼 쓰지 않고 이벤트 처리 함수에서
+가변 요청 식별자를 유지하는 방법을 설명한다. effect 문서는 오래된 비동기 결과를
+무시하는 것과 외부 작업 자체를 취소하는 것을 구별한다.
+Context7은 quota 제한으로 사용할 수 없어 아래 공식 문서를 직접 확인했다.
+이는 구현 방법의 근거이며 모든 예외 상황이나 이 구현의 검증 완료를 뜻하지 않는다.
+
+React. (n.d.). *useRef*. Retrieved September 7, 2026, from
+https://react.dev/reference/react/useRef
+
+React. (n.d.). *useEffect*. Retrieved September 7, 2026, from
+https://react.dev/reference/react/useEffect

@@ -6,6 +6,7 @@ import logging
 import re
 import unicodedata
 import urllib.parse
+import ipaddress
 import uuid
 from collections import Counter
 from collections.abc import Callable
@@ -773,7 +774,7 @@ async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
             if url_str == original:
                 break
 
-        import ipaddress
+
         try:
             parsed = urllib.parse.urlsplit(url_str)
             if not parsed.netloc or not parsed.hostname:
@@ -821,7 +822,7 @@ async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
 
                     if valid_labels:
                         is_valid_host = True
-                except Exception:
+                except Exception:  # nosec B110 - We safely ignore parsing/encoding exceptions as it just means the host is invalid.
                     # IDNA encoding errors or other issues
                     pass
 

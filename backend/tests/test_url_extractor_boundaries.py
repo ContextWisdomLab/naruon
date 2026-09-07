@@ -12,12 +12,14 @@ async def test_url_extractor_preserves_boundaries_and_rejects_malformed_urls():
         "unicode https://예시.한국/경로, "
         'quoted "https://example.com/quoted", '
         "parenthesized (https://example.com/docs_(v2)). "
+        "single-label http://intranet/health "
         "hostless http:///path "
         "bad-port https://example.com:bad/path "
         "scheme-only http:// "
         "duplicate https://example.com/docs#intro "
         "malformed-dots https://example..com/path "
-        "malformed-hyphen https://-example.com/path "
+        "malformed-leading-hyphen https://-example.com/path "
+        "malformed-trailing-hyphen https://example-.com/path "
         "malformed-underscore https://example_test.com/path "
         "malformed-percent https://example%zz.com/path "
         "malformed-ip https://999.999.999.999/path"
@@ -32,6 +34,7 @@ async def test_url_extractor_preserves_boundaries_and_rejects_malformed_urls():
             "https://예시.한국/경로",
             "https://example.com/quoted",
             "https://example.com/docs_(v2)",
+            "http://intranet/health",
         ],
-        "url_count": 5,
+        "url_count": 6,
     }

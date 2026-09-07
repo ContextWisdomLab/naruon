@@ -358,6 +358,7 @@ const task = {
   source_type: "email",
   source_email_id: String(sourceEmail.id),
   related_thread_id: sourceEmail.thread_id,
+  created_at: "2026-07-02T05:00:00Z",
   updated_at: "2026-07-02T05:00:00Z",
 };
 
@@ -369,6 +370,7 @@ const knowledgeTask = {
   source_type: "self_sent_knowledge",
   source_email_id: String(sourceEmail.id),
   related_thread_id: sourceEmail.thread_id,
+  created_at: "2026-07-02T05:10:00Z",
   updated_at: "2026-07-02T05:10:00Z",
 };
 
@@ -380,6 +382,7 @@ const webdavTask = {
   source_type: "webdav",
   source_email_id: String(sourceEmail.id),
   related_thread_id: sourceEmail.thread_id,
+  created_at: "2026-07-02T05:20:00Z",
   updated_at: "2026-07-02T05:20:00Z",
 };
 
@@ -777,12 +780,13 @@ function routeJson(route, body, status = 200) {
   });
 }
 
-async function installRoutes(page) {
+export async function installRoutes(page) {
   let emailSendCount = 0;
   let savedAccountConfig = { ...accountConfig };
   let savedLlmProviders = [{ ...llmProvider }];
 
   await page.route("**/auth/session", (route) => routeJson(route, {
+    authenticated: true,
     claims: {
       userId: "smoke-user",
       organizationId: "org-acme",
@@ -862,6 +866,7 @@ async function installRoutes(page) {
       });
     }
     if (endpoint === "/api/webdav/folders") return routeJson(route, [projectFolder]);
+    if (endpoint === "/api/projects/candidates") return routeJson(route, { candidates: [] });
     if (endpoint === "/api/webdav/accounts") return routeJson(route, [webdavAccount]);
     if (endpoint === "/api/webdav/writeback-intent") {
       return routeJson(route, {
@@ -1226,13 +1231,15 @@ async function runCriticalInteractionSmoke(page, routeSpec, viewportSpec) {
     await projectContent.getByText("저장소 경계 확인됨", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
     await projectContent.getByText("WebDAV 폴더 근거", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
     await projectContent.getByText("스레드 근거 연결됨", { exact: true }).first().waitFor({ state: "visible", timeout: 10_000 });
-    await page.getByRole("region", { name: "프로젝트 작업 목록" }).getByText("문서 근거", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
+    await page.getByRole("region", { name: "조회된 작업 목록" }).getByText("문서 근거", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
     const evidenceEditor = page.getByRole("region", { name: "프로젝트 근거 편집" });
-    await evidenceEditor.getByLabel("프로젝트 근거 메모", { exact: true }).fill("20B 구매 심사용 WebDAV 경계와 이사회 승인 근거를 함께 저장합니다.");
+    await evidenceEditor.getByLabel("프로젝트 근거 메모", { exact: true }).fill("검토할 근거를 미저장 메모로 작성합니다.");
     await evidenceEditor.getByLabel("연결 원본 변경", { exact: true }).selectOption({ label: "문서 근거" });
-    await evidenceEditor.getByRole("button", { name: "근거 저장", exact: true }).click();
-    await evidenceEditor.getByText("프로젝트 근거가 저장되었습니다: 문서 근거", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
-    await evidenceEditor.getByText("20B 구매 심사용 WebDAV 경계와 이사회 승인 근거를 함께 저장합니다.", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
+    if (await evidenceEditor.getByRole("button", { name: "근거 저장", exact: true }).isEnabled()) {
+      throw new Error("Project evidence saving must remain unavailable without a persistence contract");
+    }
+    await evidenceEditor.getByText("메모 저장은 아직 지원하지 않습니다. 입력 내용은 이 화면에서만 유지되며 새로고침하면 사라집니다.", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
+    await evidenceEditor.getByText("검토할 근거를 미저장 메모로 작성합니다.", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
     const connectedResources = page.getByRole("region", { name: "연결된 자원" });
     await connectedResources.getByText("원본 종류", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
     await connectedResources.locator("li").filter({ hasText: "원본 종류" }).getByText("3", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
@@ -1246,8 +1253,8 @@ async function runCriticalInteractionSmoke(page, routeSpec, viewportSpec) {
       evidence("projects:verify-document-source-attachment"),
       evidence("projects:edit-evidence-note"),
       evidence("projects:mutate-evidence-source"),
-      evidence("projects:save-evidence-note"),
-      evidence("projects:verify-evidence-save-state"),
+      evidence("projects:verify-evidence-save-unavailable"),
+      evidence("projects:verify-unsaved-evidence-preview"),
       evidence("projects:verify-source-type-count"),
     ];
   }

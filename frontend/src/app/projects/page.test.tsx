@@ -86,6 +86,13 @@ describe("ProjectsPage", () => {
             organization_id: "org-acme",
           },
           {
+            folder_uid: "webdav_folder_second",
+            project_name: "Second Project",
+            webdav_path: "/Projects/Second_Project",
+            owner_user_id: "alice",
+            organization_id: "org-acme",
+          },
+          {
             folder_uid: "webdav_folder_rival",
             project_name: "Rival Project",
             webdav_path: "/Projects/Rival_Project",
@@ -144,13 +151,20 @@ describe("ProjectsPage", () => {
     expect(container.textContent).not.toContain("/Projects/Naruon_Roadmap_2026");
     expect(container.textContent).toContain("외부 저장소 쓰기는 별도 승인 전까지 실행하지 않습니다");
     expect(container.textContent).toContain("WebDAV 폴더 근거");
+    expect(container.textContent).toContain("진행률 확인 불가");
+    expect(container.textContent).not.toContain("50%");
+    expect(container.querySelectorAll('progress')).toHaveLength(0);
+    const secondProjectButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Second Project') && button.textContent?.includes('WebDAV 프로젝트'));
+    expect(secondProjectButton?.textContent).toContain("진행률 확인 불가");
+    expect(secondProjectButton?.textContent).toContain("상태 확인 불가");
+    expect(container.querySelector('[aria-label="프로젝트 개요"]')?.textContent).toContain("상태 확인 불가");
     expect(container.textContent).toContain("리소스 배정 검토 회의");
     expect(container.textContent).toContain("스레드 근거 연결됨");
     expect(container.textContent).not.toContain("thread-q2");
     expect(container.textContent).not.toContain("<q2@example.com>");
     expect(container.textContent).toContain("프로젝트 액션");
     expect(container.textContent).toContain("새 프로젝트");
-    expect(container.textContent).toContain("마일스톤 추가");
+    expect(container.textContent).toContain("작업 보드 열기");
     expect(container.textContent).toContain("의사결정 추가");
     expect(container.textContent).toContain("관련 문서/메일 연결");
     expect(container.textContent).not.toContain("Naruon 2.0 런칭");
@@ -161,6 +175,8 @@ describe("ProjectsPage", () => {
     expect(evidenceNote).not.toBeNull();
     expect(evidenceSource).not.toBeNull();
     expect(saveButton).toBeDefined();
+    expect(saveButton?.disabled).toBe(true);
+    expect(container.textContent).toContain("메모 저장은 아직 지원하지 않습니다. 입력 내용은 이 화면에서만 유지되며 새로고침하면 사라집니다.");
 
     await act(async () => {
       setNativeValue(evidenceNote!, "이사회 승인 근거와 WebDAV 경계를 함께 검토합니다.");
@@ -173,7 +189,8 @@ describe("ProjectsPage", () => {
     await act(async () => {
       saveButton!.click();
     });
-    expect(container.textContent).toContain("프로젝트 근거가 저장되었습니다: 문서 근거");
+    expect(container.textContent).not.toContain("프로젝트 근거가 저장되었습니다");
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
     expect(container.textContent).toContain("이사회 승인 근거와 WebDAV 경계를 함께 검토합니다.");
   });
 
@@ -405,6 +422,9 @@ describe("ProjectsPage", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/projects/project_candidate%3Aalpha/traceability", expect.objectContaining({ headers: expect.any(Object) }));
     expect(fetchMock).toHaveBeenCalledWith("/api/projects/project_candidate%3Aalpha/evidence/requirement%3Aalpha-payment-retry", expect.objectContaining({ headers: expect.any(Object) }));
     expect(container.textContent).toContain("Project: Alpha Checkout");
+    expect(container.textContent).toContain("진행률 확인 불가");
+    expect(container.textContent).not.toContain("87%");
+    expect(container.querySelectorAll('progress')).toHaveLength(0);
     expect(container.textContent).toContain("프로젝트 관계 맥락");
     expect(container.textContent).toContain("Traceability Map");
     expect(container.textContent).toContain("Evidence Inspector");
@@ -475,8 +495,67 @@ describe("ProjectsPage", () => {
     expect(container.textContent).not.toContain("correction-alpha-1");
   });
 
-  it("renders an actionable fallback when project evidence fails", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => jsonResponse({ detail: "failed" }, false, 500)));
+  it("does not render empty metrics while project sources are pending", async () => {
+    const pendingSources = Promise.withResolvers<void>();
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      await pendingSources.promise;
+      const requestPath = String(input);
+      if (requestPath === "/auth/session") return jsonResponse({ authenticated: true, claims: { userId: "alice", organizationId: "org-acme" } });
+      if (requestPath === "/api/projects/candidates") return jsonResponse({ candidates: [] });
+      return jsonResponse([]);
+    }));
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => { root?.render(<ProjectsPage />); });
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("불러오는 중");
+    expect(container.textContent).not.toContain("원본 연결 작업 대기열");
+    expect(container.querySelector('[aria-label="조회된 작업 현황"]')).toBeNull();
+    await act(async () => { pendingSources.resolve(); });
+    await flushAsyncWork();
+    expect(container.textContent).toContain("원본 연결 작업 대기열");
+    expect(container.querySelector('[aria-label="조회된 작업 현황"]')).not.toBeNull();
+  });
+
+  it.each([
+    { sourcePath: "/api/webdav/folders", responseBody: {} },
+    { sourcePath: "/api/webdav/folders", responseBody: [null] },
+    { sourcePath: "/api/tasks", responseBody: {} },
+    { sourcePath: "/api/tasks", responseBody: [null] },
+    { sourcePath: "/api/tasks", responseBody: [{ id: "task-invalid", title: "Invalid task", status: "unknown", priority: "normal" }] },
+    { sourcePath: "/api/projects/candidates", responseBody: {} },
+    { sourcePath: "/api/projects/candidates", responseBody: { candidates: [null] } },
+    { sourcePath: "/api/projects/candidates", responseBody: { candidates: [{ project_uid: "project-invalid", title: {} }] } },
+    { sourcePath: "/auth/session", responseBody: { authenticated: false } },
+    { sourcePath: "/auth/session", responseBody: { authenticated: false, claims: { userId: "alice", organizationId: "org-acme" } } },
+  ])("rejects malformed successful response from $sourcePath ($responseBody)", async ({ sourcePath, responseBody }) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const requestPath = String(input);
+      if (requestPath === sourcePath) return jsonResponse(responseBody);
+      if (requestPath === "/auth/session") return jsonResponse({ authenticated: true, claims: { userId: "alice", organizationId: "org-acme" } });
+      if (requestPath === "/api/projects/candidates") return jsonResponse({ candidates: [] });
+      return jsonResponse([]);
+    }));
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => { root?.render(<ProjectsPage />); });
+    await flushAsyncWork();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("프로젝트 근거를 불러오지 못했습니다");
+    expect(container.querySelector('[aria-label="조회된 작업 현황"]')).toBeNull();
+    expect(container.textContent).not.toContain("원본 연결 작업 대기열");
+  });
+
+  it.each(["/api/webdav/folders", "/api/tasks", "/api/projects/candidates", "/auth/session"])("keeps %s failure distinct from empty data and retries", async (failedPath) => {
+    let sourceUnavailable = true;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const requestPath = String(input);
+      if (requestPath === failedPath && sourceUnavailable) return jsonResponse({ detail: "failed" }, false, 500);
+      if (requestPath === "/auth/session") return jsonResponse({ authenticated: true, claims: { userId: "alice", organizationId: "org-acme" } });
+      if (requestPath === "/api/projects/candidates") return jsonResponse({ candidates: [] });
+      if (requestPath === "/api/webdav/folders" || requestPath === "/api/tasks") return jsonResponse([]);
+      return jsonResponse({}, false, 404);
+    }));
 
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -491,10 +570,60 @@ describe("ProjectsPage", () => {
     expect(
       Array.from(container.querySelectorAll('a[href="/data"]')).some((link) => link.textContent?.includes("원본 연결") || link.textContent?.includes("새 프로젝트")),
     ).toBe(true);
+    expect(container.textContent).not.toContain("원본 연결 작업 대기열");
+    expect(container.querySelector('[aria-label="조회된 작업 현황"]')).toBeNull();
+    expect(container.textContent).not.toContain("서명된 개인 워크스페이스");
+    const retryButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "다시 불러오기");
+    expect(retryButton).toBeDefined();
+    sourceUnavailable = false;
+    await act(async () => { retryButton?.click(); });
+    await flushAsyncWork();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(container.textContent).toContain("원본 연결 작업 대기열");
+    expect(container.querySelector('[aria-label="조회된 작업 현황"]')).not.toBeNull();
   });
 
-  it("renders an actionable empty state when a project has no linked tasks", async () => {
+  it.each([
+    { taskStatuses: [], expectedProgress: null },
+    { taskStatuses: ['open'], expectedProgress: 0 },
+    { taskStatuses: ['done', 'open'], expectedProgress: 50 },
+    { taskStatuses: ['done'], expectedProgress: 100 },
+  ])("uses only the returned task queue denominator: $taskStatuses", async ({ taskStatuses, expectedProgress }) => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const requestPath = String(input);
+      if (requestPath === '/auth/session') return jsonResponse({ authenticated: true, claims: { userId: 'alice', organizationId: 'org-acme' } });
+      if (requestPath === '/api/webdav/folders') return jsonResponse([]);
+      if (requestPath === '/api/projects/candidates') return jsonResponse({ candidates: [] });
+      if (requestPath === '/api/tasks') return jsonResponse(taskStatuses.map((taskStatus, taskIndex) => ({
+        id: `task-queue-${taskIndex}`, title: '조회된 작업 검토', status: taskStatus,
+        priority: 'normal', source_type: 'email', source_email_id: null, related_thread_id: null,
+        created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z',
+      })));
+      return jsonResponse({}, false, 404);
+    }));
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => { root?.render(<ProjectsPage />); });
+    await flushAsyncWork();
+    expect(container.textContent).toContain('원본 연결 작업 대기열');
+    const progressElements = container.querySelectorAll<HTMLProgressElement>('progress');
+    if (expectedProgress === null) {
+      expect(progressElements).toHaveLength(0);
+      expect(container.textContent).toContain('진행률 확인 불가');
+      expect(container.textContent).not.toContain('0%');
+    } else {
+      expect(progressElements).toHaveLength(2);
+      expect(container.textContent).toContain(`조회된 ${taskStatuses.length}건 중 ${taskStatuses.filter((taskStatus) => taskStatus === 'done').length}건 완료. 프로젝트별 집계가 아닙니다.`);
+      for (const progressElement of progressElements) {
+        expect(progressElement.value).toBe(expectedProgress);
+        expect(progressElement.max).toBe(100);
+        expect(progressElement.getAttribute('aria-label')).toBe('조회된 작업 완료율');
+      }
+    }
+  });
+
+  it("renders an actionable empty state when no returned tasks are registered", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo | URL) => {
@@ -532,9 +661,11 @@ describe("ProjectsPage", () => {
     await flushAsyncWork();
 
     expect(container.textContent).toContain("Evidence Empty Project");
-    expect(container.textContent).toContain("연결된 실행 항목이 아직 없습니다.");
-    expect(container.textContent).toContain("작업 API에 프로젝트와 연결된 메일, 문서, 스레드 근거");
-    expect(container.querySelector('[role="status"]')?.textContent).toContain("연결된 실행 항목");
+    expect(container.textContent).toContain("진행률 확인 불가");
+    expect(container.textContent).not.toContain("0%");
+    expect(container.textContent).toContain("등록된 작업이 아직 없습니다.");
+    expect(container.textContent).toContain("프로젝트별 작업 연결은 아직 지원하지 않습니다.");
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("등록된 작업");
     expect(Array.from(container.querySelectorAll('a[href="/tasks"]')).some((link) => link.textContent?.includes("작업 보드 열기"))).toBe(true);
     expect(Array.from(container.querySelectorAll('a[href="/search"]')).some((link) => link.textContent?.includes("관련 근거 찾기"))).toBe(true);
   });

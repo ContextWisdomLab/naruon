@@ -7,11 +7,12 @@ permissions:
   contents: read
 
 concurrency:
-  # One live mailbox/DAV smoke at a time. Do not cancel an in-flight run:
+  # One live mailbox/DAV smoke at a time. Keep every requested run queued:
   # this workflow holds seeded credentials and talks to customer-adjacent
   # servers, and it is not a merge/release/deploy publication path.
   group: mail-smoke-${{ github.repository }}
   cancel-in-progress: false
+  queue: max
 
 jobs:
   smoke:

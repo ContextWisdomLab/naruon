@@ -24,6 +24,42 @@ EXPOSE 8000
 
 CMD ["python", "scripts/start_backend.py", "--host", "0.0.0.0", "--port", "8000"]
 
+ARG OCI_IMAGE_CREATED=""
+ARG OCI_IMAGE_AUTHORS="Seongho Bae"
+ARG OCI_IMAGE_URL="https://github.com/Seongho-Bae/naruon"
+ARG OCI_IMAGE_DOCUMENTATION="https://github.com/Seongho-Bae/naruon#readme"
+ARG OCI_IMAGE_SOURCE="https://github.com/Seongho-Bae/naruon"
+ARG OCI_IMAGE_VERSION="0.14.4"
+ARG OCI_IMAGE_REVISION=""
+ARG OCI_IMAGE_VENDOR="Seongho-Bae"
+ARG OCI_IMAGE_LICENSES="LicenseRef-Naruon-Proprietary"
+ARG OCI_IMAGE_REF_NAME=""
+ARG OCI_IMAGE_TITLE="naruon backend"
+ARG OCI_IMAGE_DESCRIPTION="Naruon FastAPI backend runtime image"
+ARG OCI_IMAGE_BASE_DIGEST="sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360c0988bcc5c2bc"
+ARG OCI_IMAGE_BASE_NAME="docker.io/library/python:3.14-slim@sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360c0988bcc5c2bc"
+
+# Defaults identify the base image for local backend and combined builds; they
+# do not attest source revision or release provenance. The workflow derives
+# and overrides both values from the exact first FROM instruction, while
+# repository governance tests prevent the reviewed defaults from drifting.
+RUN test -n "$OCI_IMAGE_BASE_DIGEST" && test -n "$OCI_IMAGE_BASE_NAME"
+
+LABEL org.opencontainers.image.created="${OCI_IMAGE_CREATED}" \
+      org.opencontainers.image.authors="${OCI_IMAGE_AUTHORS}" \
+      org.opencontainers.image.url="${OCI_IMAGE_URL}" \
+      org.opencontainers.image.documentation="${OCI_IMAGE_DOCUMENTATION}" \
+      org.opencontainers.image.source="${OCI_IMAGE_SOURCE}" \
+      org.opencontainers.image.version="${OCI_IMAGE_VERSION}" \
+      org.opencontainers.image.revision="${OCI_IMAGE_REVISION}" \
+      org.opencontainers.image.vendor="${OCI_IMAGE_VENDOR}" \
+      org.opencontainers.image.licenses="${OCI_IMAGE_LICENSES}" \
+      org.opencontainers.image.ref.name="${OCI_IMAGE_REF_NAME}" \
+      org.opencontainers.image.title="${OCI_IMAGE_TITLE}" \
+      org.opencontainers.image.description="${OCI_IMAGE_DESCRIPTION}" \
+      org.opencontainers.image.base.digest="${OCI_IMAGE_BASE_DIGEST}" \
+      org.opencontainers.image.base.name="${OCI_IMAGE_BASE_NAME}"
+
 # Stage 2: Build Frontend
 FROM node:26-slim@sha256:4ebb5ace66f15a24c14c492e01a8beeed4fddf970a856109f5126e703e5fe503 AS frontend-builder
 WORKDIR /app
@@ -51,40 +87,10 @@ RUN pnpm run build
 # non-root context, so no root elevation is needed here.
 FROM backend-runtime AS combined-runtime
 
-ARG OCI_IMAGE_CREATED=""
-ARG OCI_IMAGE_AUTHORS="Seongho Bae"
-ARG OCI_IMAGE_URL="https://github.com/Seongho-Bae/naruon"
-ARG OCI_IMAGE_DOCUMENTATION="https://github.com/Seongho-Bae/naruon#readme"
-ARG OCI_IMAGE_SOURCE="https://github.com/Seongho-Bae/naruon"
-ARG OCI_IMAGE_VERSION="0.14.4"
-ARG OCI_IMAGE_REVISION=""
-ARG OCI_IMAGE_VENDOR="Seongho-Bae"
-ARG OCI_IMAGE_LICENSES="LicenseRef-Naruon-Proprietary"
-ARG OCI_IMAGE_REF_NAME=""
 ARG OCI_IMAGE_TITLE="naruon"
 ARG OCI_IMAGE_DESCRIPTION="Naruon combined FastAPI and Next.js runtime image"
-ARG OCI_IMAGE_BASE_DIGEST="sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360c0988bcc5c2bc"
-ARG OCI_IMAGE_BASE_NAME="docker.io/library/python:3.14-slim@sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360c0988bcc5c2bc"
-
-# Defaults keep local builds provenance-complete. The publishing workflow derives
-# and overrides both values from the exact first FROM instruction, while
-# repository governance tests prevent the reviewed defaults from drifting.
-RUN test -n "$OCI_IMAGE_BASE_DIGEST" && test -n "$OCI_IMAGE_BASE_NAME"
-
-LABEL org.opencontainers.image.created="${OCI_IMAGE_CREATED}" \
-      org.opencontainers.image.authors="${OCI_IMAGE_AUTHORS}" \
-      org.opencontainers.image.url="${OCI_IMAGE_URL}" \
-      org.opencontainers.image.documentation="${OCI_IMAGE_DOCUMENTATION}" \
-      org.opencontainers.image.source="${OCI_IMAGE_SOURCE}" \
-      org.opencontainers.image.version="${OCI_IMAGE_VERSION}" \
-      org.opencontainers.image.revision="${OCI_IMAGE_REVISION}" \
-      org.opencontainers.image.vendor="${OCI_IMAGE_VENDOR}" \
-      org.opencontainers.image.licenses="${OCI_IMAGE_LICENSES}" \
-      org.opencontainers.image.ref.name="${OCI_IMAGE_REF_NAME}" \
-      org.opencontainers.image.title="${OCI_IMAGE_TITLE}" \
-      org.opencontainers.image.description="${OCI_IMAGE_DESCRIPTION}" \
-      org.opencontainers.image.base.digest="${OCI_IMAGE_BASE_DIGEST}" \
-      org.opencontainers.image.base.name="${OCI_IMAGE_BASE_NAME}"
+LABEL org.opencontainers.image.title="${OCI_IMAGE_TITLE}" \
+      org.opencontainers.image.description="${OCI_IMAGE_DESCRIPTION}"
 
 # Runtime Node is copied into an app-owned directory so that no root elevation
 # is required. /app is owned by appuser (set in stage 1) so appuser can write

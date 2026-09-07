@@ -106,9 +106,18 @@ def test_container_images_cover_all_oci_predefined_image_annotations() -> None:
     root_dockerfile = read_repo_text("Dockerfile")
     frontend_dockerfile = read_repo_text("frontend/Dockerfile")
     docker_publish_workflow = read_repo_text(".github/workflows/docker-publish.yml")
+    backend_stage = root_dockerfile.split("\nFROM ", 2)[1]
+    combined_stage = root_dockerfile.split("FROM backend-runtime AS combined-runtime", 1)[1]
+    assert 'ARG OCI_IMAGE_TITLE="naruon backend"' in backend_stage
+    assert 'ARG OCI_IMAGE_DESCRIPTION="Naruon FastAPI backend runtime image"' in backend_stage
+    assert 'ARG OCI_IMAGE_TITLE="naruon"' in combined_stage
+    assert 'ARG OCI_IMAGE_DESCRIPTION="Naruon combined FastAPI and Next.js runtime image"' in combined_stage
+    assert 'org.opencontainers.image.title="${OCI_IMAGE_TITLE}"' in combined_stage
+    assert 'org.opencontainers.image.description="${OCI_IMAGE_DESCRIPTION}"' in combined_stage
 
     for annotation_key in OCI_PREDEFINED_IMAGE_ANNOTATION_KEYS:
         assert annotation_key in root_dockerfile
+        assert annotation_key in backend_stage
         assert annotation_key in frontend_dockerfile
         assert annotation_key in docker_publish_workflow
 

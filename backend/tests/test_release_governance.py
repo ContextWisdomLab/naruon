@@ -762,7 +762,7 @@ def test_frontend_dockerfile_builds_and_starts_production_artifact() -> None:
     assert "ENV POSTCSS_WORKERS=1" in dockerfile
     assert "ENV DISABLE_POSTCSS_WORKERS=true" in dockerfile
     assert (
-        'CMD sh -c "exec ./node_modules/.bin/next start --hostname 0.0.0.0 --port ${PORT:-3000}"'
+        r'CMD ["sh", "-c", "exec ./node_modules/.bin/next start --hostname 0.0.0.0 --port \"${PORT:-3000}\""]'
         in dockerfile
     )
     assert "HEALTHCHECK --interval=30s --timeout=5s" in dockerfile

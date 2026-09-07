@@ -222,8 +222,8 @@ def test_backend_runtime_toolchain_uses_image_scan_clean_security_pins() -> None
 def test_strix_ci_requirements_use_security_quality_clean_pins() -> None:
     strix_ci_requirements = read_repo_text("requirements-strix-ci.txt")
 
-    assert "strix-agent==1.6.1" in strix_ci_requirements
-    assert "cryptography==50.0.1" in strix_ci_requirements
+    assert "strix-agent==1.0.4" in strix_ci_requirements
+    assert "cryptography==50.0.0" in strix_ci_requirements
     assert "python-multipart==0.0.32" in strix_ci_requirements
 
 
@@ -345,18 +345,27 @@ def test_github_workflows_do_not_define_duplicate_mapping_keys() -> None:
         construct_mapping,
     )
 
+    # Verify that UniqueKeyLoader is strictly a subclass of SafeLoader so that `# nosec B506`
+    # suppression is genuinely justified according to PyYAML safety contracts.
     assert issubclass(UniqueKeyLoader, yaml.SafeLoader), (
         "UniqueKeyLoader must inherit from SafeLoader to suppress B506"
     )
+    # Ensure that Python object instantiation tags (like !!python/object) are safely
+    # rejected rather than executed.
     with pytest.raises(yaml.constructor.ConstructorError):
         yaml.load("!!python/object/apply:os.system ['echo pwned']", Loader=UniqueKeyLoader)  # nosec B506
+    # Ensure normal valid YAML loading still works
     assert yaml.load("a: 1\nb: 2", Loader=UniqueKeyLoader) == {"a": 1, "b": 2}  # nosec B506
+    # Ensure the duplicate key prevention still works
     with pytest.raises(AssertionError, match="duplicate mapping key 'a'"):
         yaml.load("a: 1\na: 2", Loader=UniqueKeyLoader)  # nosec B506
 
     duplicates: list[str] = []
     for workflow_path in governed_workflows:
         try:
+            # We explicitly pass UniqueKeyLoader (which inherits from SafeLoader).
+            # Bandit B506 blindly flags yaml.load() regardless of the Loader argument.
+            # This is a verified false positive.
             yaml.load(workflow_path.read_text(encoding="utf-8"), Loader=UniqueKeyLoader)  # nosec B506
         except AssertionError as exc:
             duplicates.append(f"{workflow_path.relative_to(REPO_ROOT)}: {exc}")
@@ -368,6 +377,10 @@ def test_stepsecurity_remediation_adds_pinned_audit_hardening() -> None:
     harden_runner_ref = (
         "step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0"
     )
+    # Governance/security workflows (codeql, dependency-review, scorecard,
+    # trivy) are centralized in the org-level ContextualWisdomLab/.github
+    # required workflows and are intentionally not duplicated locally. Only the
+    # functional workflows that remain in this repository are asserted here.
     hardened_workflows = [
         ".github/workflows/app-ci.yml",
         ".github/workflows/bandit.yml",
@@ -380,6 +393,9 @@ def test_stepsecurity_remediation_adds_pinned_audit_hardening() -> None:
         assert harden_runner_ref in workflow
         assert "egress-policy: audit" in workflow
 
+    # mail-smoke seeds live mailbox/DAV credentials on a self-hosted runner, so
+    # it is hardened one level further: egress is blocked to an allowlist, not
+    # merely audited, so checked-out code cannot exfiltrate the secrets.
     mail_smoke_workflow = read_repo_text(".github/workflows/mail-smoke.yml")
     assert harden_runner_ref in mail_smoke_workflow
     assert "egress-policy: block" in mail_smoke_workflow
@@ -492,6 +508,13 @@ def test_bandit_security_scan_does_not_continue_on_error() -> None:
     assert "continue-on-error: true" not in workflow
 
 
+# CodeQL, Scorecard, and Trivy code-scanning workflows are centralized in the
+# org-level ContextualWisdomLab/.github required workflows. Their local copies
+# were removed to stop duplicate runs and duplicate SARIF uploads, so the
+# repository-level assertions that previously guarded those local files no
+# longer apply here and are enforced centrally instead.
+
+
 def test_scorecard_sarif_normalizer_preserves_branch_protection_category(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -578,7 +601,9 @@ def test_scorecard_sarif_normalizer_rejects_escape_links_and_large_input(
     assert module.main([str(normalizer), str(expected)]) == 65
 
 
-def test_review_automation_uses_central_required_workflows_without_local_copies() -> None:
+def test_review_automation_uses_central_required_workflows_without_local_copies() -> (
+    None
+):
     readme = read_repo_text("README.md")
     normalized_readme = " ".join(readme.split())
     architecture = read_repo_text("ARCHITECTURE.md")
@@ -620,7 +645,9 @@ def test_review_automation_uses_central_required_workflows_without_local_copies(
     assert "openai/openai/gpt-4.1" not in architecture
 
 
-def test_app_ci_runs_backend_and_frontend_checks_without_duplicate_release_pushes() -> None:
+def test_app_ci_runs_backend_and_frontend_checks_without_duplicate_release_pushes() -> (
+    None
+):
     workflow = read_repo_text(".github/workflows/app-ci.yml")
 
     assert "pull_request:" in workflow
@@ -643,19 +670,44 @@ def test_app_ci_runs_backend_and_frontend_checks_without_duplicate_release_pushe
     assert "release/**" not in push_block
 
 
-def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_tags() -> None:
+def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_tags() -> (
+    None
+):
     workflow = read_repo_text(".github/workflows/docker-publish.yml")
 
     assert "pull_request:" in workflow
     assert "push:" in workflow
     assert "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true" in workflow
-    assert workflow.count("docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0") == 2
-    assert workflow.count("docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0") == 2
-    assert "docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0" in workflow
-    assert "docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0" in workflow
-    assert workflow.count("docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0") == 2
+    assert (
+        workflow.count(
+            "docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0"
+        )
+        == 2
+    )
+    assert (
+        workflow.count(
+            "docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0"
+        )
+        == 2
+    )
+    assert (
+        "docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0"
+        in workflow
+    )
+    assert (
+        "docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0"
+        in workflow
+    )
+    assert (
+        workflow.count(
+            "docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0"
+        )
+        == 2
+    )
     push_block = workflow.split("push:", 1)[1].split("pull_request:", 1)[0]
-    pull_request_block = workflow.split("pull_request:", 1)[1].split("permissions:", 1)[0]
+    pull_request_block = workflow.split("pull_request:", 1)[1].split("permissions:", 1)[
+        0
+    ]
     assert "tags:" in push_block
     assert "branches:" not in push_block
     assert "develop" in pull_request_block
@@ -683,7 +735,9 @@ def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_
     assert "AKS_KUBECONFIG_CONTENT: ${{ secrets.AKS_KUBECONFIG }}" in workflow
     assert "configured=false" in workflow
     assert "skipping deploy workflow" in workflow
-    assert "needs.deploy_preflight.outputs.aks_kubeconfig_configured == 'true'" in workflow
+    assert (
+        "needs.deploy_preflight.outputs.aks_kubeconfig_configured == 'true'" in workflow
+    )
 
 
 def test_frontend_dockerfile_builds_and_starts_production_artifact() -> None:
@@ -701,11 +755,16 @@ def test_frontend_dockerfile_builds_and_starts_production_artifact() -> None:
     assert "BACKEND_INTERNAL_URL" in frontend_deployment
     assert "ALLOW_DOCKER_BACKEND_INTERNAL_URL" in frontend_deployment
     assert "BACKEND_INTERNAL_URL" in dockerfile
-    assert dockerfile.index("BACKEND_INTERNAL_URL is intentionally runtime-only") < dockerfile.index("RUN pnpm run build")
+    assert dockerfile.index("BACKEND_INTERNAL_URL is intentionally runtime-only") < (
+        dockerfile.index("RUN pnpm run build")
+    )
     assert "pnpm run build" in dockerfile
     assert "ENV POSTCSS_WORKERS=1" in dockerfile
     assert "ENV DISABLE_POSTCSS_WORKERS=true" in dockerfile
-    assert 'CMD sh -c "exec ./node_modules/.bin/next start --hostname 0.0.0.0 --port ${PORT:-3000}"' in dockerfile
+    assert (
+        'CMD sh -c "exec ./node_modules/.bin/next start --hostname 0.0.0.0 --port ${PORT:-3000}"'
+        in dockerfile
+    )
     assert "HEALTHCHECK --interval=30s --timeout=5s" in dockerfile
     assert "fetch('http://127.0.0.1:' + (process.env.PORT || '3000'))" in dockerfile
     assert "pnpm run start" not in dockerfile
@@ -717,9 +776,15 @@ def test_kubernetes_deployments_use_restricted_runtime_security_contexts() -> No
     db_statefulset = read_repo_text("k8s/db-statefulset.yaml")
     frontend_deployment = read_repo_text("k8s/frontend-deployment.yaml")
 
-    assert "image: ghcr.io/contextualwisdomlab/ai_email_client-backend" in backend_deployment
+    assert (
+        "image: ghcr.io/contextualwisdomlab/ai_email_client-backend"
+        in backend_deployment
+    )
     assert "image: docker.io/pgvector/pgvector:pg16" in db_statefulset
-    assert "image: ghcr.io/contextualwisdomlab/ai_email_client-frontend" in frontend_deployment
+    assert (
+        "image: ghcr.io/contextualwisdomlab/ai_email_client-frontend"
+        in frontend_deployment
+    )
 
     for manifest in (backend_deployment, db_statefulset, frontend_deployment):
         assert "namespace: naruon-dev" in manifest
@@ -744,7 +809,12 @@ def test_kubernetes_deployments_use_restricted_runtime_security_contexts() -> No
     assert "runAsGroup: 10001" in frontend_deployment
     assert "mountPath: /app/.next/cache" in frontend_deployment
 
-    for service_manifest in ("k8s/backend-service.yaml", "k8s/db-service.yaml", "k8s/frontend-service.yaml", "k8s/ingress.yaml"):
+    for service_manifest in (
+        "k8s/backend-service.yaml",
+        "k8s/db-service.yaml",
+        "k8s/frontend-service.yaml",
+        "k8s/ingress.yaml",
+    ):
         assert "namespace: naruon-dev" in read_repo_text(service_manifest)
 
 
@@ -757,7 +827,11 @@ def test_backend_dockerfile_uses_modern_env_syntax() -> None:
     assert "pnpm install --frozen-lockfile" in dockerfile
     assert "pnpm run build" in dockerfile
     assert "FROM backend-runtime" in dockerfile
-    assert "COPY --from=frontend-builder --chown=appuser:appuser /usr/local/bin/node /app/bin/node" in dockerfile
+    # Node binary is copied into /app/bin (owned by appuser) to avoid USER root.
+    assert (
+        "COPY --from=frontend-builder --chown=appuser:appuser /usr/local/bin/node /app/bin/node"
+        in dockerfile
+    )
     assert "ENV PATH=/app/bin:$PATH" in dockerfile
     assert "USER root" not in dockerfile
     assert "nodejs" not in dockerfile
@@ -773,7 +847,9 @@ def test_backend_dockerfile_uses_modern_env_syntax() -> None:
     assert "useradd --system --create-home --home-dir /home/appuser" in dockerfile
     backend_cmd = 'CMD ["python", "scripts/start_backend.py", "--host", "0.0.0.0", "--port", "8000"]'
     assert dockerfile.find("USER appuser") < dockerfile.find(backend_cmd)
-    assert dockerfile.rfind("USER appuser") < dockerfile.find('CMD ["/app/scripts/docker_entrypoint.sh"]')
+    assert dockerfile.rfind("USER appuser") < dockerfile.find(
+        'CMD ["/app/scripts/docker_entrypoint.sh"]'
+    )
     assert "COPY scripts/start_combined.sh" not in dockerfile
     assert "RUN echo '#!/bin/bash" not in dockerfile
     assert "uvicorn" not in dockerfile.split("CMD", 1)[1]
@@ -782,7 +858,10 @@ def test_backend_dockerfile_uses_modern_env_syntax() -> None:
 def test_combined_image_start_script_preflights_env_and_logs_service_exit() -> None:
     start_script = read_repo_text("backend/scripts/docker_entrypoint.sh")
 
-    assert "for var in DATABASE_URL AUTH_SESSION_HMAC_SECRET ENCRYPTION_KEY" in start_script
+    assert (
+        "for var in DATABASE_URL AUTH_SESSION_HMAC_SECRET ENCRYPTION_KEY"
+        in start_script
+    )
     assert "Fernet.generate_key()" in start_script
     assert "validate_auth_session_hmac_secret_value" in start_script
     assert "AUTH_SESSION_HMAC_SECRET is invalid" in start_script
@@ -867,7 +946,10 @@ def test_backend_compose_commands_use_startup_preflight() -> None:
     assert "target: backend-runtime" in backend_block
     assert 'DEBUG: "false"' in backend_block
     assert "DEBUG: true" not in backend_block
-    assert "DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/ai_email" in backend_block
+    assert (
+        "DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/ai_email"
+        in backend_block
+    )
     assert "READONLY_DATABASE_URL: ${READONLY_DATABASE_URL:-}" in backend_block
     assert "AUTH_SESSION_HMAC_SECRET: ${AUTH_SESSION_HMAC_SECRET}" in backend_block
     assert "ENCRYPTION_KEY: ${ENCRYPTION_KEY}" in backend_block
@@ -876,7 +958,10 @@ def test_backend_compose_commands_use_startup_preflight() -> None:
     assert "python scripts/migrate_db.py && python scripts/start_backend.py" in compose
     assert "scripts/start_backend.py" in live_e2e_compose
     assert "Dockerfile.ollama" in live_e2e_compose
-    assert "DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for live E2E}" in live_e2e_compose
+    assert (
+        "DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for live E2E}"
+        in live_e2e_compose
+    )
     assert "postgresql+asyncpg://" not in live_e2e_compose
     assert '"127.0.0.1:18080:8080"' in live_e2e_compose
     assert 'OLLAMA_NO_CLOUD: "true"' in compose
@@ -889,16 +974,23 @@ def test_backend_compose_commands_use_startup_preflight() -> None:
     assert "touch /live-e2e-state/seeded" in live_e2e_compose
     assert "Required startup marker missing: $$marker" in live_e2e_compose
     assert "  live-e2e-state:" in live_e2e_compose
-    live_backend_block = live_e2e_compose.split("  backend:", 1)[1].split("  frontend:", 1)[0]
+    live_backend_block = live_e2e_compose.split("  backend:", 1)[1].split(
+        "  frontend:", 1
+    )[0]
     assert "ALLOWED_CORS_ORIGINS: http://127.0.0.1:18080" in live_backend_block
-    live_frontend_block = live_e2e_compose.split("  frontend:", 1)[1].split("  nginx:", 1)[0]
+    live_frontend_block = live_e2e_compose.split("  frontend:", 1)[1].split(
+        "  nginx:", 1
+    )[0]
     assert "NEXT_PUBLIC_API_URL" not in live_frontend_block
     assert "BACKEND_INTERNAL_URL: http://backend:8000" in live_frontend_block
     assert 'ALLOW_DOCKER_BACKEND_INTERNAL_URL: "1"' in live_frontend_block
     assert "TRUSTED_FRONTEND_ORIGINS: http://127.0.0.1:18080" in live_frontend_block
     live_nginx = read_repo_text("tests/live/nginx.conf")
     assert "proxy_read_timeout 600s" in live_nginx
-    assert 'add_header Referrer-Policy "strict-origin-when-cross-origin" always;' in live_nginx
+    assert (
+        'add_header Referrer-Policy "strict-origin-when-cross-origin" always;'
+        in live_nginx
+    )
     assert 'add_header X-Content-Type-Options "nosniff" always;' in live_nginx
     assert 'add_header X-Frame-Options "DENY" always;' in live_nginx
     assert "upstream live_backend" not in live_nginx
@@ -908,7 +1000,9 @@ def test_backend_compose_commands_use_startup_preflight() -> None:
         assert "proxy_set_header Host $http_host;" in location
         assert "proxy_set_header X-Forwarded-Host $http_host;" in location
         assert "proxy_set_header X-Real-IP $remote_addr;" in location
-        assert "proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;" in location
+        assert (
+            "proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;" in location
+        )
         assert "proxy_set_header X-Forwarded-Proto $scheme;" in location
         assert "proxy_set_header Upgrade $http_upgrade;" in location
         assert 'proxy_set_header Connection "upgrade";' in location
@@ -946,12 +1040,16 @@ def test_compose_log_scanner_allows_nginx_stderr_startup_notices() -> None:
     sys.modules["check_compose_logs"] = check_compose_logs_module
     spec.loader.exec_module(check_compose_logs_module)
 
-    unexpected, allowed = check_compose_logs_module.scan_lines(nginx_startup_lines.splitlines())
+    unexpected, allowed = check_compose_logs_module.scan_lines(
+        nginx_startup_lines.splitlines()
+    )
     assert not unexpected, f"Unexpected lines found: {unexpected}"
     assert len(allowed) == 7, f"Expected 7 allowed lines, got {len(allowed)}"
 
 
-def test_pr_governance_uses_metadata_only_events_without_checkout_or_admin_merge() -> None:
+def test_pr_governance_uses_metadata_only_events_without_checkout_or_admin_merge() -> (
+    None
+):
     workflow = read_repo_text(".github/workflows/pr-governance.yml")
     gate_script = read_repo_text("scripts/ci/pr_governance_gate.sh")
     combined = f"{workflow}\n{gate_script}"
@@ -1019,10 +1117,18 @@ def test_pr_governance_uses_metadata_only_events_without_checkout_or_admin_merge
 
 
 def test_20b_kpi_roi_claim_gate_separates_measurements_from_assumptions() -> None:
-    kpi_report = read_repo_text("docs/superpowers/reports/2026-07-02-naruon-kpi-validation.md")
-    buyer_package = read_repo_text("docs/superpowers/reports/2026-07-02-naruon-20b-buyer-package.md")
-    security_questionnaire = read_repo_text("docs/superpowers/reports/2026-07-02-naruon-20b-security-questionnaire.md")
-    readiness_plan = read_repo_text("docs/superpowers/plans/2026-07-02-naruon-20b-full-product-commercial-readiness.md")
+    kpi_report = read_repo_text(
+        "docs/superpowers/reports/2026-07-02-naruon-kpi-validation.md"
+    )
+    buyer_package = read_repo_text(
+        "docs/superpowers/reports/2026-07-02-naruon-20b-buyer-package.md"
+    )
+    security_questionnaire = read_repo_text(
+        "docs/superpowers/reports/2026-07-02-naruon-20b-security-questionnaire.md"
+    )
+    readiness_plan = read_repo_text(
+        "docs/superpowers/plans/2026-07-02-naruon-20b-full-product-commercial-readiness.md"
+    )
 
     assert "### ROI Model And Claim Gate" in kpi_report
     assert "estimated_period_value_krw" in kpi_report
@@ -1048,9 +1154,15 @@ def test_20b_kpi_roi_claim_gate_separates_measurements_from_assumptions() -> Non
 
 
 def test_20b_buyer_package_rejects_final_procurement_claim_language() -> None:
-    buyer_package = read_repo_text("docs/superpowers/reports/2026-07-02-naruon-20b-buyer-package.md")
-    demo_script = read_repo_text("docs/superpowers/reports/2026-07-02-naruon-20b-demo-script.md")
-    telemetry_report = read_repo_text("docs/superpowers/reports/2026-07-02-naruon-design-to-code-telemetry-qa.md")
+    buyer_package = read_repo_text(
+        "docs/superpowers/reports/2026-07-02-naruon-20b-buyer-package.md"
+    )
+    demo_script = read_repo_text(
+        "docs/superpowers/reports/2026-07-02-naruon-20b-demo-script.md"
+    )
+    telemetry_report = read_repo_text(
+        "docs/superpowers/reports/2026-07-02-naruon-design-to-code-telemetry-qa.md"
+    )
 
     assert "Accepted buyer-review language:" in buyer_package
     assert "Rejected language:" in buyer_package

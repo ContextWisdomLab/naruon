@@ -222,8 +222,8 @@ def test_backend_runtime_toolchain_uses_image_scan_clean_security_pins() -> None
 def test_strix_ci_requirements_use_security_quality_clean_pins() -> None:
     strix_ci_requirements = read_repo_text("requirements-strix-ci.txt")
 
-    assert "strix-agent==1.0.4" in strix_ci_requirements
-    assert "cryptography==50.0.0" in strix_ci_requirements
+    assert "strix-agent==1.6.1" in strix_ci_requirements
+    assert "cryptography==50.0.1" in strix_ci_requirements
     assert "python-multipart==0.0.32" in strix_ci_requirements
 
 

@@ -909,6 +909,22 @@ assert_workflow_separates_controller_from_required_check() {
   assert_in_file "github.event_name == 'pull_request_review'" "$workflow"
   assert_in_file '^    name: PR governance metadata controller$' "$workflow"
   assert_not_in_file '^    name: metadata-only gate evaluation$' "$workflow"
+  assert_not_in_file '^  check_run:$' "$workflow"
+  assert_not_in_file 'github.event.check_run' "$workflow"
+  assert_not_in_file 'CHECK_RUN_PR_NUMBER' "$workflow"
+  assert_not_in_file 'labeled' "$workflow"
+  assert_not_in_file 'unlabeled' "$workflow"
+  assert_in_file 'types: \[opened, reopened, synchronize, ready_for_review\]' "$workflow"
+  assert_in_file 'group: pr-governance-' "$workflow"
+  assert_in_file 'github.repository' "$workflow"
+  assert_in_file 'github.event.pull_request.number' "$workflow"
+  assert_in_file 'github.event.workflow_run.pull_requests\[0\].number' "$workflow"
+  assert_in_file 'github.event.inputs.pr_number' "$workflow"
+  assert_in_file 'cancel-in-progress: true' "$workflow"
+  assert_not_in_file 'cancel-in-progress: false' "$workflow"
+  assert_not_in_file 'github.run_id' "$workflow"
+  assert_in_file 'PR governance requires a pull request number' "$workflow"
+  assert_not_in_file 'default_branch' "$workflow"
 }
 
 assert_current_head_check_lookup_uses_maximum_page_size() {

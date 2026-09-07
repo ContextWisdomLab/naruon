@@ -1058,7 +1058,7 @@ def test_pr_governance_uses_metadata_only_events_without_checkout_or_admin_merge
     assert "pull_request_review:" in workflow
     assert "types: [submitted, dismissed]" in workflow
     assert "workflow_run:" in workflow
-    assert "check_run:" in workflow
+    assert "check_run:" not in workflow
     assert "workflow_dispatch:" in workflow
     assert "Strix Security Scan" in workflow
     assert "- strix" not in workflow
@@ -1080,7 +1080,7 @@ def test_pr_governance_uses_metadata_only_events_without_checkout_or_admin_merge
     assert "Trusted governance archive materialization attempt" in workflow
     assert "after 4 attempts" in workflow
     assert 'bash "$GOVERNANCE_GATE"' in workflow
-    assert "CHECK_RUN_PR_NUMBER" in workflow
+    assert "CHECK_RUN_PR_NUMBER" not in workflow
     assert "headRefOid" in gate_script
     assert "mergeStateStatus" in gate_script
     assert "Merge state lookup attempt" in gate_script
@@ -1114,6 +1114,33 @@ def test_pr_governance_uses_metadata_only_events_without_checkout_or_admin_merge
     assert "continue-on-error: true" not in combined
     assert "/dismissals" not in combined.lower()
     assert "dismisspullrequestreview" not in combined.lower()
+
+
+def test_pr_governance_concurrency_cancels_stale_same_pr_runs_without_check_run_trigger() -> (
+    None
+):
+    workflow = read_repo_text(".github/workflows/pr-governance.yml")
+    trigger_block = workflow.split("permissions:", 1)[0]
+    concurrency_block = workflow.split("concurrency:", 1)[1].split("jobs:", 1)[0]
+
+    assert "check_run:" not in trigger_block
+    assert "github.event.check_run" not in workflow
+    assert "CHECK_RUN_PR_NUMBER" not in workflow
+    assert "labeled" not in trigger_block
+    assert "unlabeled" not in trigger_block
+    assert (
+        "types: [opened, reopened, synchronize, ready_for_review]" in trigger_block
+    )
+    assert "group: pr-governance-${{ github.repository }}-${{" in concurrency_block
+    assert "github.event.pull_request.number" in concurrency_block
+    assert "github.event.workflow_run.pull_requests[0].number" in concurrency_block
+    assert "github.event.inputs.pr_number" in concurrency_block
+    assert "github.run_id" not in concurrency_block
+    assert "github.event.check_run" not in concurrency_block
+    assert "cancel-in-progress: true" in concurrency_block
+    assert "cancel-in-progress: false" not in concurrency_block
+    assert "PR governance requires a pull request number" in workflow
+    assert "default_branch" not in workflow
 
 
 def test_20b_kpi_roi_claim_gate_separates_measurements_from_assumptions() -> None:

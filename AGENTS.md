@@ -192,6 +192,13 @@ in this repo.
 - Follow `docs/development/merge-gate-policy.md` for PR gate interpretation.
 - PR Governance must stay metadata-only: no PR-head checkout, no admin merge, no
   review dismissal, and no security-check suppression.
+- PR Governance must not subscribe to `check_run`; that creates a workflow run
+  for every completed check and queues the same PR. CodeRabbit evidence is
+  consumed from `workflow_run` and review events. Concurrency is
+  `pr-governance-${{ github.repository }}-${{ PR number }}` with
+  `cancel-in-progress: true`. PR numbers come only from `pull_request`,
+  `workflow_run`, or `workflow_dispatch` inputs — do not fall back to
+  `github.run_id`.
 - Pending/queued checks, pending CodeRabbit evidence, and a missing structured
   OpenCode fallback approval are wait states, not hard failures. Hard blockers
   should be reported through the idempotent

@@ -13,6 +13,7 @@ async def test_url_extractor_preserves_boundaries_and_rejects_malformed_urls():
         'quoted "https://example.com/quoted", '
         "parenthesized (https://example.com/docs_(v2)). "
         "single-label http://intranet/health "
+        "uppercase HTTPS://EXAMPLE.COM/path "
         "hostless http:///path "
         "bad-port https://example.com:bad/path "
         "scheme-only http:// "
@@ -35,6 +36,7 @@ async def test_url_extractor_preserves_boundaries_and_rejects_malformed_urls():
             "https://example.com/quoted",
             "https://example.com/docs_(v2)",
             "http://intranet/health",
+            "HTTPS://EXAMPLE.COM/path",
         ],
-        "url_count": 6,
+        "url_count": 7,
     }

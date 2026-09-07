@@ -63,6 +63,12 @@ def test_release_workflow_selects_explicit_independent_runtime_targets() -> None
 
     assert workflow_text.count("target: ${{ matrix.target }}") == 2
 
+    validation_steps = workflow["jobs"]["pull_request_image_validation"]["steps"]
+    build_inputs = next(step["with"] for step in validation_steps if step.get("id") == "build")
+    assert build_inputs["outputs"] == "type=cacheonly"
+    assert build_inputs["push"] is False
+    assert build_inputs["platforms"] == "linux/amd64,linux/arm64"
+
     root_dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
     frontend_dockerfile = (REPO_ROOT / "frontend" / "Dockerfile").read_text(
         encoding="utf-8"

@@ -152,6 +152,7 @@ jobs:
           target: ${{ matrix.target }}
           platforms: linux/amd64,linux/arm64
           push: false
+          outputs: type=cacheonly
           build-args: |
             ${{ matrix.build_args }}
             OCI_IMAGE_CREATED=${{ steps.oci.outputs.created }}

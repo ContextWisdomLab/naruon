@@ -243,6 +243,12 @@ in this repo.
 
 #### Verification and protected landing
 
+- 검증 대상 worktree는 모든 실행 핸들의 terminal 결과 회수 → 충돌 표시 제거와
+  `git diff --check` → commit/tree 고정 → 검증 순서로 다룬다. 검증 중에는
+  편집·merge·restack을 하지 않고 읽기 전용 조사만 한다. 관찰 timeout은
+  실행 종료가 아니다. 도중 소스가 바뀐 결과는 로그와 함께 오염된 실행으로
+  분리하고 특정 HEAD의 통과·회귀 근거로 쓰지 않는다. 재발 수리는
+  `.agents/skills/fix-development-mistakes/SKILL.md`를 적용한다.
 - 보안 검사 exit 0만으로 전체 범위를 검증했다고 쓰지 않는다. exact-head
   결과의 실제 manifest 목록에 예상 잠금 파일이 있는지 확인한다. 기본
   탐지에서 빠지는 `requirements-*.txt`도 포함하고 취약 버전 RED와 수정

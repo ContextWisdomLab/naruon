@@ -104,8 +104,8 @@ interface ProjectCorrectionResponse {
 interface ProjectSummary {
   id: string;
   title: string;
-  status: '진행 중' | '대기 중' | '완료' | '검토 중';
-  progress: number;
+  status: '진행 중' | '대기 중' | '완료' | '검토 중' | '상태 확인 불가';
+  progress: number | null;
   category: string;
   evidence: string;
   sourcePath: string | null;
@@ -121,6 +121,7 @@ const projectStatusClass = {
   '진행 중': 'bg-blue-100 text-blue-700',
   '검토 중': 'bg-violet-100 text-violet-700',
   '대기 중': 'bg-slate-100 text-slate-700',
+  '상태 확인 불가': 'bg-slate-100 text-slate-700',
 } satisfies Record<ProjectSummary['status'], string>;
 
 const taskStatusLabel: Record<TaskStatus, string> = {
@@ -207,7 +208,7 @@ function formatDate(value: string) {
 }
 
 function buildProgress(tasks: TicketTask[]) {
-  if (tasks.length === 0) return 0;
+  if (tasks.length === 0) return null;
   return Math.round((tasks.filter((task) => task.status === 'done').length / tasks.length) * 100);
 }
 
@@ -262,13 +263,11 @@ function isAuthorizedToViewProject(folder: ProjectFolder, scope: ProjectAccessSc
 }
 
 function buildProjects(folders: ProjectFolder[], tasks: TicketTask[]): ProjectSummary[] {
-  const progress = buildProgress(tasks);
-  const status = buildProjectStatus(tasks);
-  const folderProjects = folders.map((folder) => ({
+  const folderProjects: ProjectSummary[] = folders.map((folder) => ({
     id: folder.folder_uid,
     title: safeText(folder.project_name, '이름 없는 프로젝트'),
-    status,
-    progress,
+    status: '상태 확인 불가',
+    progress: null,
     category: 'WebDAV 프로젝트',
     evidence: 'project_folders',
     sourcePath: safeText(folder.webdav_path, ''),
@@ -280,8 +279,8 @@ function buildProjects(folders: ProjectFolder[], tasks: TicketTask[]): ProjectSu
     {
       id: 'workspace_task_backlog',
       title: '원본 연결 작업 대기열',
-      status,
-      progress,
+      status: tasks.length ? buildProjectStatus(tasks) : '상태 확인 불가',
+      progress: buildProgress(tasks),
       category: '작업 대기열',
       evidence: 'ticket_tasks',
       sourcePath: null,
@@ -299,16 +298,12 @@ function semanticStatusToProjectStatus(statusCode: string): ProjectSummary['stat
   return '대기 중';
 }
 
-function semanticProgress(candidate: ProjectCandidate) {
-  return Math.max(0, Math.min(99, Math.round(candidate.score * 100)));
-}
-
 function buildSemanticProjects(candidates: ProjectCandidate[]): ProjectSummary[] {
   return candidates.map((candidate) => ({
     id: candidate.project_uid,
     title: safeText(candidate.title, '이름 없는 프로젝트 후보'),
     status: semanticStatusToProjectStatus(candidate.status_code),
-    progress: semanticProgress(candidate),
+    progress: null,
     category: 'Semantic KG 프로젝트',
     evidence: 'project_graph',
     sourcePath: null,
@@ -434,12 +429,12 @@ export function ProjectsLayout() {
   }, [authorizedFolders, semanticCandidates, tasks]);
   const activeProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0];
   const activeSemanticCandidate = semanticCandidates.find((candidate) => candidate.project_uid === activeProject.id) ?? null;
-  const projectTasks = tasks;
-  const openCount = countByStatus(projectTasks, 'open');
-  const inProgressCount = countByStatus(projectTasks, 'in_progress');
-  const blockedCount = countByStatus(projectTasks, 'blocked');
-  const doneCount = countByStatus(projectTasks, 'done');
-  const sourceTypeCount = new Set(projectTasks.map((task) => task.source_type)).size;
+  const loadedTasks = tasks;
+  const openCount = countByStatus(loadedTasks, 'open');
+  const inProgressCount = countByStatus(loadedTasks, 'in_progress');
+  const blockedCount = countByStatus(loadedTasks, 'blocked');
+  const doneCount = countByStatus(loadedTasks, 'done');
+  const sourceTypeCount = new Set(loadedTasks.map((task) => task.source_type)).size;
   const projectEvidenceLabel = getProjectEvidenceLabel(activeProject.evidence);
   const projectBoundaryLabel = getProjectBoundaryLabel(activeProject);
   const workspaceScopeLabel = getWorkspaceScopeLabel(projectScope);
@@ -455,9 +450,9 @@ export function ProjectsLayout() {
   const selectedTraceObject = currentTraceability?.objects.find((item) => item.object_uid === selectedObjectUid) ?? currentTraceability?.objects[0] ?? null;
   const selectedEvidenceProjectUid = activeSemanticCandidate?.project_uid ?? null;
   // ⚡ Bolt: Memoize project tasks list to prevent O(N) array mapping overhead
-  const projectTasksList = useMemo(() => (
+  const loadedTasksList = useMemo(() => (
     <ol className="divide-y divide-border">
-      {projectTasks.slice(0, 8).map((task) => (
+      {loadedTasks.slice(0, 8).map((task) => (
         <li key={task.id} className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -472,7 +467,7 @@ export function ProjectsLayout() {
         </li>
       ))}
     </ol>
-  ), [projectTasks]);
+  ), [loadedTasks]);
 
   const selectedEvidenceObjectUid = selectedTraceObject?.object_uid ?? null;
   const selectedEvidenceKey = selectedEvidenceProjectUid && selectedEvidenceObjectUid ? `${selectedEvidenceProjectUid}:${selectedEvidenceObjectUid}` : null;
@@ -481,7 +476,6 @@ export function ProjectsLayout() {
   const evidenceCitations = currentEvidence?.citation_bundle ?? selectedTraceObject?.citation_bundle ?? [];
   const currentCorrection = selectedTraceObject && lastCorrection?.object_uid === selectedTraceObject.object_uid ? lastCorrection : null;
   const candidateConfirmed = activeSemanticCandidate ? activeSemanticCandidate.status_code === 'confirmed' || lastConfirmedCandidateUid === activeSemanticCandidate.candidate_uid : false;
-  const graphHealthPercent = activeSemanticCandidate ? semanticProgress(activeSemanticCandidate) : 0;
 
   useEffect(() => {
     if (!activeSemanticCandidate) {
@@ -663,10 +657,14 @@ export function ProjectsLayout() {
               </div>
               <h3 className="mt-1 line-clamp-2 font-bold text-sm text-foreground">{project.title}</h3>
               <div className="mt-3 flex items-center gap-2">
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
-                  <div className={`h-full ${project.progress === 100 ? 'bg-emerald-500' : 'bg-primary'}`} style={{ width: `${project.progress}%` }} />
-                </div>
-                <span className="text-xs font-semibold text-muted-foreground">{project.progress}%</span>
+                {project.progress === null ? (
+                  <span className="text-xs font-semibold text-muted-foreground">진행률 확인 불가</span>
+                ) : (
+                  <>
+                    <progress aria-label="조회된 작업 완료율" className="h-1.5 min-w-0 flex-1" max={100} value={project.progress} />
+                    <span className="text-xs font-semibold text-muted-foreground">{project.progress}%</span>
+                  </>
+                )}
               </div>
             </button>
           ))}
@@ -764,14 +762,6 @@ export function ProjectsLayout() {
                       <p className="mt-2 font-mono text-xl font-black">{item.value}</p>
                     </div>
                   ))}
-                </div>
-                <div className="border-t border-border px-5 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-border">
-                      <div className="h-full bg-primary" style={{ width: `${graphHealthPercent}%` }} />
-                    </div>
-                    <span className="font-mono text-xs font-black">{graphHealthPercent}%</span>
-                  </div>
                 </div>
               </section>
             ) : null}
@@ -1070,10 +1060,10 @@ export function ProjectsLayout() {
             ) : null}
 
             {(viewMode === '프로젝트 상세' || viewMode === '마일스톤') && (
-              <section aria-label="프로젝트 마일스톤" className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+              <section aria-label="조회된 작업 현황" className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
                 <div className="flex items-center justify-between border-b border-border p-5">
-                  <h2 className="font-bold text-lg">마일스톤</h2>
-                  <a href="/tasks" className="rounded-md bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90">마일스톤 추가</a>
+                  <h2 className="font-bold text-lg">조회된 작업 현황</h2>
+                  <a href="/tasks" className="rounded-md bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90">작업 보드 열기</a>
                 </div>
                 <div className="grid gap-4 p-5 md:grid-cols-4">
                   {[
@@ -1085,7 +1075,7 @@ export function ProjectsLayout() {
                     <article key={milestone.status} className="rounded-xl border border-border bg-background p-4">
                       <div className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${taskStatusClass[milestone.status]}`}>{milestone.label}</div>
                       <p className="mt-4 text-2xl font-black">{milestone.count}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">원본 연결 작업</p>
+                      <p className="mt-1 text-sm text-muted-foreground">조회된 작업 기준</p>
                     </article>
                   ))}
                 </div>
@@ -1112,10 +1102,10 @@ export function ProjectsLayout() {
                   <article className="p-5">
                     <div className="flex items-start justify-between gap-3">
                       <h3 className="flex items-center gap-2 font-bold text-base"><ListChecks className="size-4 text-primary" /> 작업 흐름 반영</h3>
-                      <span className="text-xs text-muted-foreground">{projectTasks.length}개 작업</span>
+                      <span className="text-xs text-muted-foreground">{loadedTasks.length}개 작업</span>
                     </div>
                     <p className="mt-2 rounded-lg border border-border bg-background p-3 text-sm leading-6 text-foreground">
-                      메일과 스레드 근거가 연결된 실행 항목을 기준으로 상태와 완료 흐름을 집계합니다.
+                      조회된 작업을 집계한 현황입니다. 선택한 프로젝트와 각 작업의 연결 여부는 아직 확인할 수 없습니다.
                     </p>
                     <p className="mt-3 flex items-center gap-2 text-xs font-semibold text-muted-foreground"><User className="size-3.5" /> 근거: 실행 항목</p>
                   </article>
@@ -1133,18 +1123,18 @@ export function ProjectsLayout() {
               </section>
             )}
 
-            <section aria-label="프로젝트 작업 목록" className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+            <section aria-label="조회된 작업 목록" className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
               <div className="flex items-center justify-between border-b border-border p-5">
-                <h2 className="font-bold text-lg">연결 작업</h2>
-                <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-bold text-muted-foreground">{projectTasks.length}건</span>
+                <h2 className="font-bold text-lg">조회된 작업</h2>
+                <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-bold text-muted-foreground">{loadedTasks.length}건</span>
               </div>
-              {projectTasks.length > 0 ? projectTasksList : (
+              {loadedTasks.length > 0 ? loadedTasksList : (
                 <div className="p-5">
                   <div className="rounded-xl border border-dashed border-border bg-background p-4">
                     <div role="status" aria-live="polite">
-                      <p className="text-sm font-bold text-foreground">연결된 실행 항목이 아직 없습니다.</p>
+                      <p className="text-sm font-bold text-foreground">등록된 작업이 아직 없습니다.</p>
                       <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                        서명 세션의 작업 API에 프로젝트와 연결된 메일, 문서, 스레드 근거가 기록되면 이 목록에 표시됩니다.
+                        작업 보드에서 작업을 등록하거나 관련 메일과 문서를 찾아보세요. 프로젝트별 작업 연결은 아직 지원하지 않습니다.
                       </p>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2">
@@ -1163,7 +1153,7 @@ export function ProjectsLayout() {
               <div className="grid gap-2 text-sm">
                 <a href="/data" className="flex min-h-10 items-center gap-2 rounded-md bg-primary px-3 font-bold text-primary-foreground hover:bg-primary/90"><FolderOpen className="size-4" /> 새 프로젝트</a>
                 <button type="button" aria-label="프로젝트 상세 열기" onClick={() => setViewMode('프로젝트 상세')} className="flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 font-bold hover:bg-secondary"><CheckCircle2 className="size-4 text-primary" /> 프로젝트 열기</button>
-                <a href="/tasks" className="flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 font-bold hover:bg-secondary"><ListChecks className="size-4 text-primary" /> 마일스톤 추가</a>
+                <a href="/tasks" className="flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 font-bold hover:bg-secondary"><ListChecks className="size-4 text-primary" /> 작업 보드 열기</a>
                 <button type="button" aria-label="프로젝트 의사결정 추가" onClick={() => setViewMode('의사결정 로그')} className="flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 font-bold hover:bg-secondary"><CheckCircle2 className="size-4 text-primary" /> 의사결정 추가</button>
                 <a href="/search" className="flex min-h-10 items-center gap-2 rounded-md border border-border bg-background px-3 font-bold hover:bg-secondary"><Search className="size-4 text-primary" /> 관련 문서/메일 연결</a>
               </div>
@@ -1181,13 +1171,20 @@ export function ProjectsLayout() {
                   <dd><span className={`rounded px-2 py-1 text-xs font-bold ${projectStatusClass[activeProject.status]}`}>{activeProject.status}</span></dd>
                 </div>
                 <div>
-                  <dt className="mb-1 font-semibold text-muted-foreground">진행률</dt>
+                  <dt className="mb-1 font-semibold text-muted-foreground">{activeProject.evidence === 'ticket_tasks' ? '조회된 작업 완료율' : '진행률'}</dt>
                   <dd className="flex items-center gap-3">
-                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-border">
-                      <div className="h-full bg-primary" style={{ width: `${activeProject.progress}%` }} />
-                    </div>
-                    <span className="font-mono text-xs font-bold">{activeProject.progress}%</span>
+                    {activeProject.progress === null ? (
+                      <span className="text-sm text-muted-foreground">진행률 확인 불가 — 완료한 작업과 전체 작업 수를 확인할 근거가 없습니다.</span>
+                    ) : (
+                      <>
+                        <progress aria-label="조회된 작업 완료율" className="h-2 min-w-0 flex-1" max={100} value={activeProject.progress} />
+                        <span className="font-mono text-xs font-bold">{activeProject.progress}%</span>
+                      </>
+                    )}
                   </dd>
+                  {activeProject.progress !== null ? (
+                    <dd className="mt-2 text-xs text-muted-foreground">조회된 {loadedTasks.length}건 중 {doneCount}건 완료. 프로젝트별 집계가 아닙니다.</dd>
+                  ) : null}
                 </div>
                 <div>
                   <dt className="mb-1 font-semibold text-muted-foreground">원본 근거</dt>
@@ -1254,7 +1251,7 @@ export function ProjectsLayout() {
                 </li>
                 <li className="flex items-center justify-between gap-3">
                   <span className="flex items-center gap-2 font-semibold"><ListChecks className="size-4 text-primary" /> 실행 항목</span>
-                  <span className="font-mono text-xs text-muted-foreground">{projectTasks.length}</span>
+                  <span className="font-mono text-xs text-muted-foreground">{loadedTasks.length}</span>
                 </li>
                 <li className="flex items-center justify-between gap-3">
                   <span className="flex items-center gap-2 font-semibold"><CalendarDays className="size-4 text-primary" /> 원본 종류</span>

@@ -1226,7 +1226,7 @@ async function runCriticalInteractionSmoke(page, routeSpec, viewportSpec) {
     await projectContent.getByText("저장소 경계 확인됨", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
     await projectContent.getByText("WebDAV 폴더 근거", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
     await projectContent.getByText("스레드 근거 연결됨", { exact: true }).first().waitFor({ state: "visible", timeout: 10_000 });
-    await page.getByRole("region", { name: "프로젝트 작업 목록" }).getByText("문서 근거", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
+    await page.getByRole("region", { name: "조회된 작업 목록" }).getByText("문서 근거", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
     const evidenceEditor = page.getByRole("region", { name: "프로젝트 근거 편집" });
     await evidenceEditor.getByLabel("프로젝트 근거 메모", { exact: true }).fill("검토할 근거를 미저장 메모로 작성합니다.");
     await evidenceEditor.getByLabel("연결 원본 변경", { exact: true }).selectOption({ label: "문서 근거" });

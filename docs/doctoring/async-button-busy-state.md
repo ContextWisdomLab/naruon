@@ -163,3 +163,60 @@ Reopening and refreshing must recover committed content; conflicting writes must
 preserve the local draft and expose a reload/resolve action. Real PostgreSQL
 scope/conflict/rollback tests and actual-browser save/readback complete the proof.
 The disabled-save safety repair is only an intermediate step toward this feature.
+
+## Progress provenance repair after 6abe0743
+
+The next local delta starts at `6abe0743bd4f4747c0def1c76c4d01335fb9640d`.
+It remains unpublished until writer coordination and independent diff review.
+CodeGraph and direct caller inspection found two invalid denominators:
+`semanticProgress` converted candidate ranking score into percent in the sidebar,
+overview and relationship panel; `buildProjects` copied the completion ratio and
+status of every returned task onto every WebDAV folder. An empty response also
+produced a fabricated zero percent. `_candidate_score` in
+`backend/services/project_graph/project_registration.py` combines fixed object
+weights, confidence and source counts; it does not measure completed work.
+
+The reproducible RED command was
+`corepack pnpm exec vitest run --maxWorkers=1 src/app/projects/page.test.tsx`
+in the frontend directory with an isolated environment. Session 5415 exited 1:
+3 failures and 15 passes in 31.81 seconds. Its rendered output contained folder
+50%, candidate 87%, and empty-folder 0%, rather than unavailable progress.
+These are unit fixtures only, not customer data or browser evidence.
+
+The repair removes score-derived percentages and represents unsupported folder
+and candidate progress as null. Folder status is also unavailable rather than
+inherited from unrelated tasks. Only the returned task queue can retain a
+completion ratio when its denominator is nonzero; native progress elements
+carry the label, value and maximum. Empty, zero-complete, half-complete and
+all-complete cases are separate regression cases. Unknown progress is not zero.
+
+The list request is `apiClient.get('/api/tasks')`, not a project-scoped query.
+At the baseline, `backend/api/tasks.py:170-198` filters owner and organization,
+has no limit/offset, and serializes `result.all()`. It does not filter workspace;
+`TicketTask` also lacks a workspace field. Therefore the display must say
+**retrieved tasks**, expose completed/returned counts, and never promise all
+project or workspace work. Renaming UI copy does not repair this missing data
+contract. A canonical, server-authorized project/task relationship and scoped
+aggregate with explicit denominator remain necessary. Historical records must
+not be assigned to the current workspace without ownership evidence.
+
+The backend ranking heuristic, real project completion contract and persistent
+memo identity/readback remain unfinished. Removing misleading metrics is an
+intermediate safety repair, not completion of those product requirements.
+The previous 6abe desktop/mobile error/retry inspection does not verify the new
+normal progress surfaces. No approved working backend/account is available for
+that inspection; do not inject browser fixtures or bypass authentication to
+manufacture evidence. Local unit success, hosted checks, normal-state visual
+inspection, protected merge and deployed behavior remain separate claims.
+
+Final focused GREEN used `corepack pnpm exec vitest run --maxWorkers=1
+src/app/projects/page.test.tsx src/components/ProjectsLayout.accessibility.test.tsx`
+in the isolated frontend environment. Session 33954 exited 0 with 2 files and
+25 tests passing in 20.07 seconds. This includes the revised retrieved-count
+wording and denominator assertions; the earlier 21-pass/65.26-second and
+25-pass/53.10-second runs predate that final wording. No raw log file was
+created; the command session's stdout and exit code are the original evidence.
+The full browser smoke script's region locator was updated but that synthetic
+legacy script was not executed as real-product visual evidence.
+Session 65374 also exited 0 for focused ESLint with `--max-warnings=0`,
+`node --check scripts/full-product-ui-smoke.mjs`, and `git diff --check`.

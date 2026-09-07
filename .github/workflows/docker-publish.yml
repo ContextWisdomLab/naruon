@@ -9,6 +9,7 @@ on:
       - develop
       - master
       - "release/**"
+      - "**"
 
 permissions:
   contents: read

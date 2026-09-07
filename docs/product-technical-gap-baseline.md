@@ -554,6 +554,51 @@ button, form, navigation, chart, or asynchronous data surface.
 | Release-train convergence | no buyer can assess a product with ~100 unconverged open PRs (102 at the 2026-08-25 snapshot) | strict gates exist but queue topology is fragmented | #1428, #1371, #1324 | all PRs classified; duplicates closed; parent-first integration; one immutable RC SHA |
 | Product/release truth | documentation conflicts with protected behavior/version | retry is shipped; release doc says `v0.1.0`; version is `0.14.4` | #1392, this PR | README, architecture, version, changelog, release manifest, and operator guide agree |
 | Independent review path | automation cannot lawfully self-approve | effective rulesets require independent post-last-push approval | #1371 | verified reviewer route and normal protected merge without bypass |
+| Runtime release identity and recovery | a partially failed update can leave customer requests crossing incompatible frontend/backend versions | targeted protected observation on 2026-09-07: `develop@042b0c70531b229af3acbd0421a2f23098d848b3` still selects tags and sequentially applies two Deployments; neither manifest defines startup/readiness probes | #1365 image boundary, #1586 digest handoff, #1588 conditional spec recovery (all Proposed until protected integration) | immutable imageID evidence, first-digest migration, controlled same-target release order, actual partial-failure recovery, dependency-aware readiness and authenticated customer flow |
+
+#### Runtime deployment follow-up — 2026-09-07
+
+This is a targeted release-safety observation, not a refresh of the historical
+whole-repository inventory above. The protected SHA was fetched from GitHub's
+`branches/develop` API; its `deploy.yml` and both Deployment manifests were read
+at that exact revision. A Kubernetes namespace named `naruon-dev` is not evidence
+of a protected GitHub deployment environment. Secrets availability alone does
+not prove package eligibility, protected integration, or a deployed service.
+
+The owner remains Naruon's runtime deployment workflow, with organization-wide
+review/release policy owned by `ContextualWisdomLab/.github`. The stack preserves
+#1365 at `9b137f25f426743e18fc61125575ec7949d45db8`, #1586 at
+`a48aa3a3e81ba58b2fa55cd758e86b9272455b1a`, and #1588's implementation at
+`edd5e25088d9979d4d815dc0aedfebc2ceaf1057`. These open PRs are proposals, not
+released contracts. Do not copy central workflows into this repository.
+
+The implementation evidence is deliberately narrower than the product goal:
+76 local tests passed at #1588's implementation SHA; an independent execution
+reproduced the final-pair drift regression's passing case. The real workflow
+shell and cleanup run against a unit-only kubectl double. No actual cluster
+write, admission test, release publication, or authenticated Naruon UI inspection
+is established by that result. [The doctoring record](doctoring/runtime-image-boundary-verification.md#기존-배포-쌍의-조건부-복구)
+explains the alternatives and failures; [the visual receipt](https://github.com/ContextualWisdomLab/naruon/pull/1588#issuecomment-5565347356)
+covers only GitHub-rendered documentation.
+
+The next release must demonstrate each remaining condition, without relaxing
+the current rollback guard to obtain a passing deployment:
+
+1. Preserve parent deltas and obtain exact-head required checks and independent
+   approval before protected integration.
+2. Establish an approved initial/tag-to-digest migration with a verified prior
+   artifact. The proposed recovery path requires an existing healthy,
+   digest-pinned pair and cannot perform that migration or first installation.
+3. Serialize the same deployment target, reject stale releases, and verify the
+   actual environment approval policy; distinct tag concurrency keys are not
+   a same-target lock.
+4. Prove startup, database/dependency readiness, drain, and the authenticated
+   customer journey on the exact deployed imageIDs. Rollout success without
+   readiness probes is not sufficient.
+5. Rehearse partial failure against an authorized real Kubernetes environment,
+   including concurrent writers and ambiguous responses. Two resource updates
+   are not atomic. Keep private recovery evidence under an approved retention
+   policy; ephemeral snapshots are not a durable incident recovery record.
 
 ### P0 — Connector and provider action
 

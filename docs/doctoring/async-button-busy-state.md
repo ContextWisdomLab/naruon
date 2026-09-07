@@ -2,17 +2,29 @@
 
 ## Decision
 
-Naruon exposes `aria-busy=true` only while an action control is actively processing its asynchronous operation. The existing `disabled` behavior remains responsible for preventing duplicate activation; `aria-busy` communicates the processing state to the accessibility API rather than replacing the disabled-state contract.
+Naruon exposes `aria-busy=true` only while the action represented by that control is actively processing. The existing `disabled` behavior remains responsible for preventing conflicting or duplicate activation; `aria-busy` communicates the processing state to the accessibility API rather than replacing the disabled-state contract.
 
-The bounded change applies to the project evidence-review action, repository document actions, and duplicate-thread intent action. It does not claim whole-product accessibility conformance or imply that every statically disabled control is busy.
+The bounded change applies to project candidate confirmation, project evidence-review save, repository document actions, and duplicate-thread intent actions. It does not claim whole-product accessibility conformance or imply that every statically disabled control is busy.
 
 ## Evidence boundary
 
-WAI-ARIA defines `aria-busy` as a state indicating that an element is being modified and that assistive technologies can defer exposing intermediate changes until the operation is complete. The attribute is defined for all elements in the base markup and defaults to `false`. This supports binding `aria-busy` to the same boolean state that represents the in-flight asynchronous action, while leaving ordinary unavailable controls unmarked as busy.
+WAI-ARIA defines `aria-busy` as a state indicating that an element is being modified and that assistive technologies can defer exposing intermediate changes until the operation is complete. The attribute is defined for all elements in the base markup and defaults to `false`. This supports binding `aria-busy` to the state of the represented asynchronous action while leaving controls disabled for another reason non-busy.
 
-## Verification
+A read-only prerequisite is therefore distinct from the mutation it gates. The project evidence-review button remains disabled while full evidence is being fetched, but that evidence GET does not make the correction-save button busy. `aria-busy` becomes true only after the user starts the correction save.
 
-Merge readiness is determined only from the unchanged current PR head after repository CI, security, coverage, review, and protected-branch requirements pass. The accessibility attribute itself is not a substitute for rendered assistive-technology testing across supported environments.
+## Action identity and lifecycle
+
+Repository document actions share a mutual-exclusion lock because concurrent upload, reparse, embedding regeneration, HWP conversion, and WebDAV materialization can race over the same refreshed quality surface. That shared lock is separate from action identity: only the initiating control exposes `aria-busy=true`; disabled siblings remain `aria-busy=false`.
+
+The lock covers the complete action lifecycle, including the quality-surface refresh that follows a successful document mutation. A mutation is not reported as complete and the shared lock is not released while that refresh is still pending. The in-memory guard prevents programmatic re-entry as well as duplicate pointer or keyboard activation, and cleanup clears an active identity only when it still belongs to the completing operation.
+
+## Regression evidence
+
+- `frontend/src/components/data-layout/DocumentRepositoryTab.busy-state.test.tsx` verifies the rendered document-action group reports only the initiating action as busy.
+- `frontend/src/components/DataLayout.document-action-lifecycle.test.tsx` holds the post-action quality refresh pending and verifies a second document action cannot start before the first lifecycle settles.
+- `frontend/src/components/ProjectsLayout.accessibility.test.tsx` verifies candidate-confirmation busy state and verifies a pending evidence GET disables the evidence-review save without announcing that save as busy.
+
+These regressions are source-level evidence. Merge readiness is determined only from the unchanged exact PR head after repository CI, security, coverage, review, and protected-branch requirements pass. The attributes and automated DOM tests are not a substitute for rendered assistive-technology validation across supported environments.
 
 ## Reference — APA 7th
 
@@ -318,6 +330,18 @@ fixture 보강 후 97315는 동일한 Data 관련 3파일 20개를 37.32초에 �
 `env -i PATH="$PATH"`로 실행했다. 기본 timeout을 유지했고 제외한 Data 테스트는 없다.
 
 ### 공식 문서 근거
+
+통합 직전 원격 PR이 `15ed98a1a6ad5804f1f0abbe646a8799cbc4f239`로 이동했다.
+로컬 검증 변경은 먼저 `8c9418de9f966778ecd9a0433debefbab95f12e9`에 보존했다.
+원격의 6커밋·5파일 변경을 읽고 정상 merge로 통합하며 강제 push나 변경 폐기는 하지 않는다.
+두 개의 잠금을 병렬로 남기지 않고 Symbol의 현재 요청 검사로 통합한다.
+원격의 `activeDocumentAction !== null || documentActionStatus === 'loading'` 비활성화 조건,
+직접 props 재진입 테스트 175줄, Projects의 조회 중 비-busy 사례와 문서 원칙을 보존했다.
+직접 props 사례는 계정·파일이 없는 요청의 validation도 진행 중 상태를 덮지 않아야 한다는
+추가 조건을 검사하므로 DOM 회귀와 구분해 유지한다. 검증 전 소스 추론을 원격 테스트의
+실행 실패로 기록하지 않는다. 로컬의 갱신 오류·GET 전용 재시도·늦은 초기 응답·unmount
+보호와 이전 실패 기록도 유지한다. 20개 통과는 이 원격 통합 이전 결과이며 새 HEAD는
+Data 관련 테스트와 Projects 접근성을 다시 실행해야 한다.
 
 React의 ref 계약은 렌더링 상태를 동기 잠금처럼 쓰지 않고 이벤트 처리 함수에서
 가변 요청 식별자를 유지하는 방법을 설명한다. effect 문서는 오래된 비동기 결과를

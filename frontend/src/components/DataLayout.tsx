@@ -373,7 +373,7 @@ export function DataLayout() {
   const canRequestWebdavWriteback = webdavAccountStatus === 'ready';
   const isUniqueThreadLoading = uniqueThreadStatus === 'loading';
   const isEmailImportLoading = emailImportStatus === 'loading';
-  const isDocumentActionLoading = documentActionStatus === 'loading';
+  const isDocumentActionLoading = activeDocumentAction !== null || documentActionStatus === 'loading';
   const selectedWebdavAccount = webdavAccounts.find((account) => (
     account.source_id === selectedWebdavSourceId && account.writeback_enabled
   )) ?? webdavAccounts.find((account) => account.writeback_enabled) ?? null;

@@ -44,6 +44,18 @@ const candidate = {
   updated_at: "2026-08-03T00:00:00Z",
 };
 
+const projectObject = {
+  object_uid: "requirement:alpha",
+  object_type: "requirement",
+  title: "Checkout approval evidence",
+  summary: "Evidence review remains separate from evidence retrieval.",
+  status_code: "open",
+  confidence: 0.9,
+  source_segment_uids: ["segment-alpha-1"],
+  citation_bundle: [],
+  attributes: {},
+};
+
 async function flushAsyncWork() {
   await act(async () => {
     await Promise.resolve();
@@ -195,5 +207,52 @@ describe("ProjectsLayout accessibility", () => {
     expect(confirmButton?.disabled).toBe(true);
     expect(confirmButton?.getAttribute("aria-busy")).toBe("false");
     expect(confirmButton?.textContent).toContain("프로젝트 후보 확정됨");
+  });
+
+  it("keeps evidence retrieval from being announced as a correction save", async () => {
+    const pendingEvidence = new Promise(() => undefined);
+
+    apiClientMock.get.mockImplementation((path: string) => {
+      if (path === "/api/webdav/folders") return Promise.resolve([]);
+      if (path === "/api/tasks") return Promise.resolve([]);
+      if (path === "/api/projects/candidates") {
+        return Promise.resolve({ candidates: [candidate] });
+      }
+      if (path === "/api/projects/project_candidate%3Aalpha/traceability") {
+        return Promise.resolve({
+          project_uid: candidate.project_uid,
+          candidate,
+          objects: [projectObject],
+          edges: [],
+        });
+      }
+      if (path === "/api/projects/project_candidate%3Aalpha/evidence/requirement%3Aalpha") {
+        return pendingEvidence;
+      }
+      return Promise.reject(new Error(`Unexpected GET path: ${path}`));
+    });
+    apiClientMock.getServerSessionClaims.mockResolvedValue({
+      userId: "alice",
+      organizationId: "org-acme",
+      workspaceId: "workspace-org-acme",
+    });
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<ProjectsLayout />);
+    });
+    await flushAsyncWork();
+    await flushAsyncWork();
+    await flushAsyncWork();
+
+    const saveButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("문단 근거 검토 저장"),
+    );
+    expect(saveButton).toBeDefined();
+    expect(saveButton?.disabled).toBe(true);
+    expect(saveButton?.getAttribute("aria-busy")).toBe("false");
   });
 });

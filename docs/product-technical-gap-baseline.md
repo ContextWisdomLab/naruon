@@ -3,7 +3,7 @@
 **Baseline version:** 1.2
 **Observed on:** 2026-08-26 (Asia/Seoul)
 **Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@e5e99b4e3bb081b92c602358878856536030e2ca`
-**Observed product version:** `0.14.4`  
+**Observed product version:** `0.14.4`
 **Canonical completion issue:** [#1428](https://github.com/ContextualWisdomLab/naruon/issues/1428)
 
 **Inventory observation:** the 106-PR open surface below is a fresh live

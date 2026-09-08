@@ -73,6 +73,46 @@ describe("DashboardLayout", () => {
     ).toBe("page");
   });
 
+  it("restores active destination visibility after the desktop navigation narrows", () => {
+    vi.useFakeTimers();
+    window.history.replaceState(null, "", "/search");
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(
+        <DashboardLayout>
+          <section>Search workspace content</section>
+        </DashboardLayout>,
+      );
+    });
+
+    const primaryNav = container.querySelector<HTMLElement>(
+      'nav[aria-label="Primary workspace navigation"]',
+    );
+    const activeLink = container.querySelector<HTMLAnchorElement>('a[href="/search"]');
+    vi.spyOn(primaryNav!, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      right: 100,
+    } as DOMRect);
+    const activeLinkRect = vi
+      .spyOn(activeLink!, "getBoundingClientRect")
+      .mockReturnValue({ left: 20, right: 60 } as DOMRect);
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+    expect(primaryNav?.scrollLeft).toBe(0);
+
+    activeLinkRect.mockReturnValue({ left: 90, right: 110 } as DOMRect);
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+      vi.runOnlyPendingTimers();
+    });
+
+    expect(primaryNav?.scrollLeft).toBe(26);
+  });
+
   it("renders the Naruon branded shell with accessible navigation landmarks", () => {
     container = document.createElement("div");
     document.body.appendChild(container);

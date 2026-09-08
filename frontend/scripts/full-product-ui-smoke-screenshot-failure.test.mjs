@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -61,8 +61,20 @@ describe("full-product screenshot evidence", () => {
       ).rejects.toThrow("screenshot-backend-unavailable");
       expect(evidence.screenshotAttempts).toBe(2);
       expect(evidence.closed).toBe(true);
+      expect(await readdir(screenshotDirectory)).toEqual([]);
     } finally {
       await rm(screenshotDirectory, { recursive: true, force: true });
     }
+  });
+
+  it("closes the page when navigation fails before capture", async () => {
+    const { page, evidence } = createRoutePageThatCannotCaptureScreenshot();
+    page.goto = async () => { throw new Error("navigation-unavailable"); };
+    await expect(runRouteSmoke(
+      { newPage: async () => page }, FULL_PRODUCT_ROUTES[0],
+      { name: "desktop", width: 1440, height: 1024 }, 1, tmpdir(),
+    )).rejects.toThrow("navigation-unavailable");
+    expect(evidence.screenshotAttempts).toBe(0);
+    expect(evidence.closed).toBe(true);
   });
 });

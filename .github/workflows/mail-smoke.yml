@@ -7,13 +7,12 @@ permissions:
   contents: read
 
 concurrency:
-  # One live mailbox/DAV smoke at a time. Keep pending requests up to GitHub's
-  # concurrency-group limit (currently 100); requests beyond that bound may be
-  # canceled. This workflow holds seeded credentials and talks to
+  # One live mailbox/DAV smoke at a time. GitHub retains at most one pending
+  # run per concurrency group; cancel-in-progress stays false so a live run
+  # is never interrupted. This workflow holds seeded credentials and talks to
   # customer-adjacent servers, and it is not a merge/release/deploy path.
   group: mail-smoke-${{ github.repository }}
   cancel-in-progress: false
-  queue: max
 
 jobs:
   smoke:

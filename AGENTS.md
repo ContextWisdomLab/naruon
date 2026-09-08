@@ -110,6 +110,13 @@ in this repo.
 
 ## Release governance defaults
 
+- 자동 배포 요청이 있으면 조건 충족 후 기존 canonical release workflow로
+  배포까지 진행한다. 보호 브랜치의 exact SHA, 필수 검사·독립 승인,
+  패키지 소유권·버전·배포 대상·환경 승인과 rollback 경로를 먼저 검증한다.
+  PyPI·Rust registry 키의 존재는 배포 적격성이나 권한 우회를 뜻하지 않는다.
+  Secrets는 이름·workflow 연결·접근 범위만 확인하고 값은 읽거나 출력하지 않는다.
+  레지스트리 게시 성공과 실제 서비스 배포를 구분하며 immutable digest/version,
+  설치·소비 결과, 배포 revision, readiness와 실제 사용자 흐름을 각각 기록한다.
 - GitHub Actions used by governed workflows must be pinned to full commit SHAs
   with a trailing version comment, for example `# v6`; major-only refs such as
   `@v6` are not allowed in release or security workflows.
@@ -227,6 +234,14 @@ in this repo.
   for force-pushing. Merge the updated prerequisite into the same stacked
   branch, preserve its complete delta, rerun focused checks, and retarget only
   when the resulting dependency order is verified.
+- An "empty commit" message or acknowledgement is not tree evidence. Inspect
+  the exact parents with `git show -s --format='%H %P %T' <head>` and compare
+  `git diff --name-status <verified-parent> <head>` before carrying checks
+  forward. For merge commits, record which parent is the comparison baseline.
+  If valid inherited changes disappeared, retain both revisions and read the
+  related reviews/comments; do not reverse an unexplained external deletion
+  until its intent is resolved. Continue independent work without consuming
+  the disputed revision, and invalidate old-head success claims immediately.
 - Preserve unrelated dirty or untracked files. If a command changes the wrong
   checkout, stop before editing or pushing. Record before/after SHAs and staged,
   unstaged, and untracked state; preserve displaced commits under a recovery
@@ -235,6 +250,24 @@ in this repo.
 
 #### Verification and protected landing
 
+- 검증 대상 worktree는 모든 실행 핸들의 terminal 결과 회수 → 충돌 표시 제거와
+  `git diff --check` → commit/tree 고정 → 검증 순서로 다룬다. 검증 중에는
+  편집·merge·restack을 하지 않고 읽기 전용 조사만 한다. 관찰 timeout은
+  실행 종료가 아니다. 도중 소스가 바뀐 결과는 로그와 함께 오염된 실행으로
+  분리하고 특정 HEAD의 통과·회귀 근거로 쓰지 않는다. 재발 수리는
+  `.agents/skills/fix-development-mistakes/SKILL.md`를 적용한다.
+- 보안 검사 exit 0만으로 전체 범위를 검증했다고 쓰지 않는다. exact-head
+  결과의 실제 manifest 목록에 예상 잠금 파일이 있는지 확인한다. 기본
+  탐지에서 빠지는 `requirements-*.txt`도 포함하고 취약 버전 RED와 수정
+  버전 GREEN을 비교한다. 중앙 탐지 수정은
+  [#1969](https://github.com/ContextualWisdomLab/.github/pull/1969), 의존성
+  통합 근거는 [#1244](https://github.com/ContextualWisdomLab/naruon/pull/1244)이며,
+  열린 PR을 보호 브랜치 반영으로 취급하지 않는다.
+- lint/test exit 0과 경고 없는 검증을 구분한다. `eslint --max-warnings 0`과
+  원래 출력을 유지하는 React 경고 spy·단언으로 실패를 재현한다. 비동기
+  렌더와 입력 이벤트는 `await act`로 기다리며 `console.error`를 끄지 않는다.
+  [#1245](https://github.com/ContextualWisdomLab/naruon/pull/1245)의 수리처럼
+  남은 다른 화면의 경고와 커버리지 부족은 별도 미완료 항목으로 기록한다.
 - Tests invoked with `--noconftest` must bootstrap every required setting in
   the test or trusted workflow step. Use explicit test-only values and fresh
   random secrets; do not weaken production validation or depend on a developer
@@ -279,6 +312,16 @@ in this repo.
   and base, live rulesets, required checks, unresolved threads, and applicable
   current-head CodeRabbit or structured OpenCode fallback evidence. After the
   merge, verify the merge commit and protected target branch.
+  Read each job's name alongside its ID, head SHA, status, and conclusion so a
+  successful `Detect changed scope` job is never counted as the later
+  dependency-review or security job's success, even within the same run.
+- Never authenticate review evidence by its display name or status context.
+  Verify the check App or exact Bot creator against the owner contract; reject
+  missing or unrelated publishers. Inspect blocking output even when the check
+  conclusion is success or skipped. Cover forged publishers with and without
+  pending notices, missing/wrong-type creators, and trusted positive cases.
+  [Governance repair #1531](https://github.com/ContextualWisdomLab/naruon/pull/1531#issuecomment-5559591367)
+  records the counterexamples; an open repair PR is not protected integration.
 - Ready for review is review admission, not merge authorization. Keep a PR
   Draft while its delta, ownership, conflict repair or required foundation is
   incomplete. Once the bounded slice is independently reviewable and its
@@ -344,6 +387,14 @@ in this repo.
 - Do not close a PR merely to reach zero open PRs. Close only with explicit user
   direction, no valid delta, a malicious change, or a verified successor that
   carries the predecessor's complete delta and records the lineage.
+- 미완료 이슈는 `Refs`와 남은 수용 기준으로 참조한다. 부정문에서도 자동 종료
+  키워드와 이슈 번호의 조합을 쓰지 않는다. 병합 전 `closingIssuesReferences`를
+  조회해 실제 완료된 수용 기준과 대조한다. #1365에서 부정문이 #1022 자동 종료로
+  해석된 사례처럼, 문장의 의도만으로 GitHub 동작을 추정하지 않는다.
+- 작업 중 재현·수리한 반복 오류는 같은 owner의 `AGENTS.md`에 지속 반영한다.
+  재사용할 규칙과 적용 스킬·절차만 남기고 exact-head 로그·실험·실패 이력은
+  기존 PR·doctoring·Gap 원장에 연결한다. 일시적인 큐 상태를 영구 규칙으로
+  만들거나 기존 규칙을 중복 복사하지 않으며 문서 검사와 실제 렌더 검수를 수행한다.
 - Keep the handoff in the existing PR and `docs/product-technical-gap-baseline.md`:
   owner, worktree, full head/base SHAs, changed contract, reproduction command,
   exit status, pass/fail/skip counts, evidence link, and next safe action. Record
@@ -476,6 +527,11 @@ subject to U.S. copyright, while attribution remains required.
 
 - First-run frontend sessions should open the Today execution dashboard while
   preserving explicit Dashboard, Email, and Calendar startup choices.
+- A successful HTTP response and `Array.isArray` do not establish dashboard
+  readiness. Validate each consumed member before storing it: null records,
+  malformed display fields, task states, and calendar capabilities must enter
+  the existing unavailable/retry state, not crash rendering or become empty
+  success. Keep valid empty arrays distinct and test each affected source.
 - Workspace navigation changes must keep the desktop primary nav and the
   tablet/mobile drawer in sync for Mail, Calendar, Tasks, Projects, Context
   Search, AI Hub, Data, Security, and Settings; add route and responsive E2E
@@ -706,6 +762,14 @@ subject to U.S. copyright, while attribution remains required.
   well as fixture skips. Check the actual process exit status: a printed pytest
   error can still exit zero when expected-failure metadata is retained. Exercise
   these cases with real pytest reports, not only source-string assertions.
+- For long-running verification, redirect output directly to task-owned durable
+  files and capture the final runner exit separately. A disconnected observation
+  pipe can fail test output and cleanup; partial progress or a missing tool
+  handle is not completion or permission to restart a process still alive.
+  Verify the full redacted report, explicit skip reasons, exit status and
+  absence of that run's labelled containers, volumes and networks independently.
+  Keep failed attempts and retry receipts separate; do not infer the original
+  pipe-closure cause from a successful retry or alter application timeouts.
 - Negative configuration probes must use task-owned decoy files or controlled
   readers and key-only assertions. Never read an operator file to prove that it
   should not be read, or let assertion introspection print credential mappings.

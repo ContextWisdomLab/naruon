@@ -113,6 +113,10 @@ def test_agent_playbook_keeps_skill_links_and_safe_execution_boundaries() -> Non
     assert "podman system check --repair --force" not in guidance_text
     assert "--dir frontend test --runInBand" not in guidance_text
     assert "documentation-only work" in guidance_text
+    assert "closingIssuesReferences" in guidance_text
+    assert "기존 canonical release workflow" in guidance_text
+    assert "레지스트리 게시 성공과 실제 서비스 배포를 구분" in guidance_text
+    assert "`AGENTS.md`에 지속 반영" in guidance_text
 
 
 def assert_dockerfile_stage_from(dockerfile: str, image: str, stage_alias: str) -> None:

@@ -21,13 +21,13 @@ def install_probe_engines(monkeypatch, *, failed_dependency=None, failure_factor
     connection_events = []
 
     class ProbeConnection:
-        def __init__(self, dependency_name):
-            self.dependency_name = dependency_name
-
         async def execute(self, query_statement):
             assert str(query_statement) == "SELECT 1"
             if self.dependency_name == failed_dependency and failure_factory is not None:
                 raise failure_factory()
+
+        def __init__(self, dependency_name):
+            self.dependency_name = dependency_name
 
     class ProbeEngine:
         def __init__(self, dependency_name):
@@ -64,15 +64,14 @@ async def test_liveness_does_not_touch_databases_and_disables_cache(monkeypatch)
 @pytest.mark.parametrize("failed_dependency", [None, "primary", "readonly"])
 async def test_readiness_checks_both_databases_without_leaking_errors(monkeypatch, failed_dependency):
     """A failed database must remove readiness, and every acquired connection closes."""
-    failure_factory = None
-    if failed_dependency is not None:
-        failure_factory = lambda: OperationalError(
-            "SELECT 1", None, Exception("unit-private-detail")
-        )
+
+    def operational_failure():
+        return OperationalError("SELECT 1", None, Exception("unit-private-detail"))
+
     connection_events = install_probe_engines(
         monkeypatch,
         failed_dependency=failed_dependency,
-        failure_factory=failure_factory,
+        failure_factory=operational_failure if failed_dependency is not None else None,
     )
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://unit.local") as client:
@@ -88,12 +87,22 @@ async def test_readiness_checks_both_databases_without_leaking_errors(monkeypatc
     assert connection_events == expected_events
 
 
+def os_failure():
+    """Return an OS-level connection failure containing private test detail."""
+    return OSError("os-private-detail")
+
+
+def timeout_failure():
+    """Return a timeout failure containing private test detail."""
+    return TimeoutError("timeout-private-detail")
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("failure_factory", "private_detail"),
     [
-        (lambda: OSError("os-private-detail"), "os-private-detail"),
-        (lambda: TimeoutError("timeout-private-detail"), "timeout-private-detail"),
+        (os_failure, "os-private-detail"),
+        (timeout_failure, "timeout-private-detail"),
     ],
     ids=["os-error", "timeout"],
 )

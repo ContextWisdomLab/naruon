@@ -8,6 +8,7 @@ const { apiGetMock } = vi.hoisted(() => ({
 }));
 
 const destroyMock = vi.fn();
+const originalMapValues = Map.prototype.values;
 
 vi.mock("@/lib/api-client", () => ({
   apiClient: {
@@ -45,6 +46,8 @@ describe("NetworkGraph bounded option materialization", () => {
   let container: HTMLDivElement | null = null;
 
   afterEach(() => {
+    // Keep the process-global Map prototype clean even if setup or an assertion fails before the local finally block.
+    Map.prototype.values = originalMapValues;
     if (root) {
       act(() => root?.unmount());
     }
@@ -54,12 +57,12 @@ describe("NetworkGraph bounded option materialization", () => {
     vi.clearAllMocks();
   });
 
-  it("materializes only the first five relationships and first eight nodes", async () => {
-    const nodes = Array.from({ length: 12 }, (_, index) => ({
+  it("stops each option iterator at the configured limit without changing insertion order", async () => {
+    const nodes = Array.from({ length: 50 }, (_, index) => ({
       id: `node-${index}`,
       label: `노드 ${index}`,
     }));
-    const edges = Array.from({ length: 10 }, (_, index) => ({
+    const edges = Array.from({ length: 50 }, (_, index) => ({
       id: `edge-${index}`,
       from: `node-${index}`,
       to: `node-${index + 1}`,
@@ -68,45 +71,78 @@ describe("NetworkGraph bounded option materialization", () => {
 
     apiGetMock.mockResolvedValue({ nodes, edges });
 
+    const edgeIteratorReadCounts: number[] = [];
+    const nodeIteratorReadCounts: number[] = [];
+
+    // Count each populated graph-map iterator independently so rerenders cannot hide one unbounded iterator inside an aggregate total.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Map.prototype.values = function (this: Map<any, any>) {
+      const iterator = originalMapValues.call(this);
+      const readCounts = this.has("edge-0")
+        ? edgeIteratorReadCounts
+        : this.has("node-0")
+          ? nodeIteratorReadCounts
+          : null;
+      const iteratorIndex = readCounts ? readCounts.push(0) - 1 : -1;
+
+      return {
+        next: () => {
+          if (readCounts) readCounts[iteratorIndex] += 1;
+          return iterator.next();
+        },
+        [Symbol.iterator]() {
+          return this;
+        },
+      };
+    } as typeof Map.prototype.values;
+
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
 
-    await act(async () => {
-      root?.render(<NetworkGraph />);
-    });
-    await flushAsyncWork();
+    try {
+      await act(async () => {
+        root?.render(<NetworkGraph />);
+      });
+      await flushAsyncWork();
 
-    const relationshipSelect = container.querySelector(
-      'select[aria-label="관계 선택"]',
-    ) as HTMLSelectElement | null;
-    const nodeSelect = container.querySelector(
-      'select[aria-label="노드 선택"]',
-    ) as HTMLSelectElement | null;
+      const relationshipSelect = container.querySelector(
+        'select[aria-label="관계 선택"]',
+      ) as HTMLSelectElement | null;
+      const nodeSelect = container.querySelector(
+        'select[aria-label="노드 선택"]',
+      ) as HTMLSelectElement | null;
 
-    expect(relationshipSelect).toBeInstanceOf(HTMLSelectElement);
-    expect(nodeSelect).toBeInstanceOf(HTMLSelectElement);
+      expect(relationshipSelect).toBeInstanceOf(HTMLSelectElement);
+      expect(nodeSelect).toBeInstanceOf(HTMLSelectElement);
+      expect(Array.from(relationshipSelect?.options ?? []).map((option) => option.value)).toEqual([
+        "",
+        "edge-0",
+        "edge-1",
+        "edge-2",
+        "edge-3",
+        "edge-4",
+      ]);
+      expect(Array.from(nodeSelect?.options ?? []).map((option) => option.value)).toEqual([
+        "",
+        "node-0",
+        "node-1",
+        "node-2",
+        "node-3",
+        "node-4",
+        "node-5",
+        "node-6",
+        "node-7",
+      ]);
 
-    expect(Array.from(relationshipSelect?.options ?? []).map((option) => option.value)).toEqual([
-      "",
-      "edge-0",
-      "edge-1",
-      "edge-2",
-      "edge-3",
-      "edge-4",
-    ]);
-    expect(Array.from(nodeSelect?.options ?? []).map((option) => option.value)).toEqual([
-      "",
-      "node-0",
-      "node-1",
-      "node-2",
-      "node-3",
-      "node-4",
-      "node-5",
-      "node-6",
-      "node-7",
-    ]);
-    expect(container.textContent).not.toContain("노드 8");
-    expect(container.textContent).not.toContain("관계 6:");
+      // for...of may read once beyond the accepted item before the body breaks: 5 relationships => at most 6 reads, 8 nodes => at most 9.
+      expect(edgeIteratorReadCounts.length).toBeGreaterThan(0);
+      expect(nodeIteratorReadCounts.length).toBeGreaterThan(0);
+      expect(edgeIteratorReadCounts.every((count) => count <= 6)).toBe(true);
+      expect(nodeIteratorReadCounts.every((count) => count <= 9)).toBe(true);
+    } finally {
+      Map.prototype.values = originalMapValues;
+      expect(Map.prototype.values).toBe(originalMapValues);
+    }
   });
 });

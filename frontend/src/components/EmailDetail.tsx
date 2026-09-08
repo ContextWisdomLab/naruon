@@ -177,7 +177,6 @@ export const EmailDetail = memo(function EmailDetail({ emailId, actionCommand = 
 
   useEffect(() => {
     if (!emailId) return;
-
     let isMounted = true;
 
     const fetchData = async () => {
@@ -308,7 +307,7 @@ export const EmailDetail = memo(function EmailDetail({ emailId, actionCommand = 
   }, [email]);
 
   const handleDraftReply = useCallback(async () => {
-    if (!email) return;
+    if (!email || !instruction.trim()) return;
     const actionEmailId = email.id;
     const isCurrentEmail = () => currentEmailIdRef.current === actionEmailId;
     const startedAt = nowMs();
@@ -370,7 +369,7 @@ export const EmailDetail = memo(function EmailDetail({ emailId, actionCommand = 
   }, [email, instruction]);
 
   const handleSendReply = async () => {
-    if (!email || !draft) return;
+    if (!email || !draft.trim()) return;
     const startedAt = nowMs();
     const draftReplyId = activeDraftReplyIdRef.current || createProductEventId("draft_reply");
     activeDraftReplyIdRef.current = draftReplyId;
@@ -572,6 +571,8 @@ export const EmailDetail = memo(function EmailDetail({ emailId, actionCommand = 
   const safeReplyTo = toMailDisplayText(email.reply_to || email.sender, '답장 주소 없음');
   const confidencePercent = toConfidencePercent(llmData?.confidence);
   const actionItems = llmData?.action_items ?? [];
+  const draftUnavailable = !isDrafting && instruction.trim().length === 0;
+  const sendUnavailable = !isSending && draft.trim().length === 0;
 
   const handleOpenSourceDrawer = () => {
     recordProductEvent("source_chip_opened", {
@@ -805,18 +806,26 @@ export const EmailDetail = memo(function EmailDetail({ emailId, actionCommand = 
                   className="h-10 rounded-xl border-purple-500/20 bg-purple-500/5 text-xs"
                 />
               </div>
-              <Button
-                onClick={handleDraftReply}
-                disabled={isDrafting || !instruction}
-                title={!instruction ? "답장 초안 지시를 입력해주세요" : undefined}
-                aria-busy={isDrafting}
-                variant="outline"
-                size="sm"
-                className="h-10 rounded-xl border-purple-500/30 px-4 text-purple-700 hover:bg-purple-500/10"
+              <span
+                data-unavailable-action="reply-draft"
+                tabIndex={draftUnavailable ? 0 : undefined}
+                aria-describedby={draftUnavailable ? "reply-draft-unavailable-reason" : undefined}
+                title={draftUnavailable ? "답장 초안 지시를 입력해주세요" : undefined}
+                className="inline-flex rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
               >
-                {isDrafting && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
-                {isDrafting ? "초안 작성 중" : "답장 초안 생성"}
-              </Button>
+                <Button
+                  onClick={handleDraftReply}
+                  disabled={isDrafting || instruction.trim().length === 0}
+                  aria-busy={isDrafting}
+                  variant="outline"
+                  size="sm"
+                  className="h-10 rounded-xl border-purple-500/30 px-4 text-purple-700 hover:bg-purple-500/10"
+                >
+                  {isDrafting && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
+                  {isDrafting ? "초안 작성 중" : "답장 초안 생성"}
+                </Button>
+              </span>
+              <span id="reply-draft-unavailable-reason" className="sr-only">답장 초안 지시를 입력해주세요</span>
             </div>
 
             {draftError && <p role="alert" className="text-sm text-red-500">{draftError}</p>}
@@ -850,17 +859,25 @@ export const EmailDetail = memo(function EmailDetail({ emailId, actionCommand = 
                     지우기
                   </Button>
                 )}
-                <Button
-                  onClick={handleSendReply}
-                  disabled={isSending || !draft}
-                  title={!draft ? "답장 초안을 먼저 작성해주세요" : undefined}
-                  aria-busy={isSending}
-                  size="sm"
-                  className="h-9 rounded-xl px-4"
+                <span
+                  data-unavailable-action="reply-send"
+                  tabIndex={sendUnavailable ? 0 : undefined}
+                  aria-describedby={sendUnavailable ? "reply-send-unavailable-reason" : undefined}
+                  title={sendUnavailable ? "답장 초안을 먼저 작성해주세요" : undefined}
+                  className="inline-flex rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 >
-                  {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
-                  {isSending ? "전송 중" : "답장 보내기"}
-                </Button>
+                  <Button
+                    onClick={handleSendReply}
+                    disabled={isSending || draft.trim().length === 0}
+                    aria-busy={isSending}
+                    size="sm"
+                    className="h-9 rounded-xl px-4"
+                  >
+                    {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
+                    {isSending ? "전송 중" : "답장 보내기"}
+                  </Button>
+                </span>
+                <span id="reply-send-unavailable-reason" className="sr-only">답장 초안을 먼저 작성해주세요</span>
               </div>
             </div>
           </DecisionPointCard>

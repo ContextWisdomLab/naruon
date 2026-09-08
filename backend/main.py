@@ -6,6 +6,9 @@ from fastapi import Depends, FastAPI
 from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from db import session as database_session
 from api.auth import get_auth_context, preload_oidc_jwks
 from api.search import router as search_router
 from api.llm import router as llm_router
@@ -244,3 +247,24 @@ app.include_router(auth_session_router, dependencies=PRIVATE_API_DEPENDENCIES)
 @app.get("/")
 def read_root() -> dict[str, str]:
     return {"status": "ok", "message": "AI Email Client API"}
+
+
+@app.get("/healthz", include_in_schema=False)
+async def process_health() -> JSONResponse:
+    """Report process liveness without touching external dependencies."""
+    return JSONResponse({"status": "ok"}, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/readyz", include_in_schema=False)
+async def database_readiness() -> JSONResponse:
+    """Check both database pools without exposing connection or error details."""
+    try:
+        for database_engine in (database_session.engine, database_session.readonly_engine):
+            async with database_engine.connect() as database_connection:
+                await database_connection.execute(text("SELECT 1"))
+    except (SQLAlchemyError, OSError, TimeoutError):
+        return JSONResponse(
+            {"status": "unavailable"}, status_code=503,
+            headers={"Cache-Control": "no-store"},
+        )
+    return JSONResponse({"status": "ready"}, headers={"Cache-Control": "no-store"})

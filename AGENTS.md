@@ -713,11 +713,6 @@ in this repo.
 - **Collaboration**: Respect other agents' concurrent work; do not overwrite or dismiss unfamiliar changes.
 - **Subagent Delegation**: Actively delegate tasks to Subagents.
 - **UI/Browser Testing**: Use a real browser for testing (do not rely on assumptions).
-- **Visual acceptance**: A successful screenshot job proves that evidence was
-  captured, not that the product passed. Inspect every retained image at its
-  original resolution and record exact head/run evidence plus clipping,
-  occlusion, mixed-language copy, and internal-plumbing leakage as product
-  findings; do not infer acceptance from the process exit code.
 - **Strict Errors**: Treat `Timeout`, `Fatal`, `Warn`, and `Denied` outputs as hard failures.
 - **Goal**: Actively manage tasks to ensure open PR counts converge to 0.
 

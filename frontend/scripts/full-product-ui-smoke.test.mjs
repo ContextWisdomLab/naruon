@@ -23,9 +23,10 @@ import {
 } from "./full-product-ui-smoke.mjs";
 
 describe("route smoke late browser errors", () => {
-  it.each(["console", "pageerror"])("rejects %s errors emitted during capture", async (eventName) => {
+  it.each(["console", "pageerror"])("rejects %s errors emitted during page close", async (eventName) => {
     const handlers = {};
     let evaluationCount = 0;
+    let closeCalled = false;
     const page = {
       on: (name, handler) => { handlers[name] = handler; },
       route: async () => {},
@@ -38,14 +39,15 @@ describe("route smoke late browser errors", () => {
         return { tagName: "BUTTON" };
       },
       keyboard: { press: async () => {} },
-      screenshot: async () => {
+      screenshot: async () => {},
+      close: async () => {
+        closeCalled = true;
         if (eventName === "console") {
           handlers.console({ type: () => "error", text: () => "late-browser-failure" });
         } else {
           handlers.pageerror(new Error("late-browser-failure"));
         }
       },
-      close: async () => {},
     };
     await expect(runRouteSmoke(
       { newPage: async () => page },
@@ -54,6 +56,7 @@ describe("route smoke late browser errors", () => {
       1,
       path.join(tmpdir(), "naruon-full-product-smoke-unit"),
     )).rejects.toThrow("late-browser-failure");
+    expect(closeCalled).toBe(true);
   });
 });
 

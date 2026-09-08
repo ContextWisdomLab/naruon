@@ -202,7 +202,7 @@ const commercialModelFormDefaults: ModelProviderFormState = {
   name: '상용 API 기본 모델',
   providerType: 'openai',
   baseUrl: 'https://api.openai.com/v1',
-  modelIdentifier: 'gpt-4o',
+  modelIdentifier: 'gpt-5.4',
   embeddingModel: 'text-embedding-3-small',
   isActive: true,
 };
@@ -1028,7 +1028,7 @@ export function SettingsLayout() {
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2">
                           <label htmlFor="commercial-model-id" className="text-sm font-bold text-muted-foreground">모델 식별자</label>
-                          <input id="commercial-model-id" value={commercialModelForm.modelIdentifier} onChange={(event) => updateCommercialModelField('modelIdentifier', event.target.value)} placeholder="gpt-4o" className="w-full rounded-lg border border-border bg-background px-4 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
+                          <input id="commercial-model-id" value={commercialModelForm.modelIdentifier} onChange={(event) => updateCommercialModelField('modelIdentifier', event.target.value)} placeholder="gpt-5.4" className="w-full rounded-lg border border-border bg-background px-4 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary" />
                         </div>
                         <div className="space-y-2">
                           <label htmlFor="commercial-embedding-model" className="text-sm font-bold text-muted-foreground">임베딩 모델</label>

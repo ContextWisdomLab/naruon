@@ -610,7 +610,7 @@ export function SettingsLayout() {
 
   const handleAccountSave = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!accountReady) return;
+    if (!accountReady || accountSaving) return;
     setAccountSaving(true);
     setAccountError(null);
     setAccountStatus(null);
@@ -1301,15 +1301,23 @@ export function SettingsLayout() {
                     </div>
                     <button
                       type="submit"
-                      disabled={accountSaving || !accountReady}
+                      onClick={(e) => {
+                        if (accountSaving || !accountReady) {
+                          e.preventDefault();
+                        }
+                      }}
                       aria-disabled={accountSaving || !accountReady}
                       aria-busy={accountSaving}
+                      aria-describedby="account-save-tooltip"
                       title={accountSaving ? "저장 중입니다" : !accountReady ? "입력값이 부족합니다" : "계정 설정 저장"}
-                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-foreground px-5 py-2 text-sm font-bold text-background hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-foreground px-5 py-2 text-sm font-bold text-background hover:bg-foreground/90 aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
                     >
                       {accountSaving && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
                       {accountSaving ? '저장 중' : '계정 설정 저장'}
                     </button>
+                    <span id="account-save-tooltip" className="sr-only">
+                      {accountSaving ? "저장 중입니다" : !accountReady ? "입력값이 부족합니다" : "계정 설정 저장"}
+                    </span>
                   </div>
 
                   <div className="mt-6 grid gap-5">
@@ -1436,16 +1444,25 @@ export function SettingsLayout() {
                     </dl>
                     <button
                       type="button"
-                      onClick={handleRunnerTokenRotate}
-                      disabled={runnerRotating}
+                      onClick={(e) => {
+                        if (runnerRotating) {
+                          e.preventDefault();
+                          return;
+                        }
+                        void handleRunnerTokenRotate();
+                      }}
                       aria-disabled={runnerRotating}
                       aria-busy={runnerRotating}
+                      aria-describedby="runner-rotate-tooltip"
                       title={runnerRotating ? "등록 토큰을 회전 중입니다" : "등록 토큰을 회전합니다"}
-                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2 text-sm font-bold text-background hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2 text-sm font-bold text-background hover:bg-foreground/90 aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
                     >
                       <RefreshCw className={`size-4 ${runnerRotating ? 'animate-spin' : ''}`} />
                       {runnerRotating ? '회전 중' : '등록 토큰 회전'}
                     </button>
+                    <span id="runner-rotate-tooltip" className="sr-only">
+                      {runnerRotating ? "등록 토큰을 회전 중입니다" : "등록 토큰을 회전합니다"}
+                    </span>
                   </div>
                   {runnerRotateError ? (
                     <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{runnerRotateError}</p>
@@ -1616,22 +1633,42 @@ export function SettingsLayout() {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={handleOidcLogin}
-                        disabled={!oidcBrowserConfig}
+                        onClick={(e) => {
+                          if (!oidcBrowserConfig) {
+                            e.preventDefault();
+                            return;
+                          }
+                          void handleOidcLogin();
+                        }}
+                        aria-disabled={!oidcBrowserConfig}
+                        aria-describedby="oidc-login-tooltip"
                         title={!oidcBrowserConfig ? "OIDC 브라우저 설정이 없습니다" : "OIDC 로그인"}
-                        className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
                       >
                         OIDC 로그인
                       </button>
+                      <span id="oidc-login-tooltip" className="sr-only">
+                        {!oidcBrowserConfig ? "OIDC 브라우저 설정이 없습니다" : "OIDC 로그인"}
+                      </span>
                       <button
                         type="button"
-                        onClick={handleOidcLogout}
-                        disabled={!oidcSessionClaims.userId}
+                        onClick={(e) => {
+                          if (!oidcSessionClaims.userId) {
+                            e.preventDefault();
+                            return;
+                          }
+                          void handleOidcLogout();
+                        }}
+                        aria-disabled={!oidcSessionClaims.userId}
+                        aria-describedby="oidc-logout-tooltip"
                         title={!oidcSessionClaims.userId ? "로그인된 세션이 없습니다" : "로그아웃"}
-                        className="rounded-lg border border-border px-4 py-2 text-sm font-bold text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-lg border border-border px-4 py-2 text-sm font-bold text-foreground transition-colors hover:bg-accent aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
                       >
                         로그아웃
                       </button>
+                      <span id="oidc-logout-tooltip" className="sr-only">
+                        {!oidcSessionClaims.userId ? "로그인된 세션이 없습니다" : "로그아웃"}
+                      </span>
                     </div>
                   </div>
                   {oidcActionError ? (

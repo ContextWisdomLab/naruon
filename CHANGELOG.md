@@ -1,4 +1,5 @@
 ## [Unreleased]
+- SettingsLayout 내 비활성화 버튼(계정 설정 저장, 등록 토큰 회전, OIDC 로그인, 로그아웃)들의 접근성을 개선했습니다. `disabled` 속성을 사용하면 탭 이동 시 건너뛰어지고 툴팁을 볼 수 없는 문제를 해결하기 위해, `disabled` 대신 `aria-disabled="true"`를 적용하고 시각적으로 숨겨진 `span`에 `aria-describedby`를 연결하여 툴팁 내용을 스크린 리더에서 읽을 수 있도록 하였습니다. 또한 `onClick` 핸들러에서 상태에 따라 이벤트를 무시(`e.preventDefault()`)하도록 하여 안전성을 확보했습니다.
 - 긴 이메일·첨부 본문을 의미 단위 청크로 임베딩한 뒤 기존 email/attachment 벡터 계약으로 평균화하고, 청크 요청·벡터 누적을 제한된 창으로 처리합니다. OpenAI `text-embedding-3-*`에는 저장 차원(`1536`)을 직접 요청하도록 보강했습니다. 합성 메일 fixture 5건(70청크)과 provider 요청 계약으로 1,536차원 벡터 경로를 검증했으며, 실행 시 선택한 임베딩 제공자에 본문·파싱된 첨부 텍스트를 전송할 수 있습니다. 회사 기밀 데이터는 fixture·commit·PR·log에 포함하지 않습니다.
 - EmailDetail 테스트가 지원하지 않는 스레드 병합/분리 버튼을 `textContent`뿐 아니라 `aria-label`과 `title` 접근 가능 이름으로도 검출하도록 바꿔, 아이콘 전용 버튼 회귀를 놓치지 않습니다.
 

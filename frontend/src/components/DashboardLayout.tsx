@@ -223,34 +223,44 @@ function PrimaryNavLink({
 }) {
   const pathname = usePathname();
   const searchParams = useCurrentSearchParams();
-  const active = isActivePath(pathname, href, '', searchParams);
+  const isActiveDestination = isActivePath(pathname, href, '', searchParams);
   const linkRef = useRef<HTMLAnchorElement>(null);
 
   useEffect(() => {
-    if (!active) return;
-    const animationFrame = window.requestAnimationFrame(() => {
-      const link = linkRef.current;
-      const nav = link?.closest('nav');
-      if (!link || !nav) return;
-      const navRect = nav.getBoundingClientRect();
-      const linkRect = link.getBoundingClientRect();
-      const inset = 16;
-      if (linkRect.left < navRect.left + inset) {
-        nav.scrollLeft -= navRect.left + inset - linkRect.left;
-      } else if (linkRect.right > navRect.right - inset) {
-        nav.scrollLeft += linkRect.right - (navRect.right - inset);
-      }
-    });
-    return () => window.cancelAnimationFrame(animationFrame);
-  }, [active]);
+    if (!isActiveDestination) return;
+    let animationFrame = 0;
+    const scheduleVisibilityCorrection = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = 0;
+        const activeLink = linkRef.current;
+        const primaryNavigation = activeLink?.closest('nav');
+        if (!activeLink || !primaryNavigation) return;
+        const navigationRect = primaryNavigation.getBoundingClientRect();
+        const activeLinkRect = activeLink.getBoundingClientRect();
+        const navigationInset = 16;
+        if (activeLinkRect.left < navigationRect.left + navigationInset) {
+          primaryNavigation.scrollLeft -= navigationRect.left + navigationInset - activeLinkRect.left;
+        } else if (activeLinkRect.right > navigationRect.right - navigationInset) {
+          primaryNavigation.scrollLeft += activeLinkRect.right - (navigationRect.right - navigationInset);
+        }
+      });
+    };
+    scheduleVisibilityCorrection();
+    window.addEventListener('resize', scheduleVisibilityCorrection);
+    return () => {
+      window.removeEventListener('resize', scheduleVisibilityCorrection);
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [isActiveDestination]);
 
   return (
     <Link
       ref={linkRef}
       href={href}
-      aria-current={active ? 'page' : undefined}
+      aria-current={isActiveDestination ? 'page' : undefined}
       className={`inline-flex h-10 shrink-0 whitespace-nowrap items-center gap-2 rounded-xl px-3 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 ${
-        active ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
+        isActiveDestination ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
       }`}
     >
       <Icon className="size-4" aria-hidden={true} />

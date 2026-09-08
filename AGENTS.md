@@ -1129,6 +1129,13 @@ subject to U.S. copyright, while attribution remains required.
   retain the exact head/base and verify the target protected branch's ruleset,
   qualifying review, and hosted checks before treating a PR as merge-ready.
 
+- Before pushing a repair, compare the worktree branch with the PR's live
+  `headRefName`, head owner, base ref, and exact head. A similarly named branch
+  can be a different PR source; never assume a successful push updated the
+  intended PR. If the source branch cannot be safely updated, preserve the
+  commit on its own branch and open a stacked successor that names the
+  predecessor and proves the inherited delta.
+
 ## Phase 10 development rules
 
 - **Stepwise execution**: Each phase requires an atomic PR, GitHub PR Tracking,

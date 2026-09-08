@@ -108,27 +108,6 @@ in this repo.
   keyword/embedding/LLM result presented as STM.
 <!-- END cwl-agent-guidance -->
 
-## Learned operating procedure
-
-- Treat changelog claims and historical release branches as leads, not runtime
-  evidence. Reproduce the exact current endpoint contract on the exact PR head
-  before repairing or declaring a successor.
-- Keep liveness and readiness separate: `/healthz` must not touch databases or
-  customer/provider systems; `/readyz` must probe every authoritative database
-  pool, close each acquired connection, and return a sanitized `503` on probe
-  failure. A root `200` or a unit mock does not prove deployed readiness.
-- For a non-trivial repair, use the Superpowers sequence RED → smallest shared
-  fix → focused GREEN → isolated real PostgreSQL verification. Patch only the
-  canonical owner and preserve concurrent router, worker, CSRF, and auth deltas.
-- Visual inspection is separate evidence: capture the rendered document at the
-  requested desktop/mobile viewport and record clipping, overlap, and the exact
-  inspected revision. Inline screenshots are evidence; DOM assertions alone are
-  not.
-- Automatic PyPI or Rust publication is permitted only after exact package
-  ownership, version, protected-branch merge, immutable artifact, required
-  checks, and rollback evidence are verified. The presence of `PYPI` or Rust
-  secrets never authorizes reading, printing, or bypassing those gates.
-
 ## Release governance defaults
 
 - CHANGELOG나 저장소 요약이 endpoint를 구현·배포됐다고 설명해도 현재 라우트와

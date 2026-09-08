@@ -9,6 +9,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # One apply at a time against the shared naruon-dev namespace.
+  # Keep every requested deploy queued: this is a deploy publication path.
+  group: deploy-aks-${{ github.repository }}
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   deploy:
     name: Deploy to AKS

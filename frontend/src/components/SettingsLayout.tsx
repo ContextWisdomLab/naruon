@@ -5,7 +5,7 @@ import { apiClient } from '@/lib/api-client';
 import type { SessionClaims } from '@/lib/session-cookie';
 import { clearOidcSession, getOidcBrowserConfig, startOidcLogin } from '@/lib/oidc-session';
 import { useWorkspaceStartupView, setWorkspaceStartupView } from '@/lib/workspace-preferences';
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 
 export type SettingsTab = '워크스페이스' | '멤버' | 'AI 모델' | '연결 계정' | '알림' | '자동화' | '결제' | '개발자';
 const EMPTY_SESSION_CLAIMS: SessionClaims = {
@@ -537,14 +537,8 @@ export function SettingsLayout() {
   const connectorManifest = runnerConfig?.connector_manifest;
   const detailSurface = settingsDetailSurfaces[activeTab];
   const connectorEvents = operationalSignals?.connector.recent_events ?? [];
-  const activeModelProvider = useMemo(
-    () => modelProviders.find((provider) => provider.is_active) ?? modelProviders[0] ?? null,
-    [modelProviders]
-  );
-  const selectedEmbeddingProvider = useMemo(
-    () => modelProviders.find((provider) => provider.id === selectedEmbeddingProviderId) ?? activeModelProvider,
-    [modelProviders, selectedEmbeddingProviderId, activeModelProvider]
-  );
+  const activeModelProvider = modelProviders.find((provider) => provider.is_active) ?? modelProviders[0] ?? null;
+  const selectedEmbeddingProvider = modelProviders.find((provider) => provider.id === selectedEmbeddingProviderId) ?? activeModelProvider;
   const accountReady = !accountLoading && !accountError && accountConfig !== null;
   const oauthAppConfigured = Boolean(
     accountConfig?.oauth_client_id

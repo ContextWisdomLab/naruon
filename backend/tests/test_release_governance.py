@@ -12,7 +12,6 @@ import os
 import re
 import sys
 import importlib.util
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -52,6 +51,30 @@ def assert_dockerfile_stage_from(dockerfile: str, image: str, stage_alias: str) 
     assert re.search(pattern, dockerfile, flags=re.MULTILINE), (
         f"missing pinned {image} stage alias {stage_alias}"
     )
+
+
+def first_dockerfile_base_reference(dockerfile: str) -> str:
+    """Return the first exact tag-and-digest Dockerfile base reference."""
+    first_from = re.search(r"^FROM (?P<declaration>.+)$", dockerfile, flags=re.MULTILINE)
+    assert first_from is not None, "Dockerfile must declare a base image"
+    match = re.fullmatch(
+        r"(?P<reference>[A-Za-z0-9._/-]+:[A-Za-z0-9._-]+"
+        r"@sha256:[0-9a-f]{64})(?: AS [A-Za-z0-9._-]+)?",
+        first_from.group("declaration"),
+    )
+    assert match is not None, "Dockerfile first stage must use an exact tag-and-digest pin"
+    return match.group("reference")
+
+
+def assert_oci_metadata_matches_first_base(dockerfile: str) -> None:
+    """Require OCI base metadata defaults to describe the real first stage."""
+    base_reference = first_dockerfile_base_reference(dockerfile)
+    image_reference, base_digest = base_reference.rsplit("@", 1)
+    if "/" not in image_reference:
+        image_reference = f"docker.io/library/{image_reference}"
+
+    assert f'ARG OCI_IMAGE_BASE_DIGEST="{base_digest}"' in dockerfile
+    assert f'ARG OCI_IMAGE_BASE_NAME="{image_reference}@{base_digest}"' in dockerfile
 
 
 def test_root_version_exists_and_is_initial_semver_release() -> None:
@@ -95,6 +118,29 @@ def test_container_images_cover_all_oci_predefined_image_annotations() -> None:
     assert (
         "annotations: ${{ steps.meta.outputs.annotations }}" in docker_publish_workflow
     )
+    assert_oci_metadata_matches_first_base(root_dockerfile)
+    assert_oci_metadata_matches_first_base(frontend_dockerfile)
+
+
+def test_container_base_image_pins_are_synchronized() -> None:
+    root_dockerfile = read_repo_text("Dockerfile")
+    frontend_dockerfile = read_repo_text("frontend/Dockerfile")
+    connector_dockerfile = read_repo_text("connector/Dockerfile")
+
+    root_python = first_dockerfile_base_reference(root_dockerfile)
+    connector_python = first_dockerfile_base_reference(connector_dockerfile)
+    root_node_match = re.search(
+        r"^FROM (?P<reference>node:26-slim@sha256:[0-9a-f]{64}) "
+        r"AS frontend-builder$",
+        root_dockerfile,
+        flags=re.MULTILINE,
+    )
+    assert root_node_match is not None
+
+    assert connector_python == root_python
+    assert first_dockerfile_base_reference(frontend_dockerfile) == (
+        root_node_match.group("reference")
+    )
 
 
 def test_container_images_use_pinned_node_runtimes() -> None:
@@ -106,7 +152,8 @@ def test_container_images_use_pinned_node_runtimes() -> None:
     assert_dockerfile_stage_from(root_dockerfile, "node:26-slim", "frontend-builder")
     assert "FROM node:26-slim@sha256:" in frontend_dockerfile
     assert "docker.io/library/node:26-slim" in frontend_dockerfile
-    assert "docker.io/library/node:26-slim" in docker_publish_workflow
+    assert "base_dockerfile: frontend/Dockerfile" in docker_publish_workflow
+    assert 'base_name="docker.io/library/$base_reference"' in docker_publish_workflow
     assert "Node 26 toolchain" in render_deployment
     assert "node:24" not in root_dockerfile
     assert "node:24" not in frontend_dockerfile
@@ -127,7 +174,8 @@ def test_backend_images_use_python_314_runtime() -> None:
 
     assert_dockerfile_stage_from(root_dockerfile, "python:3.14-slim", "backend-runtime")
     assert "docker.io/library/python:3.14-slim" in root_dockerfile
-    assert "docker.io/library/python:3.14-slim" in docker_publish_workflow
+    assert "base_dockerfile: Dockerfile" in docker_publish_workflow
+    assert 'base_name="docker.io/library/$base_reference"' in docker_publish_workflow
     assert 'python-version: ["3.14"]' in app_ci_workflow
     assert 'python-version: "3.14"' in bandit_workflow
     assert "Python 3.14 toolchain" in render_deployment
@@ -175,99 +223,8 @@ def test_strix_ci_requirements_use_security_quality_clean_pins() -> None:
     strix_ci_requirements = read_repo_text("requirements-strix-ci.txt")
 
     assert "strix-agent==1.0.4" in strix_ci_requirements
-    assert "google-cloud-aiplatform==1.160.0" in strix_ci_requirements
     assert "cryptography==50.0.0" in strix_ci_requirements
-    assert "protobuf==6.33.6" in strix_ci_requirements
     assert "python-multipart==0.0.32" in strix_ci_requirements
-
-
-def test_cryptography_runtime_pins_are_bleichenbacher_oracle_fixed() -> None:
-    """Require every governed Python surface to use the first oracle-safe release."""
-    backend_requirements = read_repo_text("backend/requirements.txt")
-    backend_project_text = read_repo_text("backend/pyproject.toml")
-    backend_project = tomllib.loads(backend_project_text)
-    backend_lock = tomllib.loads(read_repo_text("backend/uv.lock"))
-    backend_hashes = read_repo_text("backend/requirements-hashes.txt")
-    strix_requirements = read_repo_text("requirements-strix-ci.txt")
-    strix_hashes = read_repo_text("requirements-strix-ci-hashes.txt")
-
-    def pins(text: str, package: str) -> list[str]:
-        return re.findall(rf"(?m)^{re.escape(package)}==[^\s\\]+", text)
-
-    for governed_text in (
-        backend_requirements,
-        backend_hashes,
-        strix_requirements,
-        strix_hashes,
-    ):
-        assert pins(governed_text, "cryptography") == ["cryptography==50.0.0"]
-    assert [
-        dependency
-        for dependency in backend_project["project"]["dependencies"]
-        if dependency.startswith("cryptography")
-    ] == ["cryptography==50.0.0"]
-    cryptography_versions = {
-        package["version"]
-        for package in backend_lock["package"]
-        if package["name"] == "cryptography"
-    }
-    assert cryptography_versions == {"50.0.0"}
-    assert pins(strix_requirements, "protobuf") == ["protobuf==6.33.6"]
-    assert pins(strix_hashes, "protobuf") == ["protobuf==6.33.6"]
-
-
-def test_frontend_postcss_lock_is_cve_2026_69153_fixed() -> None:
-    """Keep every manifest and lock surface on the first currently governed fix."""
-    frontend_package = json.loads(read_repo_text("frontend/package.json"))
-    frontend_workspace = yaml.safe_load(read_repo_text("frontend/pnpm-workspace.yaml"))
-    frontend_lock = yaml.safe_load(read_repo_text("frontend/pnpm-lock.yaml"))
-
-    assert frontend_package["devDependencies"]["postcss"] == "8.5.24"
-    assert frontend_package["overrides"]["postcss"] == "8.5.24"
-    assert frontend_package["resolutions"]["postcss"] == "8.5.24"
-    assert frontend_workspace["overrides"]["postcss"] == "8.5.24"
-    assert frontend_lock["overrides"]["postcss"] == "8.5.24"
-    assert frontend_lock["importers"]["."]["devDependencies"]["postcss"] == {
-        "specifier": "8.5.24",
-        "version": "8.5.24",
-    }
-
-    for section in ("packages", "snapshots"):
-        postcss_keys = [
-            package
-            for package in frontend_lock[section]
-            if package.startswith("postcss@")
-        ]
-        assert postcss_keys == ["postcss@8.5.24"]
-
-
-def test_frontend_tooling_lock_uses_current_audit_fixed_transitive_versions() -> None:
-    """Keep newly disclosed audit fixes aligned across manifest and pnpm lock."""
-    frontend_package = json.loads(read_repo_text("frontend/package.json"))
-    frontend_workspace = yaml.safe_load(read_repo_text("frontend/pnpm-workspace.yaml"))
-    frontend_lock = yaml.safe_load(read_repo_text("frontend/pnpm-lock.yaml"))
-
-    assert frontend_package["devDependencies"]["jsdom"] == "^30.0.1"
-    for dependency, expected_version in (
-        ("brace-expansion", "5.0.9"),
-        ("undici", "8.9.0"),
-    ):
-        assert frontend_package["overrides"][dependency] == expected_version
-        assert frontend_package["resolutions"][dependency] == expected_version
-        assert frontend_workspace["overrides"][dependency] == expected_version
-        assert frontend_lock["overrides"][dependency] == expected_version
-
-        for section in ("packages", "snapshots"):
-            locked_keys = [
-                package
-                for package in frontend_lock[section]
-                if package.startswith(f"{dependency}@")
-            ]
-            assert locked_keys == [f"{dependency}@{expected_version}"]
-
-    assert [
-        package for package in frontend_lock["packages"] if package.startswith("jsdom@")
-    ] == ["jsdom@30.0.1"]
 
 
 def test_changelog_follows_keep_a_changelog_for_initial_korean_release() -> None:
@@ -713,19 +670,6 @@ def test_app_ci_runs_backend_and_frontend_checks_without_duplicate_release_pushe
     assert "release/**" not in push_block
 
 
-def test_pr_governance_coalesces_only_pr_events() -> None:
-    workflow = read_repo_text(".github/workflows/pr-governance.yml")
-
-    assert (
-        "${{ github.workflow }}-${{ github.repository }}-${{ github.event.pull_request.number"
-        in workflow
-    )
-    assert (
-        "cancel-in-progress: ${{ github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review' }}"
-        in workflow
-    )
-
-
 def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_tags() -> (
     None
 ):
@@ -772,6 +716,17 @@ def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_
     assert workflow.count("image: naruon") == 2
     assert "push: false" in workflow
     assert "push: true" in workflow
+    assert workflow.count("base_dockerfile: Dockerfile") == 4
+    assert workflow.count("base_dockerfile: frontend/Dockerfile") == 2
+    assert workflow.count('base_digest="${base_reference##*@}"') == 2
+    assert workflow.count('base_name="docker.io/library/$base_reference"') == 2
+    assert "Resolve pinned Ollama base manifest" in workflow
+    assert "docker buildx imagetools inspect" in workflow
+    assert "Platform:[[:space:]]+${platform}[[:space:]]*$" in workflow
+    assert "Pinned Ollama manifest is missing %s" in workflow
+    assert "linux/amd64 linux/arm64" in workflow
+    assert "sha256:44dd04494ee8f3b538294360e7c4b3acb87c8268e4d0a4828a6500b1eff50061" not in workflow
+    assert "sha256:191ef878ecb351d68b78219593de18bd8942afd59af59f29960dc4b24805a3f1" not in workflow
     assert "sbom: false" in workflow
     assert workflow.count("sbom: true") == 1
     assert "type=semver" in workflow

@@ -1,5 +1,9 @@
 import { calendarDefinitions } from "./constants";
-import { CalendarWritebackSource, CalendarWritebackIntentResponse } from "./types";
+import {
+  CalendarConflictDecisionCode,
+  CalendarWritebackSource,
+  CalendarWritebackIntentResponse,
+} from "./types";
 
 export function buildInitialCalendarVisibility() {
   return Object.fromEntries(calendarDefinitions.map((calendar) => [calendar.id, true]));
@@ -64,6 +68,36 @@ export function getProviderRetryLabel(result: CalendarWritebackIntentResponse) {
   if (result.retry_item_uid || result.status === 'queued') return '재시도 대기';
   if (result.provider_write_executed) return '재시도 없음';
   return '실행 요청 없음';
+}
+
+export function getConflictDecisionLabel(decisionCode: CalendarConflictDecisionCode): string {
+  switch (decisionCode) {
+    case 'available':
+      return '진행 가능';
+    case 'blocked':
+      return '이중 예약 차단';
+    case 'review_required':
+      return '검토 필요';
+    default: {
+      const exhaustiveCheck: never = decisionCode;
+      return exhaustiveCheck;
+    }
+  }
+}
+
+export function getConflictNextActionLabel(decisionCode: CalendarConflictDecisionCode): string {
+  switch (decisionCode) {
+    case 'available':
+      return '이 시간은 비어 있습니다. 일정을 계속 진행하세요.';
+    case 'blocked':
+      return '확정된 일정이 겹칩니다. 다른 시간을 고르거나 기존 확정 일정을 먼저 조정하세요.';
+    case 'review_required':
+      return '잠정 일정이 겹칩니다. 잠정 일정을 조정하거나 유지할지 확인한 뒤 진행하세요.';
+    default: {
+      const exhaustiveCheck: never = decisionCode;
+      return exhaustiveCheck;
+    }
+  }
 }
 
 export function getApiErrorStatus(error: unknown) {

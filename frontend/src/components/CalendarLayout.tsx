@@ -225,7 +225,14 @@ export function CalendarLayout() {
             {viewMode === '월간 캘린더' && <CalendarMonthView visibleMonthEvents={visibleMonthEvents} />}
             {viewMode === '주간 캘린더' && <CalendarWeekView visibleWeekEvents={visibleWeekEvents} />}
             {viewMode === '일정 상세' && <CalendarDetailView selectedDetailEvent={selectedDetailEvent} />}
-            {viewMode === '회의 조율' && <CalendarCoordinationView />}
+            {viewMode === '회의 조율' && (
+              <CalendarCoordinationView
+                writebackSources={writebackSources}
+                selectedSourceId={selectedSourceId}
+                setSelectedSourceId={setSelectedSourceId}
+                sourceLoadStatus={sourceLoadStatus}
+              />
+            )}
             {viewMode === '일정 후보' && <CalendarCandidateView visibleCandidateEvents={visibleCandidateEvents} />}
           </div>
         </div>

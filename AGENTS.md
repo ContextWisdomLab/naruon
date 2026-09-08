@@ -95,6 +95,17 @@ in this repo.
   knowledge-graph pipeline (DOM decomposition, entity/relation extraction,
   grounded graph retrieval) should ground itself in the relevant layout-analysis
   and knowledge-graph / grounded-retrieval literature.
+
+### Structural topic-model boundary
+
+- Do not implement or describe hard-coded term lists, term frequency,
+  embeddings, or LLM-assigned labels as structural topic modeling (STM).
+  Fixed business labels are not topic-posterior estimates, and the explicitly
+  lexical `keyword_extractor` must not be used as topic evidence.
+- Topic inference requires a versioned fitted TEPP model and its frozen
+  preprocessing and vocabulary contract. If that fitted model is unavailable,
+  fail closed; do not return a default label, template agenda, or substitute
+  keyword/embedding/LLM result presented as STM.
 <!-- END cwl-agent-guidance -->
 
 ## Release governance defaults
@@ -425,7 +436,23 @@ in this repo.
 - Public audit/event identifiers that may use human-readable prefixes must not
   be stored in artificially short `varchar(n)` columns; use opaque source UIDs
   that fit seeded smoke data and provider evidence without truncation.
+- Conceptual ERDs, API schemas, persistence models, and fixtures must not mark a
+  reusable business identifier such as `document_ref`, `model_id`, `topic_id`,
+  or `label_id` as an unscoped primary or foreign key. Use an opaque immutable
+  reference that binds the full scope or an explicit composite identity with the
+  applicable snapshot revision, model version, request/result scope, or label
+  version. Define the required identity tuple for each entity; require only the
+  dimensions relevant to that entity. Never join snapshots, model artifacts,
+  topic components, or label evidence by a bare document, model, topic, rank,
+  label, or display value.
 - When reviews find public/private identifier leaks, stale API fixture shapes, or recurring bug patterns, update tests, frontend mocks, E2E mocks, README examples, architecture docs, and explicitly record the anti-pattern in `AGENTS.md` so the same bug pattern does not reappear in copied examples.
+- Memoized id-to-record Maps must be first-wins (`if (!map.has(key)) map.set(...)`).
+  `new Map(items.map((item) => [String(item.id), item]))` is last-wins and
+  desynchronizes first-wins label maps from the selected node or edge when
+  ids collide. Keep a rendered selection test that repeats an id and asserts
+  the first instance is the one opened. Do not treat a source-substring scan
+  as the only selection-path contract; fire the vis-network `selectNode` /
+  `selectEdge` callbacks with mixed numeric and string ids.
 - When reviews find missing browser security headers or tabnabbing hardening,
   update both backend header tests and frontend link tests. Global backend
   responses must include `Referrer-Policy`, and `target="_blank"` links must
@@ -490,6 +517,10 @@ in this repo.
 - Calendar writeback UI must fail closed while the signed source registry is
   loading or errored; do not emit intent POSTs without a confirmed opaque
   `target_source_id`, and keep tests covering the loading/error boundary.
+- Calendar coordination must not present canned ICS documents or fixed
+  conflict outcomes as production evidence. Use selectable sources from the
+  signed `/api/calendar/writeback-sources` registry, or omit the evaluate call
+  until source-backed VEVENT evidence exists. Known `.ics` pairs stay in tests.
 - Calendar and WebDAV workspaces must expose the current opaque writeback source
   as a deliberate user selection with capability and ETag/If-Match state.
   Automatic first-source fallback may initialize the control, but intent POSTs

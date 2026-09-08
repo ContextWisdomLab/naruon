@@ -12,6 +12,8 @@ mail/calendar/file systems.
 ## Quick Links
 - [Installation & Setup](#five-minute-local-path)
 - [Architecture](docs/architecture/)
+- [Topic-intelligence documentation set](docs/topic-intelligence/README.md)
+- [Architecture decisions](docs/adr/README.md)
 - [Contributing](CONTRIBUTING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Security Policy](SECURITY.md)
@@ -48,6 +50,12 @@ mail/calendar/file systems.
   auto-merge, and mechanical merge actions run as the target repository's
   `github-actions[bot]` through the central workflow. Pending CodeRabbit or
   required-check evidence is a wait state, not a hard blocker.
+- Topic intelligence is not currently a live Naruon capability. The lexical
+  `keyword_extractor` is metadata only; Naruon fails closed rather than present
+  keyword, embedding, or LLM labels as Structural Topic Modeling. The product,
+  technical, architecture, contract, security, UML, conceptual ERD, test, and
+  operability records are indexed in
+  [`docs/topic-intelligence/`](docs/topic-intelligence/README.md).
 - Security governance is source-backed through signed
   `/api/security/access-surface`. The endpoint reads scoped WebDAV, CalDAV, and
   connector evidence plus durable `security_audit_events`, reuses the deny-first

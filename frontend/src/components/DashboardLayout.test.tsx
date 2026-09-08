@@ -98,7 +98,9 @@ describe("DashboardLayout", () => {
     expect(headerActionButtons).toEqual(["일정 반영", "답장 초안", "실행 항목 생성"]);
     expect(headerActionGroup?.className).toContain("lg:flex");
     expect(headerActionGroup?.className).not.toContain("xl:flex");
-    expect(skipLink?.textContent).toBe("Skip to main content");
+    expect(skipLink?.textContent).toBe("본문 바로가기");
+    expect(skipLink?.className).toContain("focus:right-4");
+    expect(skipLink?.className).toContain("focus:text-center");
     expect(main?.textContent ?? "").toContain("Inbox workspace content");
 
     const headerEvents: string[] = [];

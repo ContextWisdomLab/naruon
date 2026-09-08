@@ -476,6 +476,9 @@ in this repo.
 - Icon-only workspace controls must carry localized `aria-label` text matching
   the visible app language; do not rely on the SVG icon alone for Calendar,
   Tasks, drawer, modal, or toolbar actions.
+- Keyboard-only navigation text, including skip links, must match the document
+  locale and must be visually checked in its focused state; a screen-reader-only
+  default state does not prove that the revealed control is readable.
 - Execution steps resulting in `Timeout`, `Fatal`, `Warn`, or `Denied` outputs are considered hard failures. Tests must run without these warnings to be considered passing.
 - Strix success artifacts must also be scanned for `Timeout`, `Fatal`, `Warn`,
   or `Denied` output before accepting clean evidence. Filter only narrowly known

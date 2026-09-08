@@ -32,8 +32,12 @@ IMPORT_ORGANIZATION_ID = os.environ.get("NARUON_IMPORT_ORGANIZATION_ID", "defaul
 
 async def process_zip_file(zip_path: str | Path, session: AsyncSession):
     with tempfile.TemporaryDirectory() as temp_dir:
-        logger.info(f"Extracting {zip_path}...")
-        extracted_files = await extract_backup_async(zip_path, temp_dir)
+        logger.info("Extracting fixture archive")
+        try:
+            extracted_files = await extract_backup_async(zip_path, temp_dir)
+        except Exception:
+            logger.error("Fixture archive extraction failed")
+            return
 
         batch_values = []
         for file_path in extracted_files:
@@ -118,7 +122,7 @@ async def process_zip_file(zip_path: str | Path, session: AsyncSession):
             )
             await session.execute(stmt, batch_values)
         await session.commit()
-        logger.info(f"Finished processing {zip_path}")
+        logger.info("Finished processing fixture archive")
 
 
 async def main():

@@ -141,6 +141,30 @@ async def test_root_fixture_parse_failure_logs_bounded_message(caplog, tmp_path)
 
 
 @pytest.mark.asyncio
+async def test_zip_archive_extraction_failure_logs_bounded_message(caplog, tmp_path) -> None:
+    session = MagicMock()
+    zip_path = tmp_path / "customer-secret.zip"
+
+    with caplog.at_level(
+        logging.INFO, logger=zip_import_fixtures.logger.name
+    ), patch.object(
+        zip_import_fixtures,
+        "extract_backup_async",
+        new=AsyncMock(
+            side_effect=RuntimeError(f"{_SECRET_EXCEPTION_TEXT} {_SECRET_FIXTURE_PATH}")
+        ),
+    ):
+        await zip_import_fixtures.process_zip_file(zip_path, session)
+
+    assert "Fixture archive extraction failed" in caplog.text
+    assert "Extracting fixture archive" in caplog.text
+    assert "Finished processing fixture archive" not in caplog.text
+    assert _SECRET_EXCEPTION_TEXT not in caplog.text
+    assert _SECRET_FIXTURE_PATH not in caplog.text
+    assert str(zip_path) not in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_root_fixture_body_embedding_failure_logs_bounded_message(
     caplog, tmp_path
 ) -> None:

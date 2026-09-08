@@ -1,0 +1,1228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://naruon.net/schemas/topic-intelligence/topic-inference-result-v1/2026-08-09.1",
+  "title": "Naruon internal topic-inference result envelope",
+  "description": "PLANNED Naruon adapter envelope for consuming an independently published compatible scientific payload. TEPP is only the expected upstream producer if it separately publishes and accepts that responsibility; this is not a shipped Naruon endpoint or an assertion that such a TEPP contract exists. A candidate payload that fails this schema or any declared runtime invariant is an upstream protocol error mapped to HTTP 502, not an inferred or abstained result.",
+  "x-maturity": "PLANNED",
+  "x-capability-status": "BLOCKED-UPSTREAM",
+  "x-owner": "NARUON",
+  "x-expected-upstream-producer": "TEPP",
+  "x-runtime-status": "NOT_IMPLEMENTED",
+  "x-schema-digest-required": true,
+  "x-validator-requirements": [
+    "JSON Schema Draft 2020-12",
+    "date-time format assertion enabled",
+    "all x-runtime-invariants enforced after schema validation"
+  ],
+  "x-runtime-invariants": [
+    "For inferred results: provenance.fitted_topic_count equals inference.topic_count, diagnostics.posterior.observed_topic_count, and the number of topic_components; topic_id and rank are each unique.",
+    "For abstained results: inference.topic_count, diagnostics.posterior.observed_topic_count, and the number of topic_components are zero while fitted_topic_count remains the deployed artifact topic count.",
+    "request.evidence_ref.snapshot_revision equals request.source_snapshot_revision and request.evidence_ref.scope_binding_ref equals request.scope_binding_ref; reauthorization resolves the same current tenant, workspace, purpose, and authorization binding.",
+    "request.language equals diagnostics.input.language_tag; retained_token_count meets its minimum and out_of_vocabulary_ratio does not exceed its maximum.",
+    "availability_time is at or before knowledge_cutoff_time and nullable temporal fields follow the pinned temporal missingness policy.",
+    "diagnostic and reason codes are members of the exact pinned registries; any unknown registry version or code is an upstream protocol error, never abstention.",
+    "inference.inference_method equals diagnostics.posterior.inference_method and all reported counts, sums, intervals, and status-dependent diagnostics agree with recomputed values."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "request",
+    "status",
+    "completed_at",
+    "tepp_payload_digest",
+    "tepp_payload"
+  ],
+  "properties": {
+    "contract": {
+      "$ref": "#/$defs/contractIdentity"
+    },
+    "request": {
+      "$ref": "#/$defs/requestIdentity"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "inferred",
+        "abstained"
+      ]
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tepp_payload_digest": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/canonicalDigest"
+        },
+        {
+          "properties": {
+            "domain": {
+              "const": "naruon.topic-inference.tepp-payload.v1"
+            }
+          }
+        }
+      ]
+    },
+    "tepp_payload": {
+      "$ref": "#/$defs/teppScientificPayload"
+    },
+    "presentation": {
+      "$ref": "#/$defs/presentation"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "inferred"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "tepp_payload": {
+            "allOf": [
+              {
+                "properties": {
+                  "inference": {
+                    "properties": {
+                      "topic_count": {
+                        "minimum": 1
+                      },
+                      "topic_components": {
+                        "minItems": 1
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "diagnostics": {
+                    "properties": {
+                      "diagnostic_status": {
+                        "const": "accepted"
+                      },
+                      "posterior": {
+                        "properties": {
+                          "converged": {
+                            "const": true
+                          },
+                          "numerical_status": {
+                            "const": "valid"
+                          },
+                          "finite_values": {
+                            "const": true
+                          },
+                          "intervals_valid": {
+                            "const": true
+                          }
+                        }
+                      },
+                      "policy": {
+                        "properties": {
+                          "accepted": {
+                            "const": true
+                          },
+                          "reason_codes": {
+                            "maxItems": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "abstained"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "presentation"
+          ]
+        },
+        "properties": {
+          "tepp_payload": {
+            "allOf": [
+              {
+                "properties": {
+                  "inference": {
+                    "properties": {
+                      "topic_count": {
+                        "const": 0
+                      },
+                      "topic_components": {
+                        "maxItems": 0
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "diagnostics": {
+                    "properties": {
+                      "diagnostic_status": {
+                        "const": "rejected"
+                      },
+                      "policy": {
+                        "properties": {
+                          "accepted": {
+                            "const": false
+                          },
+                          "reason_codes": {
+                            "minItems": 1
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "contractIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_id",
+        "schema_revision",
+        "schema_digest",
+        "adapter_name",
+        "adapter_version",
+        "tepp_contract_version"
+      ],
+      "properties": {
+        "schema_id": {
+          "const": "https://naruon.net/schemas/topic-intelligence/topic-inference-result-v1/2026-08-09.1"
+        },
+        "schema_revision": {
+          "const": "2026-08-09.1"
+        },
+        "schema_digest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/canonicalDigest"
+            },
+            {
+              "properties": {
+                "domain": {
+                  "const": "naruon.topic-inference.schema.v1"
+                }
+              }
+            }
+          ]
+        },
+        "adapter_name": {
+          "const": "naruon-topic-intelligence-adapter"
+        },
+        "adapter_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "tepp_contract_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "requestIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_id",
+        "request_revision",
+        "idempotency_binding_ref",
+        "document_ref",
+        "source_snapshot_revision",
+        "source_snapshot_digest",
+        "evidence_ref",
+        "scope_binding_ref",
+        "language",
+        "purpose"
+      ],
+      "properties": {
+        "request_id": {
+          "type": "string",
+          "pattern": "^tir_[A-Za-z0-9_-]{16,64}$"
+        },
+        "request_revision": {
+          "type": "string",
+          "pattern": "^reqrev_[A-Za-z0-9_-]{1,64}$"
+        },
+        "idempotency_binding_ref": {
+          "type": "string",
+          "pattern": "^idem_[A-Za-z0-9_-]{16,128}$"
+        },
+        "document_ref": {
+          "type": "string",
+          "pattern": "^doc_[A-Za-z0-9_-]{16,128}$"
+        },
+        "source_snapshot_revision": {
+          "type": "string",
+          "pattern": "^snaprev_[A-Za-z0-9_-]{1,128}$"
+        },
+        "source_snapshot_digest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/canonicalDigest"
+            },
+            {
+              "properties": {
+                "domain": {
+                  "const": "naruon.topic-inference.source-snapshot.v1"
+                }
+              }
+            }
+          ]
+        },
+        "evidence_ref": {
+          "$ref": "#/$defs/opaqueEvidenceRef"
+        },
+        "scope_binding_ref": {
+          "type": "string",
+          "pattern": "^scopebind_[A-Za-z0-9_-]{16,128}$",
+          "description": "Opaque server-created binding for the currently authorized tenant, workspace, and purpose. It must equal evidence_ref.scope_binding_ref at runtime."
+        },
+        "language": {
+          "type": "string",
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "maxLength": 63
+        },
+        "purpose": {
+          "const": "topic_assistance"
+        }
+      }
+    },
+    "opaqueEvidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref",
+        "audience",
+        "snapshot_revision",
+        "scope_binding_ref",
+        "authorization_binding_ref",
+        "purpose",
+        "expires_at"
+      ],
+      "properties": {
+        "ref": {
+          "type": "string",
+          "pattern": "^ev_[A-Za-z0-9_-]{16,128}$"
+        },
+        "audience": {
+          "const": "naruon-topic-intelligence-adapter"
+        },
+        "snapshot_revision": {
+          "type": "string",
+          "pattern": "^snaprev_[A-Za-z0-9_-]{1,128}$",
+          "description": "Must equal the enclosing request source_snapshot_revision at runtime."
+        },
+        "scope_binding_ref": {
+          "type": "string",
+          "pattern": "^scopebind_[A-Za-z0-9_-]{16,128}$",
+          "description": "Opaque tenant/workspace/purpose binding. It must equal the enclosing request scope_binding_ref and be reauthorized at use time."
+        },
+        "authorization_binding_ref": {
+          "type": "string",
+          "pattern": "^authz_[A-Za-z0-9_-]{16,128}$"
+        },
+        "purpose": {
+          "const": "topic_assistance"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "teppScientificPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provenance",
+        "inference",
+        "diagnostics"
+      ],
+      "properties": {
+        "provenance": {
+          "$ref": "#/$defs/scientificProvenance"
+        },
+        "inference": {
+          "$ref": "#/$defs/inferenceResult"
+        },
+        "diagnostics": {
+          "$ref": "#/$defs/diagnosticBundle"
+        }
+      }
+    },
+    "scientificProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deployment_ref",
+        "model_id",
+        "model_version",
+        "fitted_topic_count",
+        "artifact_digest",
+        "manifest_digest",
+        "vocabulary_digest",
+        "preprocessing_digest",
+        "design_digest",
+        "lineage_digest",
+        "model_card_digest",
+        "validation_report_digest",
+        "temporal_policy_version",
+        "evidence_times",
+        "evidence_time_manifest_digest",
+        "covariate_snapshot_digest",
+        "design_row_digest",
+        "estimator_id",
+        "analysis_unit",
+        "estimand_id",
+        "causal_design",
+        "design_contract"
+      ],
+      "properties": {
+        "deployment_ref": {
+          "type": "string",
+          "pattern": "^deploy_[A-Za-z0-9_-]{16,128}$"
+        },
+        "model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "model_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "fitted_topic_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "artifact_digest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/canonicalDigest"
+            },
+            {
+              "properties": {
+                "domain": {
+                  "const": "tepp.topic-measurement.artifact-descriptor.v1"
+                }
+              }
+            }
+          ]
+        },
+        "manifest_digest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/canonicalDigest"
+            },
+            {
+              "properties": {
+                "domain": {
+                  "const": "tepp.topic-measurement.artifact-manifest.v1"
+                }
+              }
+            }
+          ]
+        },
+        "vocabulary_digest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/canonicalDigest"
+            },
+            {
+              "properties": {
+                "domain": {
+                  "const": "tepp.topic-measurement.vocabulary.v1"
+                }
+              }
+            }
+          ]
+        },
+        "preprocessing_digest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/canonicalDigest"
+            },
+            {
+              "properties": {
+                "domain": {
+                  "const": "tepp.topic-measurement.preprocessing.v1"
+                }
+              }
+            }
+          ]
+        },
+        "design_digest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/canonicalDigest"
+            },
+            {
+              "properties": {
+                "domain": {
+                  "const": "tepp.topic-measurement.design.v1"
+                }
+              }
+            }
+          ]
+        },
+        "lineage_digest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/canonicalDigest"
+            },
+            {
+              "properties": {
+                "domain": {
+                  "const": "tepp.topic-measurement.lineage.v1"
+                }
+              }
+            }
+          ]
+        },
+        "model_card_digest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/canonicalDigest"
+            },
+            {
+              "properties": {
+                "domain": {
+                  "const": "tepp.topic-measurement.model-card.v1"
+                }
+              }
+            }
+          ]
+        },
+        "validation_report_digest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/canonicalDigest"
+            },
+            {
+              "properties": {
+                "domain": {
+                  "const": "tepp.topic-measurement.validation-report.v1"
+                }
+              }
+            }
+          ]
+        },
+        "temporal_policy_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "evidence_times": {
+          "$ref": "#/$defs/temporalEvidence"
+        },
+        "evidence_time_manifest_digest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/canonicalDigest"
+            },
+            {
+              "properties": {
+                "domain": {
+                  "const": "naruon.topic-inference.evidence-time-manifest.v1"
+                }
+              }
+            }
+          ]
+        },
+        "covariate_snapshot_digest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/canonicalDigest"
+            },
+            {
+              "properties": {
+                "domain": {
+                  "const": "naruon.topic-inference.covariate-snapshot.v1"
+                }
+              }
+            }
+          ]
+        },
+        "design_row_digest": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/canonicalDigest"
+            },
+            {
+              "properties": {
+                "domain": {
+                  "const": "tepp.topic-measurement.design-row.v1"
+                }
+              }
+            }
+          ]
+        },
+        "estimator_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "analysis_unit": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "estimand_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "causal_design": {
+          "const": "non_causal"
+        },
+        "design_contract": {
+          "$ref": "#/$defs/designContract"
+        }
+      }
+    },
+    "designContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "covariate_schema_version",
+        "covariate_level",
+        "covariate_missingness_policy",
+        "prevalence_formula",
+        "content_formula",
+        "contrast_specification",
+        "membership_structure",
+        "membership_weight_normalization",
+        "unseen_level_policy",
+        "validation_profile_version"
+      ],
+      "properties": {
+        "covariate_schema_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "covariate_level": {
+          "type": "string",
+          "enum": [
+            "not_applicable",
+            "analysis_unit",
+            "group",
+            "multiple_membership",
+            "cross_classified"
+          ]
+        },
+        "covariate_missingness_policy": {
+          "type": "string",
+          "enum": [
+            "not_applicable",
+            "reject_missing",
+            "explicit_missing_indicator",
+            "explicit_missing_level"
+          ]
+        },
+        "prevalence_formula": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "content_formula": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "contrast_specification": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "membership_structure": {
+          "type": "string",
+          "enum": [
+            "none",
+            "multilevel",
+            "multiple_membership",
+            "cross_classified",
+            "cross_classified_multiple_membership"
+          ]
+        },
+        "membership_weight_normalization": {
+          "type": "string",
+          "enum": [
+            "not_applicable",
+            "sum_to_one_per_analysis_unit"
+          ]
+        },
+        "unseen_level_policy": {
+          "type": "string",
+          "enum": [
+            "reject",
+            "predeclared_other_level"
+          ]
+        },
+        "validation_profile_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "membership_structure": {
+                "enum": [
+                  "multiple_membership",
+                  "cross_classified_multiple_membership"
+                ]
+              }
+            },
+            "required": [
+              "membership_structure"
+            ]
+          },
+          "then": {
+            "properties": {
+              "membership_weight_normalization": {
+                "const": "sum_to_one_per_analysis_unit"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "membership_weight_normalization": {
+                "const": "not_applicable"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "covariate_level": {
+                "const": "not_applicable"
+              }
+            },
+            "required": [
+              "covariate_level"
+            ]
+          },
+          "then": {
+            "properties": {
+              "covariate_missingness_policy": {
+                "const": "not_applicable"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "covariate_missingness_policy": {
+                "enum": [
+                  "reject_missing",
+                  "explicit_missing_indicator",
+                  "explicit_missing_level"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "temporalEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document_time",
+        "event_time",
+        "assertion_time",
+        "availability_time",
+        "knowledge_cutoff_time",
+        "temporal_missingness_policy",
+        "availability_at_knowledge_cutoff"
+      ],
+      "properties": {
+        "document_time": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "event_time": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "assertion_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "availability_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "knowledge_cutoff_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "temporal_missingness_policy": {
+          "const": "document_event_nullable_assertion_availability_cutoff_required"
+        },
+        "availability_at_knowledge_cutoff": {
+          "const": true,
+          "description": "Expected-upstream producer assertion that availability_time is at or before knowledge_cutoff_time. Naruon must parse and recompute this ordering; the assertion alone is insufficient."
+        }
+      }
+    },
+    "inferenceResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inference_method",
+        "inference_implementation",
+        "inference_version",
+        "numerical_backend",
+        "credible_level",
+        "interval_method",
+        "uncertainty_scope",
+        "topic_count",
+        "topic_components"
+      ],
+      "properties": {
+        "inference_method": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "inference_implementation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "inference_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "numerical_backend": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "credible_level": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "interval_method": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "uncertainty_scope": {
+          "const": "conditional_on_fitted_artifact"
+        },
+        "topic_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "topic_components": {
+          "type": "array",
+          "maxItems": 10000,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/posteriorComponent"
+          }
+        }
+      }
+    },
+    "posteriorComponent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "topic_id",
+        "rank",
+        "proportion",
+        "credible_interval"
+      ],
+      "properties": {
+        "topic_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "rank": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "proportion": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "credible_interval": {
+          "$ref": "#/$defs/credibleInterval"
+        }
+      }
+    },
+    "credibleInterval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lower",
+        "upper"
+      ],
+      "properties": {
+        "lower": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "upper": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "diagnosticBundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "diagnostic_status",
+        "input",
+        "posterior",
+        "policy"
+      ],
+      "properties": {
+        "diagnostic_status": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "rejected"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/inputDiagnostics"
+        },
+        "posterior": {
+          "$ref": "#/$defs/posteriorDiagnostics"
+        },
+        "policy": {
+          "$ref": "#/$defs/policyDiagnostics"
+        }
+      }
+    },
+    "inputDiagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "language_tag",
+        "language_support_status",
+        "original_token_count",
+        "retained_token_count",
+        "minimum_retained_token_count",
+        "out_of_vocabulary_token_count",
+        "out_of_vocabulary_ratio",
+        "maximum_out_of_vocabulary_ratio",
+        "temporal_context_status",
+        "covariate_contract_status"
+      ],
+      "properties": {
+        "language_tag": {
+          "type": "string",
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "maxLength": 63
+        },
+        "language_support_status": {
+          "const": "supported"
+        },
+        "original_token_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "retained_token_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "minimum_retained_token_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "out_of_vocabulary_token_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "out_of_vocabulary_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "maximum_out_of_vocabulary_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "temporal_context_status": {
+          "const": "valid"
+        },
+        "covariate_contract_status": {
+          "const": "valid"
+        }
+      }
+    },
+    "posteriorDiagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inference_method",
+        "diagnostic_code_registry_version",
+        "converged",
+        "convergence_code",
+        "numerical_status",
+        "quality_codes",
+        "iteration_count",
+        "finite_values",
+        "intervals_valid",
+        "observed_topic_count",
+        "posterior_sum",
+        "normalization_tolerance"
+      ],
+      "properties": {
+        "inference_method": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "diagnostic_code_registry_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Exact immutable registry for convergence_code and quality_codes. Unknown versions or codes fail closed as an upstream protocol error."
+        },
+        "converged": {
+          "type": "boolean"
+        },
+        "convergence_code": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,95}$"
+        },
+        "numerical_status": {
+          "type": "string",
+          "enum": [
+            "valid",
+            "invalid"
+          ]
+        },
+        "quality_codes": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,95}$"
+          }
+        },
+        "iteration_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "finite_values": {
+          "type": "boolean"
+        },
+        "intervals_valid": {
+          "type": "boolean"
+        },
+        "observed_topic_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "posterior_sum": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "normalization_tolerance": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 0.1
+        }
+      }
+    },
+    "policyDiagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_version",
+        "reason_code_registry_version",
+        "accepted",
+        "reason_codes"
+      ],
+      "properties": {
+        "policy_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "reason_code_registry_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Exact immutable registry for reason_codes. Unknown versions or codes fail closed as an upstream protocol error."
+        },
+        "accepted": {
+          "type": "boolean"
+        },
+        "reason_codes": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^posterior_[a-z0-9_]{1,96}$"
+          }
+        }
+      }
+    },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "labels"
+      ],
+      "properties": {
+        "labels": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/presentationLabel"
+          }
+        }
+      }
+    },
+    "presentationLabel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "topic_id",
+        "label_id",
+        "label_version",
+        "language",
+        "label",
+        "review_method",
+        "evidence_refs"
+      ],
+      "properties": {
+        "topic_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "label_id": {
+          "type": "string",
+          "pattern": "^label_[A-Za-z0-9_-]{16,128}$"
+        },
+        "label_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "language": {
+          "type": "string",
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "maxLength": 63
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "review_method": {
+          "type": "string",
+          "enum": [
+            "human_curated",
+            "model_assisted_human_reviewed"
+          ]
+        },
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/opaqueEvidenceRef"
+          }
+        }
+      }
+    },
+    "canonicalDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "canonicalization",
+        "domain",
+        "value"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "sha-256"
+        },
+        "canonicalization": {
+          "const": "RFC8785"
+        },
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]+\\.v[0-9]+$",
+          "maxLength": 256
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

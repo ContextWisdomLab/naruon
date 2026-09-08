@@ -70,7 +70,11 @@ def validate_loopback_http_origin(value: str) -> LocalHTTPOrigin:
         safe_hostname = address.compressed
 
     try:
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        port = (
+            parsed.port
+            if parsed.port is not None
+            else (443 if parsed.scheme == "https" else 80)
+        )
     except ValueError as exc:
         raise LocalHTTPValidationError("local HTTP origin port is invalid") from exc
     if not 1 <= port <= 65535:

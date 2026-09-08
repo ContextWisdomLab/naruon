@@ -266,6 +266,138 @@ async def test_import_embeddings_route_through_orchestrator(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_orchestrator_bounds_requests_and_preserves_input_order(monkeypatch):
+    session = FakeAsyncSession(_orchestrator_tenant_config())
+    batch_size = batch_module._ORCHESTRATOR_MAX_INPUTS_PER_REQUEST
+    texts = [f"text-{index}" for index in range(batch_size + 2)]
+    responses = []
+    for start in range(0, len(texts), batch_size):
+        count = min(batch_size, len(texts) - start)
+        responses.append(
+            FakeResponse(
+                {
+                    "batch_id": f"orc_batch_{start}",
+                    "status": "completed",
+                    "embeddings": [
+                        {"index": index, "embedding": [float(start + index)] * 8}
+                        for index in range(count)
+                    ],
+                }
+            )
+        )
+    client = FakeAsyncClient(post_responses=responses)
+    _patch_client(monkeypatch, client)
+
+    result = await batch_module.try_batch_import_embeddings(
+        session,
+        texts,
+        embedding_provider=PROVIDER,
+        user_id="user-1",
+        organization_id="org-acme",
+        dimension=8,
+    )
+
+    assert result is not None
+    assert [len(call["json"]["inputs"]) for call in client.post_calls] == [
+        batch_size,
+        2,
+    ]
+    assert [vector[0] for vector in result] == [
+        float(index) for index in range(len(texts))
+    ]
+    jobs = [obj for obj in session.added if isinstance(obj, LlmBatchJob)]
+    assert [job.total_items for job in jobs] == [batch_size, 2]
+
+
+def test_orchestrator_partitions_by_utf8_bytes_without_splitting_inputs():
+    input_bytes = batch_module._ORCHESTRATOR_MAX_INPUT_BYTES
+    first = "가" * (input_bytes // 12)
+    second = "나" * (input_bytes // 12)
+
+    assert batch_module._partition_orchestrator_inputs([]) == []
+    partitions = batch_module._partition_orchestrator_inputs([first, second])
+
+    assert partitions == [[first], [second]]
+    assert batch_module._partition_orchestrator_inputs(["x" * input_bytes]) is None
+
+
+def test_orchestrator_partitions_by_serialized_json_bytes():
+    escaped = '"' * 18_000
+    plain = "x" * 18_000
+
+    partitions = batch_module._partition_orchestrator_inputs(
+        [escaped, plain],
+        model="text-embedding-test",
+        endpoint_alias="primary_gateway",
+        metadata={"source": "naruon-email-import"},
+    )
+
+    assert partitions == [[escaped], [plain]]
+    assert (
+        batch_module._serialized_orchestrator_payload_bytes(
+            [escaped],
+            model="text-embedding-test",
+            endpoint_alias="primary_gateway",
+            metadata={"source": "naruon-email-import"},
+        )
+        <= batch_module._ORCHESTRATOR_MAX_INPUT_BYTES
+    )
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_preserves_completed_partitions_when_later_partition_fails(
+    monkeypatch,
+):
+    session = FakeAsyncSession(_orchestrator_tenant_config())
+    batch_size = batch_module._ORCHESTRATOR_MAX_INPUTS_PER_REQUEST
+    texts = [f"text-{index}" for index in range(batch_size + 2)]
+    client = FakeAsyncClient(
+        post_responses=[
+            FakeResponse(
+                {
+                    "batch_id": "orc_batch_first",
+                    "status": "completed",
+                    "embeddings": _embeddings_payload(batch_size),
+                }
+            ),
+            RuntimeError("second partition unavailable"),
+        ]
+    )
+    _patch_client(monkeypatch, client)
+
+    result = await batch_module.try_batch_import_embeddings(
+        session,
+        texts,
+        embedding_provider=PROVIDER,
+        user_id="user-1",
+        organization_id="org-acme",
+        dimension=8,
+    )
+
+    assert isinstance(result, batch_module.BatchEmbeddingPartial)
+    assert len(result.completed_vectors) == batch_size
+    assert result.pending_texts == texts[batch_size:]
+    assert len(client.post_calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_falls_back_for_single_input_over_byte_budget():
+    session = FakeAsyncSession(_orchestrator_tenant_config())
+
+    result = await batch_module.try_batch_import_embeddings(
+        session,
+        ["x" * (batch_module._ORCHESTRATOR_MAX_INPUT_BYTES + 1)],
+        embedding_provider=PROVIDER,
+        user_id="user-1",
+        organization_id="org-acme",
+        dimension=8,
+    )
+
+    assert result is None
+    assert session.added == []
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_submit_then_retrieve_poll(monkeypatch):
     session = FakeAsyncSession(_orchestrator_tenant_config())
     submit = FakeResponse({"batch_id": "orc_batch_999", "status": "running"})
@@ -347,9 +479,7 @@ async def test_fall_back_when_orchestrator_base_url_rejected(monkeypatch):
 @pytest.mark.asyncio
 async def test_fall_back_when_orchestrator_unreachable_no_local(monkeypatch):
     session = FakeAsyncSession(_orchestrator_tenant_config())
-    client = FakeAsyncClient(
-        post_responses=[httpx.ConnectError("orchestrator down")]
-    )
+    client = FakeAsyncClient(post_responses=[httpx.ConnectError("orchestrator down")])
     _patch_client(monkeypatch, client)
 
     result = await batch_module.try_batch_import_embeddings(

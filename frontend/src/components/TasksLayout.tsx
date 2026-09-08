@@ -328,7 +328,7 @@ export function TasksLayout() {
                 key={task.id}
                 type="button"
                 onClick={() => { setSelectedTaskId(task.id); setViewMode('작업 상세'); }}
-                className="w-full rounded-lg border border-border bg-background p-3 text-left shadow-sm transition-all hover:border-primary/50 hover:shadow-md"
+                className="w-full rounded-lg border border-border bg-background p-3 text-left shadow-sm transition-all hover:border-primary/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
               >
                 <div className="flex flex-wrap gap-1 mb-2">
                   <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">{getTaskSourceLabel(task.source_type)}</span>

@@ -95,6 +95,38 @@ async def test_generate_embeddings_uses_selected_provider_model_and_base_url():
 
 
 @pytest.mark.asyncio
+async def test_generate_embeddings_requests_storage_dimensions_for_openai_v3():
+    with patch(
+        "services.embedding.AsyncOpenAI"
+    ) as mock_async_openai, patch(
+        "services.embedding.build_llm_provider_http_client",
+        new_callable=AsyncMock,
+    ) as mock_build_client:
+        mock_build_client.return_value = ("https://api.openai.com/v1", AsyncMock())
+        mock_client = mock_async_openai.return_value
+        mock_client.close = AsyncMock()
+        mock_client.embeddings.create = AsyncMock()
+        mock_response = AsyncMock()
+        mock_data = AsyncMock()
+        mock_data.embedding = [0.1, 0.2]
+        mock_response.data = [mock_data]
+        mock_client.embeddings.create.return_value = mock_response
+
+        await generate_embeddings(
+            ["test"],
+            "provider-key",
+            base_url="https://api.openai.com/v1",
+            model="text-embedding-3-large",
+        )
+
+    mock_client.embeddings.create.assert_awaited_once_with(
+        model="text-embedding-3-large",
+        input=["test"],
+        dimensions=STORAGE_EMBEDDING_DIMENSION,
+    )
+
+
+@pytest.mark.asyncio
 async def test_generate_embeddings_api_error():
     with patch(
         "services.embedding.AsyncOpenAI"

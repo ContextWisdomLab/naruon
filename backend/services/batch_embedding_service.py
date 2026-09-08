@@ -32,6 +32,7 @@ Design constraints:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
 from dataclasses import dataclass
@@ -61,6 +62,11 @@ _ORCHESTRATOR_TIMEOUT_SECONDS = 30.0
 # Poll budget while the orchestrator drains the batch through pg-llm-batch.
 _ORCHESTRATOR_POLL_INTERVAL_SECONDS = 1.0
 _ORCHESTRATOR_MAX_POLLS = 30
+# Keep each JSON request below the orchestrator's body budget with envelope
+# headroom. Import chunks are normally <= 1,000 characters, but the byte check
+# also protects direct callers that provide longer or multibyte inputs.
+_ORCHESTRATOR_MAX_INPUTS_PER_REQUEST = 32
+_ORCHESTRATOR_MAX_INPUT_BYTES = 48 * 1024
 _SUCCESS_STATUSES = frozenset({"completed", "succeeded"})
 
 # Cache the (im)port result so repeated imports don't re-probe sys.path.
@@ -114,6 +120,14 @@ class BatchEmbeddingSettings:
         return bool(self.local_dsn)
 
 
+@dataclass(frozen=True)
+class BatchEmbeddingPartial:
+    """Completed prefix plus inputs that still need the normal fallback path."""
+
+    completed_vectors: list[list[float]]
+    pending_texts: list[str]
+
+
 async def resolve_batch_embedding_settings(
     session: AsyncSession,
     *,
@@ -145,9 +159,7 @@ async def resolve_batch_embedding_settings(
         attribution_service=_clean(
             getattr(tenant_config, "batch_attribution_service", None)
         ),
-        attribution_team=_clean(
-            getattr(tenant_config, "batch_attribution_team", None)
-        ),
+        attribution_team=_clean(getattr(tenant_config, "batch_attribution_team", None)),
         attribution_group=_clean(
             getattr(tenant_config, "batch_attribution_group", None)
         ),
@@ -176,15 +188,16 @@ async def try_batch_import_embeddings(
     user_id: str,
     organization_id: str | None,
     dimension: int = STORAGE_EMBEDDING_DIMENSION,
-) -> list[list[float]] | None:
+) -> list[list[float]] | BatchEmbeddingPartial | None:
     """Route bulk embeddings through the batch path, or ``None`` to fall back.
 
     On success returns one fitted vector per input text (original order). The
     primary path submits to contextual-orchestrator; only if the orchestrator is
     unconfigured or unavailable does it consider the local ``pg-llm-batch``
-    package fallback. Any failure returns ``None`` so the caller uses its
-    per-item path. The run is recorded in ``llm_batch_jobs`` / ``llm_batch_items``
-    for observability.
+    package fallback. A later partition failure returns a completed prefix plus
+    only the unfinished inputs so the caller does not resend successful work.
+    The run is recorded in ``llm_batch_jobs`` / ``llm_batch_items`` for
+    observability.
     """
     if not texts:
         return None
@@ -198,7 +211,7 @@ async def try_batch_import_embeddings(
     model = settings.model or embedding_provider.embedding_model
 
     if settings.has_orchestrator:
-        result = await _run_orchestrator_batch(
+        result = await _run_orchestrator_batches(
             session,
             texts,
             settings=settings,
@@ -227,6 +240,121 @@ async def try_batch_import_embeddings(
 
 
 # --- Primary path: contextual-orchestrator batch API ------------------------
+
+
+def _serialized_orchestrator_payload_bytes(
+    inputs: list[str],
+    *,
+    model: str,
+    endpoint_alias: str | None,
+    metadata: dict[str, str],
+) -> int:
+    """Return the UTF-8 size of the request envelope sent to the orchestrator."""
+    payload = {
+        "model": model,
+        "endpoint": endpoint_alias,
+        "inputs": inputs,
+        "metadata": metadata,
+    }
+    return len(
+        json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+    )
+
+
+def _partition_orchestrator_inputs(
+    texts: list[str],
+    *,
+    model: str = "",
+    endpoint_alias: str | None = None,
+    metadata: dict[str, str] | None = None,
+) -> list[list[str]] | None:
+    """Partition inputs by count and serialized JSON request bytes."""
+    request_metadata = metadata or {}
+    partitions: list[list[str]] = []
+    current: list[str] = []
+    for text in texts:
+        candidate = [*current, text]
+        if current and (
+            len(candidate) > _ORCHESTRATOR_MAX_INPUTS_PER_REQUEST
+            or _serialized_orchestrator_payload_bytes(
+                candidate,
+                model=model,
+                endpoint_alias=endpoint_alias,
+                metadata=request_metadata,
+            )
+            > _ORCHESTRATOR_MAX_INPUT_BYTES
+        ):
+            partitions.append(current)
+            candidate = [text]
+        if (
+            _serialized_orchestrator_payload_bytes(
+                candidate,
+                model=model,
+                endpoint_alias=endpoint_alias,
+                metadata=request_metadata,
+            )
+            > _ORCHESTRATOR_MAX_INPUT_BYTES
+        ):
+            return None
+        current = candidate
+    if current:
+        partitions.append(current)
+    return partitions
+
+
+async def _run_orchestrator_batches(
+    session: AsyncSession,
+    texts: list[str],
+    *,
+    settings: BatchEmbeddingSettings,
+    model: str,
+    user_id: str,
+    organization_id: str | None,
+    dimension: int,
+) -> list[list[float]] | BatchEmbeddingPartial | None:
+    """Submit bounded requests and concatenate vectors in original order."""
+    metadata = _attribution_metadata(
+        settings=settings,
+        user_id=user_id,
+        organization_id=organization_id,
+    )
+    partitions = _partition_orchestrator_inputs(
+        texts,
+        model=model,
+        endpoint_alias=settings.endpoint_alias,
+        metadata=metadata,
+    )
+    if partitions is None:
+        logger.warning(
+            "Orchestrator batch input exceeded one-request byte budget; falling back: "
+            "text_count=%s",
+            len(texts),
+        )
+        return None
+
+    vectors: list[list[float]] = []
+    for partition_index, partition in enumerate(partitions):
+        partition_vectors = await _run_orchestrator_batch(
+            session,
+            partition,
+            settings=settings,
+            model=model,
+            user_id=user_id,
+            organization_id=organization_id,
+            dimension=dimension,
+        )
+        if partition_vectors is None:
+            if not vectors:
+                return None
+            pending_texts = [
+                text for remaining in partitions[partition_index:] for text in remaining
+            ]
+            return BatchEmbeddingPartial(
+                completed_vectors=vectors,
+                pending_texts=pending_texts,
+            )
+        vectors.extend(partition_vectors)
+    return vectors
 
 
 async def _run_orchestrator_batch(
@@ -372,9 +500,7 @@ async def _submit_and_await(
     if status in _SUCCESS_STATUSES and document.get("embeddings") is not None:
         return document
     if status in ("failed", "error", "canceled"):
-        raise EmbeddingGenerationError(
-            f"orchestrator batch rejected: status={status}"
-        )
+        raise EmbeddingGenerationError(f"orchestrator batch rejected: status={status}")
 
     batch_id = document.get("batch_id") or document.get("id")
     if not batch_id:

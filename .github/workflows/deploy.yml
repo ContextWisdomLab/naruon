@@ -9,10 +9,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: deploy-aks-${{ github.repository }}
-  cancel-in-progress: false
-
 jobs:
   deploy:
     name: Deploy to AKS

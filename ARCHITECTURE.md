@@ -20,6 +20,21 @@ Runtime database connectivity is secret-injected: `backend/core/config.py` has
 no fallback `DATABASE_URL`, so missing database configuration fails at startup
 rather than silently using shared development credentials.
 
+## Topic-intelligence boundary
+
+Naruon has no live Structural Topic Modeling endpoint, fitted topic artifact,
+or topic-result persistence. The retained `keyword_extractor` is deterministic
+lexical metadata and must not feed topic, agenda, search, or norm-group
+inference. A future adapter may consume a separately accepted, versioned TEPP
+artifact/API only when frozen preprocessing and vocabulary, covariate design,
+mixed-membership posterior uncertainty, diagnostics, provenance, and explicit
+abstention are all available. Missing or incompatible scientific authority
+fails closed. Naruon owns authentication, authorization, request validation,
+the adapter envelope, and disclosure policy; TEPP would own the scientific
+payload. See the canonical documentation graph in
+[`docs/topic-intelligence/README.md`](docs/topic-intelligence/README.md) and
+[`ADR-0001`](docs/adr/0001-topic-measurement-authority.md).
+
 ## Workspace navigation boundary
 
 The Next.js shell opens the Today execution dashboard for first-run sessions and

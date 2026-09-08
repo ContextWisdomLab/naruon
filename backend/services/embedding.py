@@ -36,6 +36,11 @@ def fit_embedding_vector(
     return embedding[:target_dimension]
 
 
+def _supports_native_dimensions(model: str) -> bool:
+    """Return whether the selected OpenAI embedding family accepts dimensions."""
+    return model.rsplit("/", 1)[-1].startswith("text-embedding-3-")
+
+
 async def generate_embeddings(
     texts: list[str],
     openai_api_key: str,
@@ -56,13 +61,16 @@ async def generate_embeddings(
         http_client=http_client,
     )
 
+    selected_model = model or settings.OPENAI_EMBEDDING_MODEL
+    request = {"model": selected_model, "input": texts}
+    if _supports_native_dimensions(selected_model):
+        request["dimensions"] = STORAGE_EMBEDDING_DIMENSION
+
     try:
         response = await provider_circuit_breaker.call(
             validated_base_url or "openai-default",
             lambda: retry_transient(
-                lambda: client.embeddings.create(
-                    model=model or settings.OPENAI_EMBEDDING_MODEL, input=texts
-                ),
+                lambda: client.embeddings.create(**request),
                 operation_name="embedding generation",
             ),
         )

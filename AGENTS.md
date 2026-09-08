@@ -1012,6 +1012,12 @@ subject to U.S. copyright, while attribution remains required.
 - Automatic publication is allowed only after the canonical release path
   proves exact artifact identity, environment approval, and a tested rollback
   route; package-secret presence is not release evidence.
+- When the foreground browser cannot be inspected (for example, the host is
+  locked), a headless render may provide bounded visual evidence only if the
+  exact head, fixed local origin, viewport, route, locale, state, and image
+  receipt are recorded and the images are opened for direct inspection. Mark
+  foreground interaction and live-product behavior as unverified; screenshots
+  and DOM assertions must not be presented as proof of those broader claims.
 
 ### Package Manager
 

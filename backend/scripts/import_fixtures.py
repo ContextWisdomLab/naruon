@@ -130,7 +130,7 @@ async def main():
     fixtures_dir = root_dir / "secret_fixtures"
 
     if not fixtures_dir.exists():
-        logger.error(f"Fixtures directory {fixtures_dir} does not exist.")
+        logger.error("Fixture directory is unavailable")
         return
 
     async with AsyncSessionLocal() as session:

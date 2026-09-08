@@ -1053,6 +1053,15 @@ predecessor-head evidence is never reused.
 
 ### Readiness evidence update — 2026-09-08
 
+Deployment wiring follow-up `e6726e8c43203b91a55819d88c5a25bf72bf0dd3`
+connects the backend manifest to `/readyz` on port 8000. A test executing the
+release renderer first failed on the missing probe, then all 26 manifest tests
+passed with terminal exit 0. Runtime tests at `8b8ac740` separately cover 14
+cases, including cancellation before acquisition and during query execution.
+Neither result demonstrates kubelet behavior, endpoint removal/recovery, startup
+timing, or live deployment. Liveness restart policy remains unconfigured pending
+those measurements; dependency failure must not become a restart trigger.
+
 PR #1597 source `853aad7f67f0561a079735cb27acb6bf4b0e60fd` repairs an
 unwrapped native PostgreSQL connection error that escaped the generic readiness
 503 response. Seven focused tests passed, and an isolated real PostgreSQL

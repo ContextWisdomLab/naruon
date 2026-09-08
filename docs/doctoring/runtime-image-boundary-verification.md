@@ -236,8 +236,6 @@ complete successor coverage, protected merge, hosted review/check success,
 production readiness, or deployment eligibility. Keep prerequisite PR #1587
 and deployment serialization/recovery evidence separate.
 
-## Image boundary references
-
 ## Deployment probe wiring follow-up
 
 At `8b8ac74079b4d0022878719a93eec57562916995`, the backend manifest had

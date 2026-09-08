@@ -68,8 +68,16 @@ function relationshipTypeLabel(relationshipType: string) {
   return RELATIONSHIP_TYPE_LABELS[relationshipType] ?? "연결 관계";
 }
 
-function customerFacingRelationshipText(value: string, fallback: string) {
-  return /^[a-z0-9_:-]+$/i.test(value.trim()) ? fallback : value;
+const CUSTOMER_FACING_RELATIONSHIP_ACTIONS = new Set([
+  "계약 검토 담당자를 확인합니다.",
+  "후속 작업을 확인합니다.",
+]);
+
+export function customerFacingRelationshipText(value: string, fallback: string) {
+  const normalizedValue = value.trim();
+  return CUSTOMER_FACING_RELATIONSHIP_ACTIONS.has(normalizedValue)
+    ? normalizedValue
+    : fallback;
 }
 
 type SearchResponse = {

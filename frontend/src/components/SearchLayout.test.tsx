@@ -30,7 +30,7 @@ vi.mock("lucide-react", () => ({
   X: () => <svg aria-hidden="true" />,
 }));
 
-import { SearchLayout } from "./SearchLayout";
+import { customerFacingRelationshipText, SearchLayout } from "./SearchLayout";
 import {
   clearRecordedProductEvents,
   getRecordedProductEvents,
@@ -198,5 +198,18 @@ describe("SearchLayout product events", () => {
       event.payload.source_backlink_present === true,
     )).toBe(true);
     expect(JSON.stringify(getRecordedProductEvents())).not.toContain("계약");
+  });
+
+  it.each([
+    "track_reply_and_tasks",
+    "reply.follow-up",
+    "reply/follow_up",
+    "reply follow_up",
+    "회신_대기",
+    "",
+  ])("fails closed for non-catalog relationship action %s", (nextAction) => {
+    expect(customerFacingRelationshipText(nextAction, "후속 작업을 확인합니다.")).toBe(
+      "후속 작업을 확인합니다.",
+    );
   });
 });

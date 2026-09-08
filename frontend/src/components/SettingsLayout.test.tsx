@@ -236,7 +236,7 @@ describe("SettingsLayout", () => {
               name: "Primary OpenAI",
               provider_type: "openai",
               base_url: "https://api.openai.com/v1",
-              model_identifier: "gpt-4o",
+              model_identifier: "gpt-5.4",
               embedding_model: "text-embedding-3-small",
               is_active: true,
               configured: true,
@@ -628,7 +628,7 @@ describe("SettingsLayout", () => {
     expect(providerListCall?.[1]?.headers).not.toHaveProperty("X-Dev-Auth-Token");
     expect(container.textContent).toContain("등록된 모델 레지스트리");
     expect(container.textContent).toContain("Primary OpenAI");
-    expect(container.textContent).toContain("gpt-4o");
+    expect(container.textContent).toContain("gpt-5.4");
     expect(container.textContent).toContain("text-embedding-3-small");
     expect(container.textContent).toContain("Gemma4 로컬 모델 등록");
     expect(container.textContent).toContain("제공자 유형");

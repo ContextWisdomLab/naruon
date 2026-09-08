@@ -6,6 +6,7 @@ import secrets
 
 import httpx
 import pytest
+from asyncpg import InvalidCatalogNameError
 from sqlalchemy.exc import OperationalError
 
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://unit:unit@127.0.0.1:1/unit_db")
@@ -97,14 +98,20 @@ def timeout_failure():
     return TimeoutError("timeout-private-detail")
 
 
+def catalog_failure():
+    """Reproduce an unwrapped asyncpg database selection failure."""
+    return InvalidCatalogNameError("catalog-private-detail")
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("failure_factory", "private_detail"),
     [
         (os_failure, "os-private-detail"),
         (timeout_failure, "timeout-private-detail"),
+        (catalog_failure, "catalog-private-detail"),
     ],
-    ids=["os-error", "timeout"],
+    ids=["os-error", "timeout", "missing-database"],
 )
 async def test_readiness_sanitizes_supported_connection_failures(
     monkeypatch, failure_factory, private_detail

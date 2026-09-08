@@ -1,4 +1,5 @@
 import os
+from asyncpg import PostgresError
 from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
 
@@ -262,7 +263,7 @@ async def database_readiness() -> JSONResponse:
         for database_engine in (database_session.engine, database_session.readonly_engine):
             async with database_engine.connect() as database_connection:
                 await database_connection.execute(text("SELECT 1"))
-    except (SQLAlchemyError, OSError, TimeoutError):
+    except (SQLAlchemyError, PostgresError, OSError, TimeoutError):
         return JSONResponse(
             {"status": "unavailable"}, status_code=503,
             headers={"Cache-Control": "no-store"},

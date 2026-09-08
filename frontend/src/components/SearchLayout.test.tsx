@@ -212,4 +212,38 @@ describe("SearchLayout product events", () => {
       "후속 작업을 확인합니다.",
     );
   });
+
+  it("shows customer-facing copy when relationship loading fails", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/search")) {
+        return Promise.resolve(jsonResponse({ results: [{
+          id: 1,
+          source_message_id: "source@example.com",
+          subject: "Search result",
+          sender: "pm@example.com",
+          date: "2026-05-20T09:00:00Z",
+          snippet: "Result",
+          thread_id: "thread-1",
+          reply_count: 0,
+          score: 0.9,
+        }] }));
+      }
+      if (url.includes("/api/ontology/relationships?")) {
+        return Promise.reject(new Error("relationship service unavailable"));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }));
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(<SearchLayout />);
+    });
+    await waitForCondition(() =>
+      container?.textContent?.includes("발신자 관계를 불러오지 못했습니다.") ?? false,
+    );
+    expect(container.textContent).not.toContain("DAG");
+  });
 });

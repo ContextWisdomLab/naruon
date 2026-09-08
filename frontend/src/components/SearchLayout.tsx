@@ -551,7 +551,7 @@ export function SearchLayout() {
         setRelationshipState({
           sourceKey: activeOntologySourceKey,
           items: [],
-          error: "발신자 DAG를 불러오지 못했습니다.",
+          error: "발신자 관계를 불러오지 못했습니다.",
         });
       });
 

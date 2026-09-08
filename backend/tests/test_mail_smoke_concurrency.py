@@ -6,8 +6,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_mail_smoke_concurrency_queues_without_discarding_pending_runs() -> None:
-    """Require FIFO-style queuing instead of replacing an already-pending smoke."""
+def test_mail_smoke_concurrency_uses_bounded_pending_queue() -> None:
+    """Require bounded queuing instead of single-pending replacement."""
     workflow = (REPO_ROOT / ".github/workflows/mail-smoke.yml").read_text(
         encoding="utf-8"
     )

@@ -121,7 +121,7 @@ describe("SearchPage", () => {
               parent_sender_email: "user@naruon.ai",
               source_message_id: "<q2@example.com>",
               source_thread_id: "thread-q2",
-              relationship_type: "colleague",
+              relationship_type: "Colleague",
               confidence_score: 0.85,
               next_action: "track_reply_and_tasks",
               action_reason:
@@ -167,7 +167,7 @@ describe("SearchPage", () => {
     expect(container.textContent).toContain("메일 열기");
     expect(container.textContent).toContain("관계 맥락과 타임라인");
     expect(container.textContent).toContain("발신자 관계");
-    expect(container.textContent).toContain("후속 작업을 확인합니다.");
+    expect(container.textContent).toContain("답장과 후속 작업을 확인합니다.");
     expect(container.textContent).not.toContain("track_reply_and_tasks");
     expect(container.textContent).not.toContain("<q2@example.com>");
     expect(container.querySelector("#search-detail-tab-context")?.getAttribute("aria-controls")).toBe("search-detail-panel-context");
@@ -317,7 +317,7 @@ describe("SearchPage", () => {
             parent_sender_email: null,
             source_message_id: "<capture@example.com>",
             source_thread_id: "thread-capture",
-            relationship_type: "colleague",
+            relationship_type: "Colleague",
             confidence_score: 0.85,
             next_action: "track_reply_and_tasks",
             action_reason:
@@ -378,7 +378,7 @@ describe("SearchPage", () => {
       expect(captureHeaders[headerName]).toBeUndefined();
     }
     expect(container.textContent).toContain("minjae@naruon.ai");
-    expect(container.textContent).toContain("후속 작업을 확인합니다.");
+    expect(container.textContent).toContain("답장과 후속 작업을 확인합니다.");
     expect(container.textContent).toContain("업무 관계");
     expect(container.textContent).not.toContain("track_reply_and_tasks");
     expect(container.textContent).not.toContain("<capture@example.com>");

@@ -201,17 +201,24 @@ describe("SearchLayout product events", () => {
   });
 
   it.each([
-    "track_reply_and_tasks",
-    "reply.follow-up",
-    "reply/follow_up",
-    "reply follow_up",
-    "회신_대기",
-    "",
-  ])("fails closed for non-catalog relationship action %s", (nextAction) => {
+    ["summarize_then_archive", "요약 후 보관합니다."],
+    ["track_reply_and_tasks", "답장과 후속 작업을 확인합니다."],
+    ["prepare_response_draft", "답장 초안을 준비합니다."],
+    ["classify_sender", "발신자 관계를 확인합니다."],
+  ])("maps production relationship action %s to customer copy", (nextAction, expectedCopy) => {
+    expect(customerFacingRelationshipText(nextAction, "후속 작업을 확인합니다.")).toBe(
+      expectedCopy,
+    );
+  });
+
+  it.each(["reply.follow-up", "reply/follow_up", "reply follow_up", "회신_대기", ""])(
+    "fails closed for non-catalog relationship action %s",
+    (nextAction) => {
     expect(customerFacingRelationshipText(nextAction, "후속 작업을 확인합니다.")).toBe(
       "후속 작업을 확인합니다.",
     );
-  });
+    },
+  );
 
   it("shows customer-facing copy when relationship loading fails", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {

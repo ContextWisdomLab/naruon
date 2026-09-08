@@ -173,6 +173,7 @@ jobs:
 
           repository_owner="${GITHUB_REPOSITORY%%/*}"
           repository_name="${GITHUB_REPOSITORY#*/}"
+          # shellcheck disable=SC2016
           trusted_default_ref="$(gh_api_with_retry graphql \
             -f 'query=query($owner:String!,$name:String!){repository(owner:$owner,name:$name){defaultBranchRef{name}}}' \
             -F "owner=${repository_owner}" \

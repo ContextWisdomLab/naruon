@@ -204,7 +204,39 @@ ancestor가 아니다. 기존 2026-05-11 release 계획도 이 branch를 통째�
 않고 PR·승계 범위를 먼저 확인한다. 이후에는 liveness와 dependency readiness를
 분리하고, 실제 격리 PostgreSQL에서 성공·장애·연결 정리를 검증해야 한다.
 
-## 이미지 경계 참고 문헌
+## Native PostgreSQL readiness regression (PR #1597)
+
+On 2026-09-08, source `854e313013b4a760a2a8f0f47b27b254932c1724`
+returned 200 against an isolated native PostgreSQL cluster but propagated
+`asyncpg.exceptions.InvalidCatalogNameError` when connecting to a missing
+database (verification process exit 1). SQLAlchemy did not wrap this connection
+establishment error. Mocked query failures alone had missed this boundary.
+
+Commit `853aad7f67f0561a079735cb27acb6bf4b0e60fd` adds `PostgresError`
+to the existing readiness exception boundary, retaining generic response bodies
+and cancellation behavior. The focused regression suite passed seven cases with
+warnings treated as errors; Ruff and whitespace checks also passed.
+
+The real-cluster verification at that commit asserted healthy 200, missing
+primary database 503, missing read-only database 503, `Cache-Control: no-store`,
+and zero checked-out connections after each request, disposing all engines in
+`finally`. Its terminal result was exit 0 (execution session 38101). Per-scenario
+stdout was truncated by the tool and was not recovered; only the terminal exit
+result remains directly available. The PostgreSQL stop command also exited 0.
+
+Isolation used a private Unix socket directory, disabled TCP listening, rejected
+host authentication, and a fresh `readiness_owner` cluster. No application
+lifespan, worker, external provider, customer database, or production deployment
+was exercised. The cluster used the initdb default SQL_ASCII encoding; these
+`SELECT 1` probes do not establish application-schema or Unicode compatibility.
+Both application pools reached the same isolated server, not separate replicas.
+
+This repairs only the readiness slice inherited from PR #126. It does not prove
+complete successor coverage, protected merge, hosted review/check success,
+production readiness, or deployment eligibility. Keep prerequisite PR #1587
+and deployment serialization/recovery evidence separate.
+
+## Image boundary references
 
 Kubernetes Authors. (n.d.-a). *Kubernetes API concepts*. Retrieved September 7,
 2026, from https://kubernetes.io/docs/reference/using-api/api-concepts/#updates-to-existing-resources

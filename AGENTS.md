@@ -728,6 +728,15 @@ in this repo.
 
 ## Phase 10 development rules
 
+- Readiness probes must handle native PostgreSQL connection-establishment
+  errors as well as SQLAlchemy wrappers. In PR #1597, a real isolated cluster
+  raised `asyncpg.InvalidCatalogNameError` before `SELECT 1`; catch the driver's
+  `PostgresError` at the readiness boundary and return only the generic 503
+  response. Preserve cancellation propagation. Validate healthy, primary-failure,
+  and read-only-failure paths with both pools returned before claiming readiness.
+  Use a private test cluster, never a shared customer database. See
+  `docs/doctoring/runtime-image-boundary-verification.md` for the evidence limits.
+
 - **Stepwise execution**: Each phase requires an atomic PR, GitHub PR Tracking, Push, and Robot Review. A phase only ends when merged. Do not proceed without merge.
 - **TDD + DDD**: Practice TDD, micro TDD, nano TDD, Domain Driven Development, and Context Driven Development.
 - **API Wiring**: Always work with API wiring completed.

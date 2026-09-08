@@ -223,7 +223,7 @@ def test_strix_ci_requirements_use_security_quality_clean_pins() -> None:
     strix_ci_requirements = read_repo_text("requirements-strix-ci.txt")
 
     assert "strix-agent==1.0.4" in strix_ci_requirements
-    assert "cryptography==50.0.0" in strix_ci_requirements
+    assert "cryptography==50.0.1" in strix_ci_requirements
     assert "python-multipart==0.0.32" in strix_ci_requirements
 
 
@@ -726,7 +726,7 @@ def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_
     assert "Pinned Ollama manifest is missing %s" in workflow
     assert "linux/amd64 linux/arm64" in workflow
     assert "sha256:44dd04494ee8f3b538294360e7c4b3acb87c8268e4d0a4828a6500b1eff50061" not in workflow
-    assert "sha256:191ef878ecb351d68b78219593de18bd8942afd59af59f29960dc4b24805a3f1" not in workflow
+    assert "sha256:191ef878ecb351d68b78219593de18bd8942afd59f29960dc4b24805a3f1" not in workflow
     assert "sbom: false" in workflow
     assert workflow.count("sbom: true") == 1
     assert "type=semver" in workflow

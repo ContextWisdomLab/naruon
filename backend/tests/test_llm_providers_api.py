@@ -142,7 +142,7 @@ def test_llm_provider_crud_admin(admin_client):
         json={
             "name": "Primary OpenAI",
             "provider_type": "openai",
-            "model_identifier": "gpt-5.4",
+            "model_identifier": "gpt-4o",
             "embedding_model": "text-embedding-3-small",
             "api_key": "sk-12345",
         },
@@ -150,7 +150,7 @@ def test_llm_provider_crud_admin(admin_client):
     assert response.status_code == 200, response.text
     data = response.json()
     assert data["name"] == "Primary OpenAI"
-    assert data["model_identifier"] == "gpt-5.4"
+    assert data["model_identifier"] == "gpt-4o"
     assert data["embedding_model"] == "text-embedding-3-small"
     assert data["configured"] is True
     assert data["fingerprint"] is not None
@@ -163,7 +163,7 @@ def test_llm_provider_crud_admin(admin_client):
     response = admin_client.get("/api/llm-providers")
     assert response.status_code == 200
     assert len(response.json()) == 1
-    assert response.json()[0]["model_identifier"] == "gpt-5.4"
+    assert response.json()[0]["model_identifier"] == "gpt-4o"
 
     response = admin_client.put(
         f"/api/llm-providers/{provider_id}", json={"is_active": True}
@@ -347,7 +347,7 @@ def test_llm_provider_accepts_configured_local_gemma_without_fake_secret(
                 api_key=None,
                 provider_type="openai",
                 base_url="https://api.openai.com/v1",
-                model_identifier="gpt-5.4",
+                model_identifier="gpt-4o",
             ),
             False,
         ),

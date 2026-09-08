@@ -1,4 +1,9 @@
-import type { CalendarCandidateEvent, CalendarDefinition, CalendarMonthEvent, CalendarWeekEvent } from './types';
+import type {
+  CalendarCandidateEvent,
+  CalendarDefinition,
+  CalendarMonthEvent,
+  CalendarWeekEvent,
+} from './types';
 
 export const calendarDefinitions: CalendarDefinition[] = [
   { id: 'personal', name: '김나루 (나)', colorClass: 'bg-primary' },

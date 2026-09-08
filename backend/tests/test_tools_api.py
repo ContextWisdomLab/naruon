@@ -112,6 +112,21 @@ def test_get_tool_not_found():
     assert response.json() == {"detail": "Tool not found"}
 
 
+@pytest.mark.parametrize(
+    "tool_code", ["email_categorizer", "meeting_agenda_generator"]
+)
+def test_registry_omits_lexical_pseudo_topic_tools(tool_code):
+    assert registry.get(tool_code) is None
+
+
+def test_keyword_extractor_is_disclosed_as_lexical_term_frequency():
+    tool = registry.get("keyword_extractor")
+    assert tool is not None
+    assert tool.description == (
+        "텍스트 본문에서 빈도와 최초 출현 순으로 반복 용어를 추출합니다."
+    )
+
+
 @pytest.mark.asyncio
 async def test_execute_tool_success():
     with TestClient(app) as client:
@@ -1156,52 +1171,6 @@ def test_detect_text_language_ko():
 
 
 @pytest.mark.asyncio
-async def test_email_categorizer_handler():
-    from api.tools import email_categorizer_handler
-
-    # Test Finance category
-    result = await email_categorizer_handler(
-        {"email_content": "Please pay this invoice soon."}
-    )
-    assert "Finance" in result["categories"]
-
-    # Test Scheduling category
-    result = await email_categorizer_handler(
-        {"email_content": "Let's schedule a meeting."}
-    )
-    assert "Scheduling" in result["categories"]
-
-    # Test Urgent category
-    result = await email_categorizer_handler({"email_content": "This is urgent!"})
-    assert "Urgent" in result["categories"]
-
-    # Test General category (fallback)
-    result = await email_categorizer_handler({"email_content": "Hello, how are you?"})
-    assert "General" in result["categories"]
-
-    # Test multiple categories
-    result = await email_categorizer_handler(
-        {"email_content": "URGENT: Meeting to discuss invoice payment"}
-    )
-    assert result == {
-        "categories": ["Urgent", "Finance", "Scheduling"],
-        "primary_category": "Urgent",
-    }
-
-    # ASCII category rules use token boundaries instead of substring matching.
-    result = await email_categorizer_handler(
-        {"email_content": "The prepayment plan is documented."}
-    )
-    assert result["categories"] == ["General"]
-
-    # Unicode compatibility forms and Korean stems remain matchable.
-    result = await email_categorizer_handler(
-        {"email_content": "긴급 회의에서 청구 금액을 검토합니다."}
-    )
-    assert result["categories"] == ["Urgent", "Finance", "Scheduling"]
-
-
-@pytest.mark.asyncio
 async def test_keyword_extractor_handler():
     from api.tools import keyword_extractor_handler
 
@@ -1222,41 +1191,6 @@ async def test_keyword_extractor_handler():
 
     empty = await keyword_extractor_handler({"text": "the and 123"})
     assert empty == {"keywords": [], "keyword_count": 0}
-
-
-@pytest.mark.asyncio
-async def test_meeting_agenda_generator_handler():
-    from api.tools import meeting_agenda_generator_handler
-
-    # Test with short context
-    result = await meeting_agenda_generator_handler({"discussion_context": "short"})
-    assert result["agenda_items"] == ["Introductions", "Open Discussion"]
-    assert result["estimated_duration_minutes"] == 30
-
-    # Test with project and issue context
-    result = await meeting_agenda_generator_handler(
-        {"discussion_context": "The project has an issue that needs fixing."}
-    )
-    assert "Review previous action items" in result["agenda_items"]
-    assert "Project Status Update" in result["agenda_items"]
-    assert "Discuss Pending Issues" in result["agenda_items"]
-    assert "Next Steps and Action Items" in result["agenda_items"]
-    assert result["estimated_duration_minutes"] == len(result["agenda_items"]) * 15
-
-    # Korean context covers decision, timeline, and resource agenda paths.
-    result = await meeting_agenda_generator_handler(
-        {"discussion_context": "프로젝트 예산 승인과 마감 일정 문제를 결정합니다."}
-    )
-    assert result["agenda_items"] == [
-        "Review previous action items",
-        "Project Status Update",
-        "Discuss Pending Issues",
-        "Decisions Required",
-        "Timeline and Milestones",
-        "Budget and Resource Review",
-        "Next Steps and Action Items",
-    ]
-    assert result["estimated_duration_minutes"] == 105
 
 
 def test_execute_analysis_tool_rejects_oversized_text():

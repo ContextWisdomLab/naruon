@@ -146,6 +146,13 @@ Next.js frontend ──> FastAPI backend (control plane) ──> Postgres + pgve
   test/lint/build), plus `bandit`, `codeql`, `trivy`, `scorecard`,
   `pr-governance`, `docker-publish` (GHCR on `v*` tags matching `VERSION`), and
   `mail-smoke`. Actions are pinned to full commit SHAs.
+- Topic intelligence is **not implemented**. Never use lexical frequencies,
+  embeddings, zero-shot labels, or request-time LLM labels as an STM result.
+  The retained `keyword_extractor` is lexical metadata only. Any future adapter
+  is blocked on a versioned fitted TEPP artifact/API with frozen preprocessing,
+  mixed-membership uncertainty and diagnostics; absence or incompatibility
+  fails closed. Start at `docs/topic-intelligence/README.md` and
+  `docs/adr/0001-topic-measurement-authority.md`.
 
 ## Key conventions
 

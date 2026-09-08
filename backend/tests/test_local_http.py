@@ -15,6 +15,18 @@ def test_loopback_origin_is_canonicalized() -> None:
         hostname="::1",
         port=18080,
     )
+    assert validate_loopback_http_origin("http://localhost") == LocalHTTPOrigin(
+        origin="http://localhost",
+        scheme="http",
+        hostname="localhost",
+        port=80,
+    )
+    assert validate_loopback_http_origin("https://127.0.0.1:443/") == LocalHTTPOrigin(
+        origin="https://127.0.0.1",
+        scheme="https",
+        hostname="127.0.0.1",
+        port=443,
+    )
 
 
 @pytest.mark.parametrize(
@@ -29,6 +41,64 @@ def test_loopback_origin_normalizes_malformed_parser_errors(value: str) -> None:
         LocalHTTPValidationError,
         match=r"must be a loopback HTTP\(S\) origin",
     ):
+        validate_loopback_http_origin(value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "http://localhost:80\x00/",
+        "http://\nlocalhost/",
+    ],
+)
+def test_loopback_origin_rejects_control_characters(value: str) -> None:
+    with pytest.raises(LocalHTTPValidationError, match="control characters"):
+        validate_loopback_http_origin(value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "ftp://localhost/",
+        "http://user:pass@localhost/",
+        "http://localhost/path",
+        "http://localhost/?query=1",
+        "http://localhost/#frag",
+        "http:///",  # No hostname
+    ],
+)
+def test_loopback_origin_rejects_invalid_components(value: str) -> None:
+    with pytest.raises(
+        LocalHTTPValidationError, match=r"must be a loopback HTTP\(S\) origin"
+    ):
+        validate_loopback_http_origin(value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "http://example.com/",
+        "http://192.168.1.1/",
+        "http://[2001:db8::1]/",
+        "http://invalid.localhost/",
+    ],
+)
+def test_loopback_origin_rejects_non_allowlisted_hosts(value: str) -> None:
+    with pytest.raises(LocalHTTPValidationError, match="host is not allowlisted"):
+        validate_loopback_http_origin(value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "http://localhost:-1/",
+        "http://localhost:65536/",
+        "http://localhost:abc/",
+        "http://localhost:0/",
+    ],
+)
+def test_loopback_origin_rejects_invalid_ports(value: str) -> None:
+    with pytest.raises(LocalHTTPValidationError, match="port is invalid"):
         validate_loopback_http_origin(value)
 
 

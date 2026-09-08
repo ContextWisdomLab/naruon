@@ -30,6 +30,23 @@ export type WritebackStatus = 'idle' | 'loading' | 'success' | 'no_source' | 'co
 
 export type CalendarWritebackActionKey = 'create' | 'update' | 'execute';
 
+export type CalendarConflictDecisionCode = 'available' | 'blocked' | 'review_required';
+
+export type CalendarConflictEvidence = {
+  commitment_id: string;
+  start_at: string;
+  end_at: string;
+  status: 'confirmed' | 'tentative' | 'desired' | 'cancelled';
+};
+
+export type CalendarConflictResponse = {
+  decision_code: CalendarConflictDecisionCode;
+  reason_code: string;
+  conflicts: CalendarConflictEvidence[];
+  recommended_action: string;
+  policy_version: string;
+};
+
 export type CalendarDefinition = {
   id: string;
   name: string;

@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { access, mkdtemp, writeFile } from "node:fs/promises";
+import { access, mkdtemp } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -187,7 +187,7 @@ function log(message) {
   process.stdout.write(`${message}\n`);
 }
 
-async function captureSmokeScreenshot(page, screenshotPath, label) {
+async function captureSmokeScreenshot(page, screenshotPath) {
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       await page.screenshot({ path: screenshotPath, fullPage: false });
@@ -197,16 +197,8 @@ async function captureSmokeScreenshot(page, screenshotPath, label) {
         await page.waitForTimeout(250);
         continue;
       }
-      const diagnosticFileName = path.basename(screenshotPath).replace(/\.png$/u, ".screenshot-failed.txt");
-      const diagnosticPath = resolveFullProductArtifactPath(path.dirname(screenshotPath), diagnosticFileName);
-      const reason = error instanceof Error ? error.message : String(error);
-      await writeFile(
-        diagnosticPath,
-        `screenshot_failed label=${label}\nreason=${reason}\n`,
-        "utf-8",
-      );
-      log(`Screenshot capture failed for ${label}: ${reason}`);
-      return diagnosticPath;
+      log("Screenshot capture failed after both attempts");
+      throw error;
     }
   }
   return screenshotPath;
@@ -1555,45 +1547,50 @@ async function runAccessibilitySmoke(page, routeSpec) {
   return [`${routeSpec.name}:a11y-basics`];
 }
 
-async function runRouteSmoke(context, routeSpec, viewportSpec, viewportCount, screenshotDir) {
+export async function runRouteSmoke(context, routeSpec, viewportSpec, viewportCount, screenshotDir) {
   const page = await context.newPage();
   const consoleErrors = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") {
-      consoleErrors.push(`${message.type()}: ${message.text()}`);
+  let screenshotArtifact;
+  let interactionEvidence;
+  let accessibilityEvidence;
+  try {
+    page.on("console", (message) => {
+      if (message.type() === "error") {
+        consoleErrors.push(`${message.type()}: ${message.text()}`);
+      }
+    });
+    page.on("pageerror", (error) => consoleErrors.push(`pageerror: ${error.message}`));
+    await installRoutes(page);
+    await page.goto(new URL(routeSpec.path, baseUrl).href, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+    await page.locator("body").waitFor({ state: "visible", timeout: 20_000 });
+    const bodyText = await page.locator("body").innerText({ timeout: 10_000 });
+    const expectedTexts = Array.isArray(routeSpec.expectedText) ? routeSpec.expectedText : [routeSpec.expectedText];
+    if (!expectedTexts.some((expectedText) => bodyText.includes(expectedText))) {
+      const bodySnippet = bodyText.replace(/\s+/g, " ").trim().slice(0, 500);
+      throw new Error(
+        `Route ${routeSpec.path} did not render expected text: ${expectedTexts.join(" or ")}. Body snippet: ${bodySnippet}`,
+      );
     }
-  });
-  page.on("pageerror", (error) => consoleErrors.push(`pageerror: ${error.message}`));
-  await installRoutes(page);
-  await page.goto(new URL(routeSpec.path, baseUrl).href, { waitUntil: "domcontentloaded" });
-  await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
-  await page.locator("body").waitFor({ state: "visible", timeout: 20_000 });
-  const bodyText = await page.locator("body").innerText({ timeout: 10_000 });
-  const expectedTexts = Array.isArray(routeSpec.expectedText) ? routeSpec.expectedText : [routeSpec.expectedText];
-  if (!expectedTexts.some((expectedText) => bodyText.includes(expectedText))) {
-    const bodySnippet = bodyText.replace(/\s+/g, " ").trim().slice(0, 500);
-    throw new Error(
-      `Route ${routeSpec.path} did not render expected text: ${expectedTexts.join(" or ")}. Body snippet: ${bodySnippet}`,
+    if (bodyText.includes("404") || bodyText.includes("This page could not be found")) {
+      throw new Error(`Route ${routeSpec.path} rendered a not-found page`);
+    }
+    if (consoleErrors.length > 0) {
+      throw new Error(`Route ${routeSpec.path} emitted console errors:\n${consoleErrors.join("\n")}`);
+    }
+    interactionEvidence = await runCriticalInteractionSmoke(page, routeSpec, viewportSpec);
+    accessibilityEvidence = await runAccessibilitySmoke(page, routeSpec);
+    const screenshotPath = resolveFullProductArtifactPath(
+      screenshotDir,
+      fullProductScreenshotName(routeSpec, viewportSpec, viewportCount),
     );
-  }
-  if (bodyText.includes("404") || bodyText.includes("This page could not be found")) {
-    throw new Error(`Route ${routeSpec.path} rendered a not-found page`);
+    screenshotArtifact = await captureSmokeScreenshot(page, screenshotPath);
+  } finally {
+    await page.close();
   }
   if (consoleErrors.length > 0) {
     throw new Error(`Route ${routeSpec.path} emitted console errors:\n${consoleErrors.join("\n")}`);
   }
-  const interactionEvidence = await runCriticalInteractionSmoke(page, routeSpec, viewportSpec);
-  const accessibilityEvidence = await runAccessibilitySmoke(page, routeSpec);
-  const screenshotPath = resolveFullProductArtifactPath(
-    screenshotDir,
-    fullProductScreenshotName(routeSpec, viewportSpec, viewportCount),
-  );
-  const screenshotArtifact = await captureSmokeScreenshot(
-    page,
-    screenshotPath,
-    `${viewportSpec.name}:${routeSpec.path}`,
-  );
-  await page.close();
   return { screenshotPath: screenshotArtifact, interactionEvidence, accessibilityEvidence };
 }
 

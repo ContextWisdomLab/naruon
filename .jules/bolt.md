@@ -26,3 +26,6 @@
 ## 2024-05-24 - [React Component Memoization]
 **Learning:** In React components like `WorkspaceHome`, when layout state or polling changes trigger parent re-renders, expensive child components like `EmailDetail` will also re-render unnecessarily if not memoized.
 **Action:** Always consider `React.memo` for heavy child components that rely on stable props (like IDs) when the parent component has frequent unrelated state updates.
+## 2025-02-12 - [React Component Memoization]
+**Learning:** In React components like `WorkspaceHome`, when layout state or polling changes trigger parent re-renders, `React.memo` can skip unnecessary `NetworkGraph` render work when its props are unchanged.
+**Action:** Use `React.memo` for heavy visualization components when their props are stable, but treat the component's own effect dependencies as the authority for third-party instance lifecycle; memoization alone does not prevent `vis-network` re-instantiation when those dependencies change.

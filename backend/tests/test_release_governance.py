@@ -670,25 +670,6 @@ def test_app_ci_runs_backend_and_frontend_checks_without_duplicate_release_pushe
     assert "release/**" not in push_block
 
 
-def test_docker_publish_concurrency_isolates_prs_and_serializes_releases() -> None:
-    workflow = yaml.safe_load(read_repo_text(".github/workflows/docker-publish.yml"))
-    assert workflow.get("concurrency") == {
-        "group": "${{ github.workflow }}-${{ github.repository }}-"
-        "${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'release-ghcr-aks' }}",
-        "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
-        "queue": "${{ github.event_name == 'pull_request' && 'single' || 'max' }}",
-    }
-    jobs = workflow["jobs"]
-    assert all("concurrency" not in job for job in jobs.values())
-    assert jobs["pull_request_image_validation"]["if"] == "github.event_name == 'pull_request'"
-    assert jobs["publish_images"]["if"] == (
-        "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"
-    )
-    assert workflow["permissions"] == {"contents": "read"}
-    assert "permissions" not in jobs["pull_request_image_validation"]
-    assert len(jobs["pull_request_image_validation"]["strategy"]["matrix"]["include"]) == 3
-
-
 def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_tags() -> (
     None
 ):

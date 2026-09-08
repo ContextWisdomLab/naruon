@@ -1,6 +1,7 @@
 """Exercise public probe responses without workers or customer/provider access."""
 
 from contextlib import asynccontextmanager
+from asyncio import CancelledError
 import os
 import secrets
 
@@ -14,7 +15,7 @@ os.environ.setdefault("AUTH_SESSION_HMAC_SECRET", secrets.token_urlsafe(48))
 os.environ.setdefault("DISABLE_BACKGROUND_WORKERS", "1")
 
 from db import session as database_session  # noqa: E402
-from main import app  # noqa: E402
+from main import app, database_readiness  # noqa: E402
 
 
 def install_probe_engines(
@@ -105,6 +106,33 @@ def timeout_failure():
 def catalog_failure():
     """Reproduce an unwrapped asyncpg database selection failure."""
     return InvalidCatalogNameError("catalog-private-detail")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failed_dependency", ["primary", "readonly"])
+@pytest.mark.parametrize("fail_before_acquisition", [False, True])
+async def test_readiness_propagates_cancellation_and_returns_acquired_connections(
+    monkeypatch, failed_dependency, fail_before_acquisition
+):
+    """Cancellation must escape the probe while acquired connections are returned."""
+    connection_events = install_probe_engines(
+        monkeypatch,
+        failed_dependency=failed_dependency,
+        failure_factory=CancelledError,
+        fail_before_acquisition=fail_before_acquisition,
+    )
+
+    with pytest.raises(CancelledError):
+        await database_readiness()
+
+    expected_events = []
+    for dependency_name in ("primary", "readonly"):
+        if dependency_name == failed_dependency and fail_before_acquisition:
+            break
+        expected_events.extend([(dependency_name, "open"), (dependency_name, "close")])
+        if dependency_name == failed_dependency:
+            break
+    assert connection_events == expected_events
 
 
 @pytest.mark.asyncio

@@ -57,7 +57,7 @@ describe("NetworkGraph bounded option materialization", () => {
     vi.clearAllMocks();
   });
 
-  it("stops option iteration at the configured limits without changing insertion order", async () => {
+  it("stops each option iterator at the configured limit without changing insertion order", async () => {
     const nodes = Array.from({ length: 50 }, (_, index) => ({
       id: `node-${index}`,
       label: `노드 ${index}`,
@@ -71,20 +71,23 @@ describe("NetworkGraph bounded option materialization", () => {
 
     apiGetMock.mockResolvedValue({ nodes, edges });
 
-    let edgeIterationCount = 0;
-    let nodeIterationCount = 0;
+    const edgeIteratorReadCounts: number[] = [];
+    const nodeIteratorReadCounts: number[] = [];
 
-    // Count only the populated graph maps so unrelated framework Maps cannot affect the bound.
+    // Count each populated graph-map iterator independently so rerenders cannot hide one unbounded iterator inside an aggregate total.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Map.prototype.values = function (this: Map<any, any>) {
       const iterator = originalMapValues.call(this);
-      const isEdgeMap = this.has("edge-0");
-      const isNodeMap = this.has("node-0");
+      const readCounts = this.has("edge-0")
+        ? edgeIteratorReadCounts
+        : this.has("node-0")
+          ? nodeIteratorReadCounts
+          : null;
+      const iteratorIndex = readCounts ? readCounts.push(0) - 1 : -1;
 
       return {
         next: () => {
-          if (isEdgeMap) edgeIterationCount += 1;
-          if (isNodeMap) nodeIterationCount += 1;
+          if (readCounts) readCounts[iteratorIndex] += 1;
           return iterator.next();
         },
         [Symbol.iterator]() {
@@ -132,9 +135,11 @@ describe("NetworkGraph bounded option materialization", () => {
         "node-7",
       ]);
 
-      // A sixth/ninth iterator read can occur because for...of retrieves the next item before the body breaks.
-      expect(edgeIterationCount).toBeLessThanOrEqual(15);
-      expect(nodeIterationCount).toBeLessThanOrEqual(25);
+      // for...of may read once beyond the accepted item before the body breaks: 5 relationships => at most 6 reads, 8 nodes => at most 9.
+      expect(edgeIteratorReadCounts.length).toBeGreaterThan(0);
+      expect(nodeIteratorReadCounts.length).toBeGreaterThan(0);
+      expect(edgeIteratorReadCounts.every((count) => count <= 6)).toBe(true);
+      expect(nodeIteratorReadCounts.every((count) => count <= 9)).toBe(true);
     } finally {
       Map.prototype.values = originalMapValues;
       expect(Map.prototype.values).toBe(originalMapValues);

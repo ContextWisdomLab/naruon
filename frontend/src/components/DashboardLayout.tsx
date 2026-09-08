@@ -227,9 +227,21 @@ function PrimaryNavLink({
   const linkRef = useRef<HTMLAnchorElement>(null);
 
   useEffect(() => {
-    if (active) {
-      linkRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    }
+    if (!active) return;
+    const animationFrame = window.requestAnimationFrame(() => {
+      const link = linkRef.current;
+      const nav = link?.closest('nav');
+      if (!link || !nav) return;
+      const navRect = nav.getBoundingClientRect();
+      const linkRect = link.getBoundingClientRect();
+      const inset = 16;
+      if (linkRect.left < navRect.left + inset) {
+        nav.scrollLeft -= navRect.left + inset - linkRect.left;
+      } else if (linkRect.right > navRect.right - inset) {
+        nav.scrollLeft += linkRect.right - (navRect.right - inset);
+      }
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
   }, [active]);
 
   return (

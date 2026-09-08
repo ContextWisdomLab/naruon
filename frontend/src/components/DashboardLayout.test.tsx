@@ -24,6 +24,7 @@ describe("DashboardLayout", () => {
   let container: HTMLDivElement | null = null;
 
   afterEach(() => {
+    vi.useRealTimers();
     if (root) {
       act(() => root?.unmount());
     }
@@ -35,9 +36,8 @@ describe("DashboardLayout", () => {
     Reflect.deleteProperty(window, "__naruonMobileWorkspace");
   });
 
-  it("scrolls the active desktop destination fully into view", () => {
-    const scrollIntoView = vi.fn();
-    Element.prototype.scrollIntoView = scrollIntoView;
+  it("keeps the active desktop destination inside the navigation inset", () => {
+    vi.useFakeTimers();
     window.history.replaceState(null, "", "/search");
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -51,10 +51,22 @@ describe("DashboardLayout", () => {
       );
     });
 
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      block: "nearest",
-      inline: "nearest",
+    const primaryNav = container.querySelector<HTMLElement>(
+      'nav[aria-label="Primary workspace navigation"]',
+    );
+    const activeLink = container.querySelector<HTMLAnchorElement>('a[href="/search"]');
+    vi.spyOn(primaryNav!, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      right: 100,
+    } as DOMRect);
+    vi.spyOn(activeLink!, "getBoundingClientRect").mockReturnValue({
+      left: 90,
+      right: 110,
+    } as DOMRect);
+    act(() => {
+      vi.runOnlyPendingTimers();
     });
+    expect(primaryNav?.scrollLeft).toBe(26);
     expect(
       container.querySelector<HTMLAnchorElement>('a[href="/search"]')
         ?.getAttribute("aria-current"),

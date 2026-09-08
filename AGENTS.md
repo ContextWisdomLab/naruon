@@ -1117,6 +1117,13 @@ subject to U.S. copyright, while attribution remains required.
   head or weaken the gate. A later successful result counts only when its run
   and target SHA match the exact current head.
 
+- GitHub Actions run-list access is a separate evidence surface from the PR
+  check rollup. A `gh run list` or Actions API `403` can occur while ordinary
+  REST/PR reads still work; record it as unavailable run-detail evidence, not
+  as a failed job or proof that the process stopped. Keep the exact PR head,
+  use the available check rollup and job/log endpoints when authorized, and
+  retry only after the access limit or permission condition changes.
+
 ## Phase 10 development rules
 
 - **Stepwise execution**: Each phase requires an atomic PR, GitHub PR Tracking,

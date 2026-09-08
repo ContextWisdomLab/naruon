@@ -1133,6 +1133,30 @@ async function runCriticalInteractionSmoke(page, routeSpec, viewportSpec) {
   }
 
   if (routeSpec.name === "search") {
+    if (viewportSpec.name === "desktop") {
+      const nav = page.locator('nav[aria-label="Primary workspace navigation"]');
+      const activeDestination = nav.locator('a[aria-current="page"]');
+      await activeDestination.waitFor({ state: "visible", timeout: 10_000 });
+      const navigationGeometry = await nav.evaluate((element) => {
+        const active = element.querySelector('a[aria-current="page"]');
+        if (!active) return null;
+        const navRect = element.getBoundingClientRect();
+        const activeRect = active.getBoundingClientRect();
+        const inset = 12;
+        return {
+          activeLeft: activeRect.left,
+          activeRight: activeRect.right,
+          navLeft: navRect.left,
+          navRight: navRect.right,
+          inset,
+        };
+      });
+      if (!navigationGeometry ||
+        navigationGeometry.activeLeft < navigationGeometry.navLeft + navigationGeometry.inset ||
+        navigationGeometry.activeRight > navigationGeometry.navRight - navigationGeometry.inset) {
+        throw new Error("Search active desktop destination is outside the visible navigation inset");
+      }
+    }
     await page.getByText("20B readiness result", { exact: true }).first().waitFor({ state: "visible", timeout: 10_000 });
     await page.getByRole("tab", { name: "관계 원본", exact: true }).click();
     await page.getByText("원본 메시지 필터로 관계 API를 조회합니다.", { exact: true }).waitFor({ state: "visible", timeout: 10_000 });

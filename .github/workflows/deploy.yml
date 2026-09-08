@@ -9,6 +9,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # One apply at a time against the shared naruon-dev namespace. Keep pending
+  # deploys up to GitHub's concurrency-group limit (currently 100); requests
+  # beyond that bound may be canceled. Ordering is not FIFO-guaranteed.
+  group: deploy-aks-${{ github.repository }}
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   deploy:
     name: Deploy to AKS

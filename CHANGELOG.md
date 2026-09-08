@@ -1,8 +1,4 @@
 ## [Unreleased]
-
-### 성능 개선
-- **NetworkGraph**: `useMemo` 내부의 O(N) 배열 연산(`Array.from().slice().map()` 등)을 O(1) 크기의 제한된 `for...of` 루프로 최적화하여 메모리 할당 및 렌더링 성능을 개선했습니다.
-
 - 긴 이메일·첨부 본문을 의미 단위 청크로 임베딩한 뒤 기존 email/attachment 벡터 계약으로 평균화하고, 청크 요청·벡터 누적을 제한된 창으로 처리합니다. OpenAI `text-embedding-3-*`에는 저장 차원(`1536`)을 직접 요청하도록 보강했습니다. 합성 메일 fixture 5건(70청크)과 provider 요청 계약으로 1,536차원 벡터 경로를 검증했으며, 실행 시 선택한 임베딩 제공자에 본문·파싱된 첨부 텍스트를 전송할 수 있습니다. 회사 기밀 데이터는 fixture·commit·PR·log에 포함하지 않습니다.
 - EmailDetail 테스트가 지원하지 않는 스레드 병합/분리 버튼을 `textContent`뿐 아니라 `aria-label`과 `title` 접근 가능 이름으로도 검출하도록 바꿔, 아이콘 전용 버튼 회귀를 놓치지 않습니다.
 
@@ -2740,10 +2736,6 @@
 - `docker compose down`
 
 ## [Unreleased]
-
-### 성능 개선
-- **NetworkGraph**: `useMemo` 내부의 O(N) 배열 연산(`Array.from().slice().map()` 등)을 O(1) 크기의 제한된 `for...of` 루프로 최적화하여 메모리 할당 및 렌더링 성능을 개선했습니다.
-
 ### Added
 - `backend/api/tools.py` 내의 임시 `mock_handler`를 구체적인 기능을 수행하는 5개의 실제 도구 핸들러로 대체했습니다.
   - `thread_summarizer_handler`: 이메일 스레드 요약 정보 반환
@@ -2761,10 +2753,13 @@
 - **Note:** CI opencode-review 잡 실행 중 타임아웃 오류(The action 'Run OpenCode PR Review model pool' has timed out after 350 minutes)가 발생했습니다. 반복되는 외부 인프라 타임아웃 문제를 해결하기 위해, 마지막으로 재제출을 시도합니다.
 - **Note:** 추가적인 코드 변경은 없으며, PR 내 자동 분석 커멘트에 대한 답변(CI 실패가 본 PR이 아닌 develop의 기존 이슈임을 인지함)을 남기고 현재 워크플로우를 완료합니다.
 
-### 변경 사항 (Changes)
 
 - `backend/tests/test_release_governance.py` 파일의 394번째 줄에서 `yaml.load` 함수 사용 시 발생하는 Bandit B506 오탐지를 억제하기 위해 `# nosec B506` 주석을 추가했습니다. 해당 코드는 `yaml.SafeLoader`를 상속받은 `UniqueKeyLoader`를 사용하므로 실제로는 안전합니다. 이 변경은 보안 취약점 픽스가 아닌, 정적 분석 툴의 오탐지를 처리하기 위한 조치입니다.
 
 ### 문서 (Documentation)
 
 - `yaml.load()`와 관련해 발생한 Bandit B506 항목에 대해 규칙 한정적 오탐지(false-positive) 판정 및 처분 근거(disposition)를 담은 `docs/doctoring/bandit-b506-false-positive-disposition.md` 문서를 추가했습니다. 이는 제품의 실제 취약점 패치가 아니며, PyYAML의 `SafeLoader`를 명시적으로 사용하는 사용자 정의 로더에 대해 오탐지를 억제하는 조건과 롤백 기준을 테스트 증거와 함께 기록한 문서입니다.
+
+
+### 변경 사항 (Changes)
+- **성능 (Performance)**: `NetworkGraph` 컴포넌트 내부에서 O(N) 반복을 유발하던 옵션 캡(cap) 생성 로직을 5개의 relationship과 8개의 node만 구성하도록 제한된 `for...of` 루프로 최적화했습니다 (Bounded options only; end-to-end 그래프 렌더링은 여전히 O(N) 스케일링을 유지함).

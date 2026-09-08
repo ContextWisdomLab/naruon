@@ -278,19 +278,16 @@ export default function NetworkGraph() {
   }, [nodes, edges, nodeMap, edgeMap]);
 
   const nodeLabels = useMemo(() => {
-    // Bolt Optimization: Replace O(N) intermediate array map/filter/slice with a bounded O(1) loop
-    const labels: string[] = [];
-    for (const node of nodes) {
-      if (labels.length >= 5) break;
-      const label = String(node.label ?? node.id);
-      if (label) labels.push(label);
-    }
-    return labels;
+    return nodes
+      .map((node) => String(node.label ?? node.id))
+      .filter(Boolean)
+      .slice(0, 5);
   }, [nodes]);
 
   const firstEdge = edges[0] ?? null;
   const relationshipOptions = useMemo(() => {
-    // Bolt Optimization: Replace O(N) Array.from().slice().map() with bounded O(1) loop
+    // ⚡ Bolt Optimization: Replace O(N) Array.from(map).slice() with bounded for...of loop
+    // to avoid intermediate array allocations and achieve O(min(N, limit)) performance for large maps.
     const options = [];
     let index = 0;
     for (const edge of edgeMap.values()) {
@@ -306,7 +303,8 @@ export default function NetworkGraph() {
   }, [edgeMap, nodeMap]);
 
   const nodeOptions = useMemo(() => {
-    // Bolt Optimization: Replace O(N) Array.from().slice().map() with bounded O(1) loop
+    // ⚡ Bolt Optimization: Replace O(N) Array.from(map).slice() with bounded for...of loop
+    // to avoid full Map iteration and intermediate allocations on every render pass.
     const options = [];
     for (const node of nodeInstanceMap.values()) {
       if (options.length >= 8) break;

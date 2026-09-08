@@ -777,4 +777,4 @@ async def send_email_endpoint(
         logger.error("Error sending email", exc_info=redacted_exception_info(e))
         raise HTTPException(
             status_code=500, detail="An internal error occurred while sending the email"
-        )
+        ) from None

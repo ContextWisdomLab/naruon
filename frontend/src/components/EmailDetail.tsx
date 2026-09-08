@@ -808,6 +808,7 @@ export const EmailDetail = memo(function EmailDetail({ emailId, actionCommand = 
               <Button
                 onClick={handleDraftReply}
                 disabled={isDrafting || !instruction}
+                title={!instruction ? "답장 초안 지시를 입력해주세요" : undefined}
                 aria-busy={isDrafting}
                 variant="outline"
                 size="sm"
@@ -852,6 +853,7 @@ export const EmailDetail = memo(function EmailDetail({ emailId, actionCommand = 
                 <Button
                   onClick={handleSendReply}
                   disabled={isSending || !draft}
+                  title={!draft ? "답장 초안을 먼저 작성해주세요" : undefined}
                   aria-busy={isSending}
                   size="sm"
                   className="h-9 rounded-xl px-4"

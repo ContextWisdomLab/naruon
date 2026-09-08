@@ -14,6 +14,11 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.repository }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'release-ghcr-aks' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  queue: ${{ github.event_name == 'pull_request' && 'single' || 'max' }}
+
 env:
   REGISTRY: ghcr.io
   # Keep the explicit opt-in as belt-and-suspenders. The real warning removal

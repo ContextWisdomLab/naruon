@@ -17,7 +17,9 @@ from db import session as database_session  # noqa: E402
 from main import app  # noqa: E402
 
 
-def install_probe_engines(monkeypatch, *, failed_dependency=None, failure_factory=None):
+def install_probe_engines(
+    monkeypatch, *, failed_dependency=None, failure_factory=None, fail_before_acquisition=False
+):
     """Install deterministic primary/read-only probes and return lifecycle evidence."""
     connection_events = []
 
@@ -36,6 +38,8 @@ def install_probe_engines(monkeypatch, *, failed_dependency=None, failure_factor
 
         @asynccontextmanager
         async def connect(self):
+            if fail_before_acquisition and self.dependency_name == failed_dependency:
+                raise failure_factory()
             connection_events.append((self.dependency_name, "open"))
             try:
                 yield ProbeConnection(self.dependency_name)
@@ -104,6 +108,7 @@ def catalog_failure():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("failed_dependency", ["primary", "readonly"])
 @pytest.mark.parametrize(
     ("failure_factory", "private_detail"),
     [
@@ -114,13 +119,14 @@ def catalog_failure():
     ids=["os-error", "timeout", "missing-database"],
 )
 async def test_readiness_sanitizes_supported_connection_failures(
-    monkeypatch, failure_factory, private_detail
+    monkeypatch, failure_factory, private_detail, failed_dependency
 ):
     """Supported transport failures fail closed without leaking their detail."""
     connection_events = install_probe_engines(
         monkeypatch,
-        failed_dependency="primary",
+        failed_dependency=failed_dependency,
         failure_factory=failure_factory,
+        fail_before_acquisition=True,
     )
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://unit.local") as client:
@@ -130,4 +136,7 @@ async def test_readiness_sanitizes_supported_connection_failures(
     assert response.json() == {"status": "unavailable"}
     assert response.headers["cache-control"] == "no-store"
     assert private_detail not in response.text
-    assert connection_events == [("primary", "open"), ("primary", "close")]
+    assert connection_events == (
+        [("primary", "open"), ("primary", "close")]
+        if failed_dependency == "readonly" else []
+    )

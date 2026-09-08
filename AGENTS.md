@@ -1124,6 +1124,11 @@ subject to U.S. copyright, while attribution remains required.
   use the available check rollup and job/log endpoints when authorized, and
   retry only after the access limit or permission condition changes.
 
+- `CLEAN` with no reported required Checks is not protected-merge evidence.
+  Stacked or non-protected bases can legitimately report no required checks;
+  retain the exact head/base and verify the target protected branch's ruleset,
+  qualifying review, and hosted checks before treating a PR as merge-ready.
+
 ## Phase 10 development rules
 
 - **Stepwise execution**: Each phase requires an atomic PR, GitHub PR Tracking,

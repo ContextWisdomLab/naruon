@@ -1,4 +1,8 @@
 ## [Unreleased]
+
+### 성능 개선
+- **NetworkGraph**: `useMemo` 내부의 O(N) 배열 연산(`Array.from().slice().map()` 등)을 O(1) 크기의 제한된 `for...of` 루프로 최적화하여 메모리 할당 및 렌더링 성능을 개선했습니다.
+
 - 긴 이메일·첨부 본문을 의미 단위 청크로 임베딩한 뒤 기존 email/attachment 벡터 계약으로 평균화하고, 청크 요청·벡터 누적을 제한된 창으로 처리합니다. OpenAI `text-embedding-3-*`에는 저장 차원(`1536`)을 직접 요청하도록 보강했습니다. 합성 메일 fixture 5건(70청크)과 provider 요청 계약으로 1,536차원 벡터 경로를 검증했으며, 실행 시 선택한 임베딩 제공자에 본문·파싱된 첨부 텍스트를 전송할 수 있습니다. 회사 기밀 데이터는 fixture·commit·PR·log에 포함하지 않습니다.
 - EmailDetail 테스트가 지원하지 않는 스레드 병합/분리 버튼을 `textContent`뿐 아니라 `aria-label`과 `title` 접근 가능 이름으로도 검출하도록 바꿔, 아이콘 전용 버튼 회귀를 놓치지 않습니다.
 
@@ -2736,6 +2740,10 @@
 - `docker compose down`
 
 ## [Unreleased]
+
+### 성능 개선
+- **NetworkGraph**: `useMemo` 내부의 O(N) 배열 연산(`Array.from().slice().map()` 등)을 O(1) 크기의 제한된 `for...of` 루프로 최적화하여 메모리 할당 및 렌더링 성능을 개선했습니다.
+
 ### Added
 - `backend/api/tools.py` 내의 임시 `mock_handler`를 구체적인 기능을 수행하는 5개의 실제 도구 핸들러로 대체했습니다.
   - `thread_summarizer_handler`: 이메일 스레드 요약 정보 반환

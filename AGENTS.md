@@ -1136,6 +1136,11 @@ subject to U.S. copyright, while attribution remains required.
   commit on its own branch and open a stacked successor that names the
   predecessor and proves the inherited delta.
 
+- A review bot's `skipped` result on a non-default stacked base is not a
+  qualifying review and must not be promoted to approval. Keep the successor
+  linked to its predecessor, record the exact head/base, and require an
+  independently qualifying review on a supported base before protected merge.
+
 ## Phase 10 development rules
 
 - **Stepwise execution**: Each phase requires an atomic PR, GitHub PR Tracking,

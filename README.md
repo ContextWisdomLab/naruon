@@ -53,7 +53,9 @@ mail/calendar/file systems.
 - Local OpenCode contributor runs use contextual-orchestrator's fixed loopback
   OpenAI-compatible endpoint at `http://127.0.0.1:8100/v1`. Set a short-lived
   owner-issued `CONTEXTUAL_ORCHESTRATOR_TOKEN`; do not substitute an upstream
-  provider key. This value configures OpenCode only, not Naruon.
+  provider key. OpenCode sends it as the standard `Authorization` header, which
+  the Fetch transport removes on a cross-origin redirect. This value configures
+  OpenCode only, not Naruon.
 - Topic intelligence is not currently a live Naruon capability. The lexical
   `keyword_extractor` is metadata only; Naruon fails closed rather than present
   keyword, embedding, or LLM labels as Structural Topic Modeling. The product,

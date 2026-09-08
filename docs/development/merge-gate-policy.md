@@ -96,14 +96,18 @@ context before the hardened Strix workflow can emit a valid result.
 
 Handling policy:
 
+This procedure requires explicit maintainer authorization for the exact ruleset
+change and substitute evidence. A delivery request alone is not authorization
+to weaken a required gate; without it, repair or rerun the canonical owner.
+
 1. Prefer branch update or rerun first.
 2. If the required context cannot be emitted until the PR lands, document the
    stale context and use only a temporary, reversible ruleset adjustment.
    Capture equivalent temporary evidence before merge, such as a trusted-base
    rerun, scanner artifact, SARIF output, or manual security review evidence
    tied to the current head SHA.
-3. Restore the `strix` required context after the hardened workflow emits it
-   successfully on the protected branch.
+3. Restore the captured configuration on success, failure, cancellation, or
+   expiry. If repair fails, restore before pursuing a different approach.
 4. Re-run required-check evidence after restore.
 
 ## PR #108/#109 evidence summary
@@ -124,7 +128,8 @@ Handling policy:
 - Any temporary ruleset change must have captured before/after JSON, owner,
   expiry, head SHA, equivalent temporary evidence, and a named restore
   condition.
-- Restore required contexts immediately after the repaired workflow emits them.
+- Restore required contexts on success, failure, cancellation, or expiry;
+  verify restoration before any further landing.
 - If the platform still rejects merge after policy-aligned settings and passing
   checks, record the rejection as an external blocker with the exact command
   output and head SHA.

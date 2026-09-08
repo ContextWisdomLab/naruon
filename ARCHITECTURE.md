@@ -6,7 +6,7 @@
 flowchart LR
   UI[Next.js frontend] --> API[FastAPI backend / Naruon control plane]
   API --> DB[(Postgres + pgvector)]
-  API --> LLM[OpenAI APIs when configured]
+  API --> CO[contextual-orchestrator released gateway]
   API --> CONN[Outbound-only self-hosted connector]
   CONN --> MAIL[Customer IMAP/POP3/SMTP]
   CONN --> DAV[Customer CalDAV/CardDAV/WebDAV]
@@ -226,6 +226,10 @@ API key stays the tenant's Fernet-encrypted credential, and the orchestrator bas
 URL must be HTTPS and exact-host allowlisted by `ALLOWED_LLM_BASE_URL_HOSTS`;
 an unset or rejected endpoint fails closed to the deterministic extractor. Design
 and grounding: [`docs/architecture/kg-extractor-seam.md`](docs/architecture/kg-extractor-seam.md).
+
+Provider discovery, capability routing, and fallback belong to
+`contextual-orchestrator`. Production adoption requires an immutable released
+owner API/client/schema; an unavailable or incompatible release fails closed.
 
 ## CI security boundary
 

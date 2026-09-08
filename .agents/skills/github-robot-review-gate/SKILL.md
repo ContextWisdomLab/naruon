@@ -68,12 +68,16 @@ context successfully on the protected branch.
 
 ## Safe temporary handling
 
+- Require explicit maintainer authorization for the exact ruleset change and
+  substitute evidence; a delivery request alone is not authorization.
 - Prefer rerunning or updating the branch before touching rulesets.
 - If temporary removal is unavoidable, capture before/after ruleset JSON, owner,
   expiry, current head SHA, equivalent temporary evidence, and a dated rollback
   note in the PR.
 - Restore required contexts and confirm `gh pr checks --required` shows the
   hardened context before declaring the gate resolved.
+- Restore the captured configuration on success, failure, cancellation, or
+  expiry. Block further landing until restoration is verified.
 
 ## Common mistakes
 

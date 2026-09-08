@@ -110,10 +110,22 @@ indexes, and auditable writeback intent. `ARCHITECTURE.md` and
 ```
 Next.js frontend ──> FastAPI backend (control plane) ──> Postgres + pgvector
                             │
-                            ├──> OpenAI-compatible LLM providers (Ollama locally)
+                            ├──> contextual-orchestrator consumer boundary
+                            │      └──> provider/model routing owned by contextual-orchestrator
                             └──> outbound-only self-hosted connector (connector/)
                                      └──> customer IMAP/POP3/SMTP + CalDAV/CardDAV/WebDAV
 ```
+
+Naruon owns product behavior and model-call authorization, but not provider/model
+routing. Production model work requires an immutable released
+`contextual-orchestrator` API/client/schema; a missing or incompatible owner
+contract fails closed instead of falling back to a direct provider. The
+Ollama/MLX paths in local Compose are explicit non-production development
+fixtures. Central model-backed GitHub Actions are owned by
+`ContextualWisdomLab/.github` and use `orchestrator/free`; do not copy that pool
+selection into Naruon runtime. Verify protected release evidence before claiming
+the owner contract is available; an open PR or unreleased branch is only proposed
+evidence.
 
 - `backend/` — FastAPI app (`main.py`, routers in `api/`, domain logic in
   `services/`, SQLAlchemy models in `db/`, Alembic in `alembic/`). Owns
@@ -140,8 +152,12 @@ Next.js frontend ──> FastAPI backend (control plane) ──> Postgres + pgve
   ETag/If-Match); intents are the default response.
 - Auth: signed HS256 bearer sessions (HMAC via `AUTH_SESSION_HMAC_SECRET`) or
   enterprise OIDC/JWKS; private `/api/*` routers register the default
-  `get_auth_context` dependency. LLM `base_url` and OIDC/SMTP/IMAP/POP3 hosts
-  are strict egress allowlists that resolve only to pinned global addresses.
+  `get_auth_context` dependency. Naruon owns domain tools, authorization, and
+  context assembly; provider/model routing belongs to `contextual-orchestrator`.
+  Existing direct-provider `base_url` surfaces are legacy migration debt and
+  must not be extended as production routing authority; keep their SSRF controls
+  until they are removed. OIDC/SMTP/IMAP/POP3 hosts remain strict egress
+  allowlists that resolve only to pinned global addresses.
 - CI (`.github/workflows/`): `app-ci.yml` (backend ruff+pytest, frontend
   test/lint/build), plus `bandit`, `codeql`, `trivy`, `scorecard`,
   `pr-governance`, `docker-publish` (GHCR on `v*` tags matching `VERSION`), and

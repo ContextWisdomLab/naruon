@@ -42,7 +42,9 @@
       "name": "Contextual Orchestrator",
       "options": {
         "baseURL": "http://127.0.0.1:8100/v1",
-        "apiKey": "{env:CONTEXTUAL_ORCHESTRATOR_TOKEN}",
+        "headers": {
+          "Authorization": "Bearer {env:CONTEXTUAL_ORCHESTRATOR_TOKEN}"
+        },
         "timeout": false
       },
       "models": {

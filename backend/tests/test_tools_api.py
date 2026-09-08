@@ -1211,3 +1211,126 @@ def test_execute_analysis_tool_rejects_oversized_text():
             f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"
         ),
     }
+
+
+@pytest.mark.asyncio
+async def test_url_extractor_handler():
+    from api.tools import url_extractor_handler, ANALYSIS_TEXT_MAX_CHARS
+
+    # 1. Normal extraction
+    text = "Check out https://example.com and http://test.org/path! Also https://192.168.1.1."
+    res = await url_extractor_handler({"text": text})
+    assert set(res["urls"]) == {"https://example.com", "http://test.org/path", "https://192.168.1.1"}
+    assert res["url_count"] == 3
+
+    # 2. Invalid urls (should be ignored)
+    text2 = "Invalid urls like http:// or http://:80 or https://-invalid-.com or https://toolong" + "a"*63 + ".com"
+    res2 = await url_extractor_handler({"text": text2})
+    assert len(res2["urls"]) == 0
+
+    # 3. Max chars
+    with pytest.raises(ValueError, match=f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"):
+        await url_extractor_handler({"text": "a" * (ANALYSIS_TEXT_MAX_CHARS + 1)})
+
+
+@pytest.mark.asyncio
+async def test_json_formatter_handler():
+    from api.tools import json_formatter_handler, ANALYSIS_TEXT_MAX_CHARS
+
+    # 1. Normal formatting
+    valid_json = '{"b": 2, "a": 1}'
+    res = await json_formatter_handler({"text": valid_json})
+    assert "{\n    \"b\": 2,\n    \"a\": 1\n}" in res["formatted_json"]
+
+    # 2. Invalid json
+    with pytest.raises(ValueError, match="Invalid JSON string"):
+        await json_formatter_handler({"text": '{"b": 2, "a": 1'})
+
+    # 3. Max chars
+    with pytest.raises(ValueError, match=f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"):
+        await json_formatter_handler({"text": "a" * (ANALYSIS_TEXT_MAX_CHARS + 1)})
+
+
+@pytest.mark.asyncio
+async def test_hash_generator_handler():
+    from api.tools import hash_generator_handler, ANALYSIS_TEXT_MAX_CHARS
+    import hashlib
+
+    # 1. Default (sha256)
+    text = "hello"
+    res = await hash_generator_handler({"text": text})
+    expected_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
+    assert res["hash"] == expected_hash
+    assert res["algorithm"] == "sha256"
+
+    # 2. Specific algorithm (md5)
+    if "md5" in hashlib.algorithms_available:
+        res2 = await hash_generator_handler({"text": text, "algorithm": "MD5"})
+        expected_hash2 = hashlib.md5(text.encode('utf-8')).hexdigest()
+        assert res2["hash"] == expected_hash2
+        assert res2["algorithm"] == "md5"
+
+    # 3. Invalid algorithm
+    with pytest.raises(ValueError, match="Unsupported hash algorithm: invalid_algo"):
+        await hash_generator_handler({"text": text, "algorithm": "invalid_algo"})
+
+    # 4. Max chars
+    with pytest.raises(ValueError, match=f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"):
+        await hash_generator_handler({"text": "a" * (ANALYSIS_TEXT_MAX_CHARS + 1)})
+
+    # 5. Error during hashing (mocking to trigger exception if needed, though rare)
+    # We can pass something that is not string, but parameters are generally strings.
+
+
+def test_execute_url_extractor():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/url_extractor/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"text": "My site is https://example.com."}}
+        )
+    assert response.status_code == 200
+    assert set(response.json()["result"]["urls"]) == {"https://example.com"}
+
+def test_execute_json_formatter():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/json_formatter/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"text": '{"a": 1}'}}
+        )
+    assert response.status_code == 200
+    assert "{\n    \"a\": 1\n}" in response.json()["result"]["formatted_json"]
+
+def test_execute_hash_generator():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/hash_generator/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"text": "test", "algorithm": "sha1"}}
+        )
+    assert response.status_code == 200
+    assert response.json()["result"]["algorithm"] == "sha1"
+    assert len(response.json()["result"]["hash"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_url_extractor_urlsplit_error():
+    from api.tools import url_extractor_handler
+    # urlsplit raises ValueError on invalid port or bracketed ipv6
+    text = "Look at http://[::1:]"
+    res = await url_extractor_handler({"text": text})
+    assert len(res["urls"]) == 0
+
+@pytest.mark.asyncio
+async def test_hash_generator_exception(monkeypatch):
+    from api.tools import hash_generator_handler
+    import hashlib
+
+    def mock_new(*args, **kwargs):
+        raise Exception("Mocked error")
+
+    monkeypatch.setattr(hashlib, "new", mock_new)
+
+    with pytest.raises(ValueError, match="Error generating hash: Mocked error"):
+        await hash_generator_handler({"text": "test", "algorithm": "sha256"})

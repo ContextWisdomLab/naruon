@@ -11,12 +11,18 @@ The production build and mocked browser smoke exited zero across ten routes at
 [inspection receipt](https://github.com/ContextualWisdomLab/naruon/pull/1599#issuecomment-5578964200)
 records scope and observed defects. It does not prove live provider writes,
 real backend contracts, every locale, deployment, or complete accessibility.
+PR #1600 then retained the same ten-route desktop evidence from hosted
+Application CI run `34189161122` for exact head `d30f0b7c`. Direct inspection
+confirmed that artifact creation succeeded while the customer-facing defects
+below remained visible; a green smoke job is therefore evidence availability,
+not visual acceptance.
 
 | Observed customer gap | Canonical owner action | Acceptance evidence still required |
 | --- | --- | --- |
 | Home exposed English skip-link and `source-linked` | #1578 owns customer status copy; #1601 owns keyboard navigation copy | Merge both successors normally, then repeat keyboard-focused desktop/mobile inspection on the deployed product |
 | Search displayed raw source/thread identifiers and `sender_context` | Product Search presentation must retain identifiers at request/state boundaries while rendering relationship labels | Contract-preserving UI tests and desktop/mobile detail inspection |
-| Calendar, Data, and Security exposed intent/ETag, verifier commands/schema names, and event codes | Each product surface must replace implementation vocabulary with outcomes and next actions while retaining evidence in authorized diagnostics | Rendered-copy tests, authorization tests, and responsive screenshots |
+| Calendar, Data, Security, and Settings exposed intent/ETag, verifier commands/schema names, event codes, `signed-session`, RBAC/ABAC, and OIDC/provider plumbing | Each product surface must replace implementation vocabulary with outcomes and next actions while retaining evidence in authorized diagnostics | Rendered-copy tests, authorization tests, and responsive screenshots |
+| Mail toast and several route captures obscured or clipped primary navigation | Shared workspace layout must preserve navigation visibility while transient feedback is present | Desktop/mobile screenshots with active toast, sticky header, scroll, and keyboard focus |
 | Mobile Search, Projects, and Settings placed content behind sticky headers | Reproduce scrolling and keyboard focus before selecting a layout repair | Focused controls and relevant text remain visible and reachable at 390×844 |
 
 The screenshot-failure RED at `af4df216` returned a diagnostic text path as

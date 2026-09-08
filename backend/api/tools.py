@@ -7,7 +7,6 @@ import re
 import unicodedata
 import urllib.parse
 import uuid
-import ipaddress
 from collections import Counter
 from collections.abc import Callable
 from typing import Any, Dict, List, Optional
@@ -751,116 +750,6 @@ registry.register(
         parameters={"text": "string"},
     ),
     keyword_extractor_handler,
-)
-
-
-
-
-
-
-
-def _extract_valid_urls(text: str) -> list[str]:
-    # Extract URLs from text avoiding trailing punctuation
-    url_pattern = re.compile(r'https?://[^\s<>"]+')
-    raw_urls = url_pattern.findall(text)
-
-    valid_urls = []
-    for raw_url in raw_urls:
-        # trim trailing punctuation
-        while raw_url and raw_url[-1] in ".,!?":
-            raw_url = raw_url[:-1]
-
-        try:
-            parsed = urllib.parse.urlsplit(raw_url)
-            if not parsed.netloc or not parsed.hostname:
-                continue
-
-            # Additional validation for hostname:
-            # Check if it's a valid IP address or has valid domain labels
-            try:
-                ipaddress.ip_address(parsed.hostname.strip("[]"))
-                valid_urls.append(raw_url)
-            except ValueError:
-                # Basic domain validation: length and character constraints
-                labels = parsed.hostname.split('.')
-                if all(label and len(label) <= 63 and not label.startswith('-') and not label.endswith('-') for label in labels):
-                    valid_urls.append(raw_url)
-        except ValueError:
-            continue
-
-    return valid_urls
-
-async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
-    text = params.get("text", "")
-    if len(text) > ANALYSIS_TEXT_MAX_CHARS:
-        raise ValueError(
-            f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"
-        )
-    urls = _extract_valid_urls(text)
-    return {"urls": urls, "url_count": len(urls)}
-
-registry.register(
-    ToolInfo(
-        code="url_extractor",
-        name="URL 추출기 (URL Extractor)",
-        description="텍스트에서 유효한 호스트네임을 가진 모든 URL을 추출합니다.",
-        category="이메일 분석",
-        parameters={"text": "string"},
-    ),
-    url_extractor_handler,
-)
-
-async def json_formatter_handler(params: Dict[str, Any]) -> Dict[str, str]:
-    text = params.get("text", "")
-    if len(text) > ANALYSIS_TEXT_MAX_CHARS:
-        raise ValueError(
-            f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"
-        )
-    try:
-        parsed_json = json.loads(text)
-        formatted_json = json.dumps(parsed_json, indent=4, ensure_ascii=False)
-        return {"formatted_json": formatted_json}
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON string: {e}")
-
-registry.register(
-    ToolInfo(
-        code="json_formatter",
-        name="JSON 포맷터 (JSON Formatter)",
-        description="JSON 형식의 텍스트를 파싱하여 예쁘게 포맷팅된 문자열로 반환합니다.",
-        category="유틸리티",
-        parameters={"text": "string"},
-    ),
-    json_formatter_handler,
-)
-
-async def hash_generator_handler(params: Dict[str, Any]) -> Dict[str, str]:
-    text = params.get("text", "")
-    if len(text) > ANALYSIS_TEXT_MAX_CHARS:
-        raise ValueError(
-            f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"
-        )
-    algorithm = str(params.get("algorithm") or "sha256").lower()
-
-    if algorithm not in hashlib.algorithms_available:
-        raise ValueError(f"Unsupported hash algorithm: {algorithm}")
-
-    try:
-        h = hashlib.new(algorithm)
-        h.update(text.encode('utf-8'))
-        return {"hash": h.hexdigest(), "algorithm": algorithm}
-    except Exception as e:
-        raise ValueError(f"Error generating hash: {e}")
-
-registry.register(
-    ToolInfo(
-        code="hash_generator",
-        name="해시 생성기 (Hash Generator)",
-        description="텍스트를 지정된 알고리즘(기본값 sha256)을 사용하여 해싱합니다.",
-        category="보안",
-        parameters={"text": "string", "algorithm": "string (optional)"},
-    ),
-    hash_generator_handler,
 )
 
 

@@ -284,10 +284,6 @@ in this repo.
   tablet/mobile drawer in sync for Mail, Calendar, Tasks, Projects, Context
   Search, AI Hub, Data, Security, and Settings; add route and responsive E2E
   coverage instead of documenting unavailable destinations as implemented.
-- Desktop primary navigation must keep the active destination fully visible
-  when the nav is horizontally constrained; preserve the active-page contract
-  and cover the scroll-into-view behavior with a focused test and a real
-  desktop/mobile screenshot review.
 - Workspace destination pages must show actionable detail surfaces, not inert
   marketing placeholders. Calendar needs month/week/detail/coordination and
   CalDAV writeback states; Tasks needs source-linked ticket boards/details;

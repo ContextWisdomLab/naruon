@@ -65,19 +65,24 @@ const RELATIONSHIP_TYPE_LABELS: Record<string, string> = {
 };
 
 function relationshipTypeLabel(relationshipType: string) {
-  return RELATIONSHIP_TYPE_LABELS[relationshipType] ?? "연결 관계";
+  return RELATIONSHIP_TYPE_LABELS[relationshipType.trim().toLowerCase()] ?? "연결 관계";
 }
 
-const CUSTOMER_FACING_RELATIONSHIP_ACTIONS = new Set([
-  "계약 검토 담당자를 확인합니다.",
-  "후속 작업을 확인합니다.",
-]);
+const CUSTOMER_FACING_RELATIONSHIP_ACTIONS: Record<string, string> = {
+  summarize_then_archive: "요약 후 보관합니다.",
+  track_reply_and_tasks: "답장과 후속 작업을 확인합니다.",
+  prepare_response_draft: "답장 초안을 준비합니다.",
+  classify_sender: "발신자 관계를 확인합니다.",
+  "계약 검토 담당자를 확인합니다.": "계약 검토 담당자를 확인합니다.",
+  "후속 작업을 확인합니다.": "후속 작업을 확인합니다.",
+};
 
-export function customerFacingRelationshipText(value: string, fallback: string) {
-  const normalizedValue = value.trim();
-  return CUSTOMER_FACING_RELATIONSHIP_ACTIONS.has(normalizedValue)
-    ? normalizedValue
-    : fallback;
+export function customerFacingRelationshipText(
+  relationshipAction: string,
+  fallbackCopy: string,
+) {
+  const normalizedAction = relationshipAction.trim();
+  return CUSTOMER_FACING_RELATIONSHIP_ACTIONS[normalizedAction] ?? fallbackCopy;
 }
 
 type SearchResponse = {

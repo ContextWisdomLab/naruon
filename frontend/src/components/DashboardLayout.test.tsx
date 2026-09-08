@@ -35,6 +35,32 @@ describe("DashboardLayout", () => {
     Reflect.deleteProperty(window, "__naruonMobileWorkspace");
   });
 
+  it("scrolls the active desktop destination fully into view", () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    window.history.replaceState(null, "", "/search");
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(
+        <DashboardLayout>
+          <section>Search workspace content</section>
+        </DashboardLayout>,
+      );
+    });
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      block: "nearest",
+      inline: "nearest",
+    });
+    expect(
+      container.querySelector<HTMLAnchorElement>('a[href="/search"]')
+        ?.getAttribute("aria-current"),
+    ).toBe("page");
+  });
+
   it("renders the Naruon branded shell with accessible navigation landmarks", () => {
     container = document.createElement("div");
     document.body.appendChild(container);

@@ -224,9 +224,17 @@ function PrimaryNavLink({
   const pathname = usePathname();
   const searchParams = useCurrentSearchParams();
   const active = isActivePath(pathname, href, '', searchParams);
+  const linkRef = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    if (active) {
+      linkRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }, [active]);
 
   return (
     <Link
+      ref={linkRef}
       href={href}
       aria-current={active ? 'page' : undefined}
       className={`inline-flex h-10 shrink-0 whitespace-nowrap items-center gap-2 rounded-xl px-3 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 ${
@@ -353,7 +361,7 @@ export function DashboardLayout({
             <Image src="/brand/naruon-symbol.svg" alt="Naruon" width={32} height={32} style={{ width: '32px', height: '32px' }} />
             <span className="text-lg font-black tracking-tight">Naruon</span>
           </div>
-          <nav aria-label="Primary workspace navigation" className="hidden max-w-[44vw] items-center gap-1 overflow-x-auto xl:flex 2xl:max-w-none">
+          <nav aria-label="Primary workspace navigation" className="hidden max-w-[44vw] scroll-px-3 items-center gap-1 overflow-x-auto xl:flex 2xl:max-w-none">
             {primaryNavItems.map((item) => (
               <PrimaryNavLink key={item.href} {...item} />
             ))}

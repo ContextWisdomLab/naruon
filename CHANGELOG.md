@@ -2760,3 +2760,6 @@
 ### 문서 (Documentation)
 
 - `yaml.load()`와 관련해 발생한 Bandit B506 항목에 대해 규칙 한정적 오탐지(false-positive) 판정 및 처분 근거(disposition)를 담은 `docs/doctoring/bandit-b506-false-positive-disposition.md` 문서를 추가했습니다. 이는 제품의 실제 취약점 패치가 아니며, PyYAML의 `SafeLoader`를 명시적으로 사용하는 사용자 정의 로더에 대해 오탐지를 억제하는 조건과 롤백 기준을 테스트 증거와 함께 기록한 문서입니다.
+
+### 변경 사항
+- **성능 (Performance)**: `NetworkGraph` 컴포넌트에서 `useMemo` 내부의 `Array.from(map).slice()` 패턴을 크기 제한이 있는 `for...of` 루프로 변경하여 대규모 데이터 처리 시 발생하는 불필요한 중간 배열 할당을 제거하고 O(1) 성능을 달성하도록 최적화했습니다.

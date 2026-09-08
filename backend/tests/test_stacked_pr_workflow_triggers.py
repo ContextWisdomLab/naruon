@@ -62,7 +62,7 @@ def test_application_ci_retains_full_product_smoke_screenshot_evidence() -> None
     assert upload_step["uses"] == f"actions/upload-artifact@{UPLOAD_ARTIFACT_SHA}"
     assert upload_step["with"] == {
         "name": "naruon-full-product-smoke-${{ github.event.pull_request.number || github.run_id }}-${{ github.sha }}",
-        "path": "/tmp/naruon-full-product-smoke/*.png",
+        "path": "/tmp/naruon-full-product-smoke-*/*.png",
         "if-no-files-found": "error",
         "retention-days": "14",
     }

@@ -159,7 +159,7 @@ describe("EmailDetail unavailable reply actions", () => {
       root?.render(
         <EmailDetail
           emailId={1}
-          actionCommand={{ id: "whitespace-draft", action: "reply-draft" }}
+          actionCommand={{ id: 9001, action: "reply-draft" }}
         />,
       );
     });

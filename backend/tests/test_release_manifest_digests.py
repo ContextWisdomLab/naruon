@@ -46,6 +46,16 @@ def test_release_renderer_binds_both_images_without_changing_source(tmp_path: Pa
         assert rendered == expected
 
 
+def test_rendered_backend_requires_database_readiness(tmp_path: Path) -> None:
+    """Route deployment readiness to the dependency probe, not the static root."""
+    result = run_renderer(tmp_path, BACKEND_DIGEST, FRONTEND_DIGEST)
+    assert result.returncode == 0, result.stderr
+    manifest = yaml.safe_load((tmp_path / "rendered/backend-deployment.yaml").read_text())
+    backend_container = manifest["spec"]["template"]["spec"]["containers"][0]
+    assert backend_container["readinessProbe"]["httpGet"] == {"path": "/readyz", "port": 8000}
+    assert backend_container.get("livenessProbe", {}).get("httpGet", {}).get("path") != "/readyz"
+
+
 @pytest.mark.parametrize("invalid_digest", ["", "latest", "sha256:" + "a" * 63, "sha256:" + "A" * 64, BACKEND_DIGEST + "\ninjected", "$(touch injected)"])
 @pytest.mark.parametrize("invalid_component", ["backend", "frontend"])
 def test_release_renderer_rejects_either_invalid_digest_before_output(

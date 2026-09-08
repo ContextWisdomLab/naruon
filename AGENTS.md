@@ -728,6 +728,11 @@ in this repo.
 
 ## Phase 10 development rules
 
+- Validate probes in the rendered deployment manifest, not only API tests.
+  Backend readiness must call `/readyz` on port 8000; a static root response
+  cannot establish database availability. Never reuse that dependency probe for
+  liveness: a database outage must not become a backend restart trigger.
+
 - Readiness probes must handle native PostgreSQL connection-establishment
   errors as well as SQLAlchemy wrappers. In PR #1597, a real isolated cluster
   raised `asyncpg.InvalidCatalogNameError` before `SELECT 1`; catch the driver's

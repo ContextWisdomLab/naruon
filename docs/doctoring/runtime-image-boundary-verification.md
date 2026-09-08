@@ -238,6 +238,29 @@ and deployment serialization/recovery evidence separate.
 
 ## Image boundary references
 
+## Deployment probe wiring follow-up
+
+At `8b8ac74079b4d0022878719a93eec57562916995`, the backend manifest had
+no readiness or liveness probe. A regression executing the real release renderer
+failed with `KeyError: readinessProbe`. The repair connects backend readiness to
+`/readyz` on port 8000 and verifies the generated immutable-image manifest, not
+just the checked-in YAML. All 26 release-manifest tests passed in 37.33 seconds
+with warnings treated as errors and terminal exit 0. Ruff and diff checks passed.
+
+Kubernetes readiness failure removes a Pod from matching Service endpoints;
+liveness failure can restart its container. Therefore this change does not use
+database readiness as liveness. It retains the existing absence of a liveness
+restart policy until startup timing and restart behavior are validated. The
+readiness probe uses Kubernetes defaults; this is not a measured latency SLO or
+an application/model timeout. No cluster was contacted or deployment performed.
+Actual endpoint removal/recovery and probe-load effects remain unverified.
+
+Kubernetes Authors. (n.d.). *Liveness, readiness, and startup probes*.
+Retrieved September 8, 2026, from
+https://kubernetes.io/docs/concepts/workloads/pods/probes/
+
+## Image boundary bibliography
+
 Kubernetes Authors. (n.d.-a). *Kubernetes API concepts*. Retrieved September 7,
 2026, from https://kubernetes.io/docs/reference/using-api/api-concepts/#updates-to-existing-resources
 

@@ -42,6 +42,10 @@ spec:
             type: RuntimeDefault
         ports:
         - containerPort: 8000
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8000
         resources:
           requests:
             cpu: 250m

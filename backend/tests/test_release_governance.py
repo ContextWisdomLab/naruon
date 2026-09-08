@@ -68,6 +68,8 @@ def test_agent_lifecycle_governance_artifacts_stay_aligned() -> None:
     assert "CONTEXTUAL_ORCHESTRATOR_TOKEN=" in environment_example
     assert "CONTEXTUAL_ORCHESTRATOR_TOKEN" in readme
     assert "http://127.0.0.1:8100/v1" in readme
+    assert "Fetch transport removes" in readme
+    assert "cross-origin redirect" in readme
     assert "short-lived" in readme
     assert "owner-issued" in readme
     assert "docs/development/merge-gate-policy.md" in guidance

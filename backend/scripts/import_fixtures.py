@@ -35,7 +35,6 @@ async def process_zip_file(zip_path: str | Path, session: AsyncSession):
         logger.info(f"Extracting {zip_path}...")
         extracted_files = await extract_backup_async(zip_path, temp_dir)
 
-
         batch_values = []
         for file_path in extracted_files:
             if not str(file_path).endswith(".eml"):
@@ -43,8 +42,8 @@ async def process_zip_file(zip_path: str | Path, session: AsyncSession):
 
             try:
                 email_data = parse_eml(file_path)
-            except Exception as e:
-                logger.error(f"Failed to parse {file_path}: {e}")
+            except Exception:
+                logger.error("Fixture archive email parsing failed")
                 continue
 
             chunks = chunk_text(email_data["body"])
@@ -70,12 +69,9 @@ async def process_zip_file(zip_path: str | Path, session: AsyncSession):
                             embeddings[0],
                             STORAGE_EMBEDDING_DIMENSION,
                         )
-                except Exception as e:
-                    logger.error(
-                        f"Failed to generate embedding for {email_data['message_id']}: {e}"
-                    )
+                except Exception:
+                    logger.error("Fixture archive email embedding failed")
 
-            # Upsert into database
             thread_id = await assign_thread_id(
                 session,
                 email_data,
@@ -83,21 +79,23 @@ async def process_zip_file(zip_path: str | Path, session: AsyncSession):
                 organization_id=IMPORT_ORGANIZATION_ID,
             )
 
-            batch_values.append(dict(
-                user_id=IMPORT_USER_ID,
-                organization_id=IMPORT_ORGANIZATION_ID,
-                message_id=email_data["message_id"],
-                sender=email_data["sender"],
-                reply_to=email_data.get("reply_to"),
-                recipients=email_data["recipients"],
-                subject=email_data["subject"],
-                in_reply_to=email_data.get("in_reply_to"),
-                references=email_data.get("references"),
-                thread_id=thread_id,
-                date=email_data["date"],
-                body=email_data["body"],
-                embedding=embedding,
-            ))
+            batch_values.append(
+                dict(
+                    user_id=IMPORT_USER_ID,
+                    organization_id=IMPORT_ORGANIZATION_ID,
+                    message_id=email_data["message_id"],
+                    sender=email_data["sender"],
+                    reply_to=email_data.get("reply_to"),
+                    recipients=email_data["recipients"],
+                    subject=email_data["subject"],
+                    in_reply_to=email_data.get("in_reply_to"),
+                    references=email_data.get("references"),
+                    thread_id=thread_id,
+                    date=email_data["date"],
+                    body=email_data["body"],
+                    embedding=embedding,
+                )
+            )
 
         if batch_values:
             stmt = insert(Email)

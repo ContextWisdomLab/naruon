@@ -281,6 +281,10 @@ in this repo.
   If screenshot retries are exhausted, throw the capture failure; do not create
   diagnostic text files in the temporary capture directory or count them as screenshots.
   Close the page in a finally block, including navigation and capture failures.
+- Browser-smoke API mocks must reject unregistered requests with a non-success
+  response and record a harness failure even when the UI suppresses the error.
+  Cover requests emitted during cleanup; never return a default `{ ok: true }`.
+  Keep request URLs, query values, and payloads out of failure diagnostics.
 
 - First-run frontend sessions should open the Today execution dashboard while
   preserving explicit Dashboard, Email, and Calendar startup choices.
@@ -670,6 +674,9 @@ in this repo.
   runner SHA, viewport, routes, and observed defects. Mocked browser evidence
   does not prove live provider behavior, all locales, or deployment readiness.
   Inspect the changed AGENTS.md rendering on the pushed revision as well.
+- A server-ready timeout before browser navigation is failed startup evidence,
+  not a completed visual inspection. Record the exact source and execution result;
+  host load alone does not prove the cause or justify increasing test timeouts.
 - Preserve concurrent commits with ordinary history integration, then verify
   the combined tree before pushing. Update these instructions with reusable
   failure-prevention lessons; keep dated findings in the gap baseline/PR.

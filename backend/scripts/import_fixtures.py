@@ -11,6 +11,7 @@ import os
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from services.archive import extract_backup_async
+from services.exceptions import ArchiveError
 from services.email_parser import parse_eml
 from services.embedding import (
     STORAGE_EMBEDDING_DIMENSION,
@@ -35,7 +36,7 @@ async def process_zip_file(zip_path: str | Path, session: AsyncSession):
         logger.info("Extracting fixture archive")
         try:
             extracted_files = await extract_backup_async(zip_path, temp_dir)
-        except Exception:
+        except ArchiveError:
             logger.error("Fixture archive extraction failed")
             return
 

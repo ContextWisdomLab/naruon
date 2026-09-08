@@ -14,6 +14,7 @@ from core.exceptions import LLMServiceError
 from core.safe_logging import redacted_exception_info
 from scripts import import_fixtures as zip_import_fixtures
 from services.llm_service import draft_reply
+from services.exceptions import ArchiveError
 
 _SECRET_EXCEPTION_TEXT = "provider token=super-secret-value"
 _SECRET_FIXTURE_PATH = "/private/customer/secret-message.eml"
@@ -151,7 +152,7 @@ async def test_zip_archive_extraction_failure_logs_bounded_message(caplog, tmp_p
         zip_import_fixtures,
         "extract_backup_async",
         new=AsyncMock(
-            side_effect=RuntimeError(f"{_SECRET_EXCEPTION_TEXT} {_SECRET_FIXTURE_PATH}")
+            side_effect=ArchiveError(f"{_SECRET_EXCEPTION_TEXT} {_SECRET_FIXTURE_PATH}")
         ),
     ):
         await zip_import_fixtures.process_zip_file(zip_path, session)
@@ -162,6 +163,23 @@ async def test_zip_archive_extraction_failure_logs_bounded_message(caplog, tmp_p
     assert _SECRET_EXCEPTION_TEXT not in caplog.text
     assert _SECRET_FIXTURE_PATH not in caplog.text
     assert str(zip_path) not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_unexpected_zip_extraction_failure_propagates(caplog, tmp_path) -> None:
+    session = MagicMock()
+    zip_path = tmp_path / "customer-secret.zip"
+    unexpected = RuntimeError("unexpected extraction defect")
+
+    with caplog.at_level(logging.INFO, logger=zip_import_fixtures.logger.name), patch.object(
+        zip_import_fixtures,
+        "extract_backup_async",
+        new=AsyncMock(side_effect=unexpected),
+    ):
+        with pytest.raises(RuntimeError, match="unexpected extraction defect"):
+            await zip_import_fixtures.process_zip_file(zip_path, session)
+
+    assert "Fixture archive extraction failed" not in caplog.text
 
 
 @pytest.mark.asyncio

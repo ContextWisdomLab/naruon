@@ -33,8 +33,19 @@ source-head-bound artifact retention. Both remain Proposed until current-head
 hosted checks and independent review finish. Unknown `/api/**` mocks can still
 default to HTTP 200 `{ok: true}` and remain a separate reality-gap repair.
 
-**Baseline version:** 1.3
-**Observed on:** 2026-09-08 (Asia/Seoul)
+## 2026-09-09 owner succession and review-gateway evidence
+
+These rows integrate the incoming #1611 observations into this single-writer
+baseline. They bind each gap to its actual bounded-context owner and do not
+reuse predecessor approvals or checks.
+
+| Observed responsibility gap | Canonical owner action | Current status and required evidence |
+| --- | --- | --- |
+| [#1590](https://github.com/ContextualWisdomLab/naruon/pull/1590) repeatedly acquired provider/model fixture changes outside its URL-extraction responsibility | [#1418](https://github.com/ContextualWisdomLab/naruon/pull/1418) remains the canonical Naruon URL/contact-hygiene owner and already carries the valid hostname and scheme delta | #1590 preserved all intervening ancestry and restored verified tree `24480909a7e8b8e5c707b52c976d820018389a77` at exact head `9d545440f556a3aa24213d690ab62bd45bfc6bdf`; #1418 is open/Draft and mergeable at `a4a4da69ff9df89bac9d0a00e7473f35685be567`. Completion requires fresh exact-head checks, independent approval, ordinary protected integration of #1418, and succession verification before retiring #1590. |
+| Required Noema review lacked a terminal verdict after consumer-owned preflight selected the free gateway route | [contextual-orchestrator#1106](https://github.com/ContextualWisdomLab/contextual-orchestrator/issues/1106) owns free-pool admission/routing; [.github#2042](https://github.com/ContextualWisdomLab/.github/issues/2042) owns removal of the temporary leaf routing bridge after an immutable owner release; [.github#2035](https://github.com/ContextualWisdomLab/.github/pull/2035) remains only the review-publication repair | The freshest #2035 exact-head evidence is run `34183702988`, job `102003278065`: HTTP 429 after 322.5 seconds with `orchestrator/free`, caller attempts=1, served model `deepseek-ai/deepseek-v4-flash-0731`. Keep the review fail closed with no paid, local, or direct-provider bypass; completion requires immutable owner release, consumer version bump and bridge deletion, then exact-head contract/security/review GREEN. |
+
+**Baseline version:** 1.4
+**Observed on:** 2026-09-09 (Asia/Seoul)
 **Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@042b0c70531b229af3acbd0421a2f23098d848b3`
 **Observed product version:** `0.14.4`  
 **Canonical completion issue:** [#1428](https://github.com/ContextualWisdomLab/naruon/issues/1428)

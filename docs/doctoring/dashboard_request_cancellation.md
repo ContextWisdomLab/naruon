@@ -113,6 +113,25 @@ sources. These are unresolved user-facing implementation-detail leaks, not
 acceptance of the complete product copy. Record them with the product Gap;
 do not expand this availability repair into a translation framework or redesign.
 
+## Exact-head gate recovery on 2026-09-08
+
+The source head `a6e6ac59a72173793a834627b8489bea79805f16` retained successful
+application, image, Semgrep, Trivy, and repository CodeQL evidence. Its central
+compatibility CodeQL shards remained red because the first attempt intentionally
+returned `pending` after dispatch and no authenticated terminal callback reached
+the consumer run. OpenCode likewise had no current-head verdict. Strix reported
+`STRIX_SANDBOX_UNAVAILABLE` after two Caido `loginAsGuest` bootstrap failures;
+the displayed zero count preceded the transport failure and is not a clean scan.
+
+Central `.github` PR #2028 later repaired missing dispatch-verdict recovery, but
+that merge does not rewrite old consumer evidence. Converting this PR to Draft
+and back to ready produced no new runs because the current callers do not
+subscribe to `ready_for_review`. Therefore, never cite the UI state transition as
+revalidation. This documentation delta records the causal logs and creates a
+normal synchronize event without an empty commit. Acceptance still requires new
+run ids on this exact successor head, terminal security analysis, and an
+independent current-head review; no stale success is inherited.
+
 ## References
 
 MDN contributors. (2026, September 1). *AbortSignal: any() static method*.

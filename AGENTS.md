@@ -1141,6 +1141,14 @@ subject to U.S. copyright, while attribution remains required.
   linked to its predecessor, record the exact head/base, and require an
   independently qualifying review on a supported base before protected merge.
 
+- Archive and fixture importers are security boundaries. Log fixed operation
+  messages only; never include archive paths, extracted filenames, provider
+  exception text, or secret-bearing traceback values. Catch extraction and
+  parsing failures at their boundary, return the documented failure result,
+  and add a regression test that injects both a secret path and secret text
+  into the exception and asserts neither reaches captured logs. This applies
+  to ZIP, EML, MBOX, and attachment import paths.
+
 ## Phase 10 development rules
 
 - **Stepwise execution**: Each phase requires an atomic PR, GitHub PR Tracking,

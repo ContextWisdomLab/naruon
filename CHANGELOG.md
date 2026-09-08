@@ -1,4 +1,9 @@
 ## [Unreleased]
+### Tools 추가
+- `url_extractor`: 텍스트 내에서 정규식을 통해 호스트네임 검증(IP 리터럴 및 IDNA/DNS 레이블 확인)을 거쳐 유효한 URL만 추출하는 도구를 추가했습니다.
+- `json_formatter`: 텍스트 형태의 JSON 데이터를 파싱하여 들여쓰기(`indent=4`)가 적용된 예쁜 포맷으로 반환하는 도구를 추가했습니다.
+- `hash_generator`: 텍스트 데이터를 받아 SHA-256 등 지원하는 해시 알고리즘을 사용해 해싱된 값을 반환하는 도구를 추가했습니다.
+- 위 세 가지 도구는 모두 `ANALYSIS_TEXT_MAX_CHARS` 제한을 거쳐 악의적인 대용량 입력 공격을 방어합니다.
 - 긴 이메일·첨부 본문을 의미 단위 청크로 임베딩한 뒤 기존 email/attachment 벡터 계약으로 평균화하고, 청크 요청·벡터 누적을 제한된 창으로 처리합니다. OpenAI `text-embedding-3-*`에는 저장 차원(`1536`)을 직접 요청하도록 보강했습니다. 합성 메일 fixture 5건(70청크)과 provider 요청 계약으로 1,536차원 벡터 경로를 검증했으며, 실행 시 선택한 임베딩 제공자에 본문·파싱된 첨부 텍스트를 전송할 수 있습니다. 회사 기밀 데이터는 fixture·commit·PR·log에 포함하지 않습니다.
 - EmailDetail 테스트가 지원하지 않는 스레드 병합/분리 버튼을 `textContent`뿐 아니라 `aria-label`과 `title` 접근 가능 이름으로도 검출하도록 바꿔, 아이콘 전용 버튼 회귀를 놓치지 않습니다.
 
@@ -2736,6 +2741,11 @@
 - `docker compose down`
 
 ## [Unreleased]
+### Tools 추가
+- `url_extractor`: 텍스트 내에서 정규식을 통해 호스트네임 검증(IP 리터럴 및 IDNA/DNS 레이블 확인)을 거쳐 유효한 URL만 추출하는 도구를 추가했습니다.
+- `json_formatter`: 텍스트 형태의 JSON 데이터를 파싱하여 들여쓰기(`indent=4`)가 적용된 예쁜 포맷으로 반환하는 도구를 추가했습니다.
+- `hash_generator`: 텍스트 데이터를 받아 SHA-256 등 지원하는 해시 알고리즘을 사용해 해싱된 값을 반환하는 도구를 추가했습니다.
+- 위 세 가지 도구는 모두 `ANALYSIS_TEXT_MAX_CHARS` 제한을 거쳐 악의적인 대용량 입력 공격을 방어합니다.
 ### Added
 - `backend/api/tools.py` 내의 임시 `mock_handler`를 구체적인 기능을 수행하는 5개의 실제 도구 핸들러로 대체했습니다.
   - `thread_summarizer_handler`: 이메일 스레드 요약 정보 반환

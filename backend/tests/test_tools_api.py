@@ -1290,7 +1290,7 @@ def test_execute_url_extractor():
             json={"parameters": {"text": "My site is https://example.com."}}
         )
     assert response.status_code == 200
-    assert "https://example.com" in response.json()["result"]["urls"]
+    assert set(response.json()["result"]["urls"]) == {"https://example.com"}
 
 def test_execute_json_formatter():
     with TestClient(app) as client:

@@ -1,32 +1,5 @@
 # Naruon Product and Technical Gap Baseline
 
-## 2026-09-08 visual evidence: smoke success is not product acceptance
-
-This observation supplements, rather than replaces, the historical inventory below.
-PR [#1599](https://github.com/ContextualWisdomLab/naruon/pull/1599) built application
-source `877f0d5c1b96c3ac212ecc86630afb75532f5880`; its test-only descendant
-`af4df216b3533ebb82dab9d361b415ddb941fa24` ran the same smoke implementation.
-The production build and mocked browser smoke exited zero. Ten routes ran at
-1440×1024 and 390×844; all twenty resulting PNGs were directly inspected.
-The [inspection receipt](https://github.com/ContextualWisdomLab/naruon/pull/1599#issuecomment-5578964200)
-records the artifact directory and scope. No real provider writes, live backend
-contracts, all-locale coverage, or complete accessibility compliance were proven.
-
-| Observed customer gap | Product-owned action | Acceptance evidence still required |
-| --- | --- | --- |
-| Home retains English skip-link and `source-linked` copy | Localize navigation and status copy without changing task provenance | Keyboard-focused screenshot and locale-aware assertion |
-| Search displays raw source/thread identifiers and `sender_context` | Keep identifiers in request/state boundaries; render customer-facing relationship labels | Contract-preserving UI test and desktop/mobile detail inspection |
-| Calendar, Data, and Security expose intent/ETag, verifier commands/schema names, and event codes | Replace implementation vocabulary with outcomes and next actions; retain technical evidence in authorized diagnostic surfaces | Rendered-copy tests plus screenshots with unchanged API and authorization contracts |
-| Mobile search/projects/settings snapshots show content behind sticky headers | Reproduce scrolling and keyboard focus before selecting a layout fix | Demonstrate focused controls and relevant text remain visible and reachable |
-
-The screenshot-failure regression at `af4df216` is independently RED: capture
-failure returns a diagnostic text path as successful screenshot evidence. The
-combined suite reported one failure and fourteen passes, exit one. Successful
-captures do not refute this failed-capture defect. Preserve diagnostics, fail the
-route, and verify page cleanup before accepting that repair. Unknown API mocks
-also still default to HTTP 200; CI screenshots are not yet retained as downloadable
-artifacts. Neither gap is closed by the late-console-error fix or this document.
-
 **Baseline version:** 1.2
 **Observed on:** 2026-08-26 (Asia/Seoul)
 **Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@e5e99b4e3bb081b92c602358878856536030e2ca`

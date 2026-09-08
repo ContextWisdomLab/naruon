@@ -737,6 +737,26 @@ subject to U.S. copyright, while attribution remains required.
 
 ## Development environment and tooling defaults
 
+### Evidence discipline
+
+- Treat every PR head as an immutable evidence boundary: re-read the current
+  head and protected base before relying on reviews, Checks, screenshots, or
+  release claims; a new push invalidates prior evidence.
+- Separate focused test success, protected-branch merge, immutable artifact
+  publication, and deployed/runtime verification. Record the exact commit,
+  command, exit status, viewport/locale/state, and any unverified scope.
+- For UI changes, inspect the rendered page at the tested viewport and retain
+  a screenshot receipt; DOM assertions and a successful build are not visual
+  inspection. Do not claim locale, responsive, production, or deployment
+  coverage that was not actually exercised.
+- A queued or failed external review is a wait/finding state, not permission
+  to force-push, dismiss a review, bypass protection, or close a PR with a
+  still-valid delta. Preserve valid successor work and fix the canonical
+  owner when the defect is shared.
+- Automatic publication is allowed only after the canonical release path
+  proves exact artifact identity, environment approval, and a tested rollback
+  route; package-secret presence is not release evidence.
+
 - If CodeGraph is not initialized for this repository, agents may run
   `codegraph init -i` autonomously without asking first; keep generated
   `.codegraph/` and `.cursor/rules/codegraph.mdc` artifacts local unless a

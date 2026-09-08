@@ -746,3 +746,19 @@ protection, `require_code_owner_review` in rulesets) are disabled across the Con
 org: there is a single maintainer (solo developer), so a code-owner approval gate can never be
 satisfied. This is ON HOLD until the org has multiple maintainers — do NOT re-enable these
 settings or add CODEOWNERS-based merge gates before then.
+
+## Readiness repair lessons
+
+- Reproduce a claimed runtime endpoint on the exact PR head; changelog entries
+  and historical release branches are leads, not runtime evidence.
+- Keep liveness and readiness separate: `/healthz` must not touch external
+  systems, while `/readyz` probes every authoritative database pool, closes
+  each connection, and returns only a sanitized `503` on failure.
+- For a repair, use RED → smallest canonical-owner fix → focused GREEN → real
+  isolated PostgreSQL verification. Preserve concurrent auth, router, worker,
+  and CSRF deltas; a unit mock is not deployed-readiness evidence.
+- Visual inspection is separate evidence from DOM tests: record the exact
+  revision, viewport, rendered state, clipping, and overlap result.
+- PyPI or Rust publication requires protected-main merge, package ownership,
+  version and immutable-artifact evidence, required Checks, and rollback proof.
+  Secret presence never permits reading values or bypassing those gates.

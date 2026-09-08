@@ -25,7 +25,7 @@ in this repo.
   (`runAsNonRoot: true`, `readOnlyRootFilesystem: true`, plus writable volume
   mounts as needed) — do not ignore it.
 - A local `trivy` scan with a stale DB misses findings: run
-  `trivy --download-db-only` first, and scan the **merge ref**, not just the PR
+  `trivy image --download-db-only` first, and scan the **merge ref**, not just the PR
   head.
 - The org `code_scanning` ruleset is intentionally **CodeQL-only** (multiple
   code-scanning tools can't converge on one PR ref). Gating is enforced by the
@@ -110,6 +110,13 @@ in this repo.
 
 ## Release governance defaults
 
+- 자동 배포 요청이 있으면 조건 충족 후 기존 canonical release workflow로
+  배포까지 진행한다. 보호 브랜치의 exact SHA, 필수 검사·독립 승인,
+  패키지 소유권·버전·배포 대상·환경 승인과 rollback 경로를 먼저 검증한다.
+  PyPI·Rust registry 키의 존재는 배포 적격성이나 권한 우회를 뜻하지 않는다.
+  Secrets는 이름·workflow 연결·접근 범위만 확인하고 값은 읽거나 출력하지 않는다.
+  레지스트리 게시 성공과 실제 서비스 배포를 구분하며 immutable digest/version,
+  설치·소비 결과, 배포 revision, readiness와 실제 사용자 흐름을 각각 기록한다.
 - GitHub Actions used by governed workflows must be pinned to full commit SHAs
   with a trailing version comment, for example `# v6`; major-only refs such as
   `@v6` are not allowed in release or security workflows.
@@ -152,21 +159,51 @@ in this repo.
 
 ### Agent PR lifecycle playbook
 
-- When available, use `autoresearch` for an autonomous review-repair loop,
-  `babysit-pr` for protected-merge observation, and `git-commit-format` before
-  committing. If one is unavailable, perform the same steps directly: keep an
-  evidence log, poll current-head checks without treating pending work as a
-  failure, and use the repository's conventional commit history as the format
-  contract. Use CodeGraph before broad source searches when an index exists;
-  apply `humanize-korean` to Korean prose when that shared skill is available.
-  Prefer repository-local
-  `fix-development-mistakes`, `github-actions-privileged-pr-scan`, and
-  `github-robot-review-gate` skills for their matching repair, privileged
-  scanner, and review-gate work; read the selected `SKILL.md` completely.
+- Select skills by the current task, not by the size of the installed catalog.
+  Read each selected `SKILL.md` and its required references completely before
+  acting. Discover shared skills through the active tool catalog or
+  `~/.agents/skills/<skill>/SKILL.md`; do not commit machine-specific paths.
+  Missing tools require an explicit limitation and a safe fallback, never a
+  claim that the tool ran. Registration alone does not prove a working service.
+- Use these checked-in skills for their matching task:
+  [fix-development-mistakes](.agents/skills/fix-development-mistakes/SKILL.md)
+  for causal repair,
+  [github-actions-privileged-pr-scan](.agents/skills/github-actions-privileged-pr-scan/SKILL.md)
+  for privileged scanners, and
+  [github-robot-review-gate](.agents/skills/github-robot-review-gate/SKILL.md)
+  for gate diagnosis. None authorizes bypassing protection or widening scope.
+- Use `agents-md` for agent instructions, `git-commit-format` for commits, and
+  `verification-before-completion` before delivery claims. Use `babysit-pr`
+  when watching a protected PR. Follow repository commit conventions and use
+  truthful attribution, not another skill author's model identity or commands
+  copied from an unrelated repository.
+- Use `autoresearch` only for measurable optimization with a baseline, an exact
+  metric command, scope, constraints, and an experiment/result log. Do not add
+  an experiment scaffold to documentation-only work or ordinary review repair.
+  Shared-branch recovery must preserve other writers' changes; the skill's
+  destructive reset, amend, and generic timeout examples do not override this
+  repository's non-force and model-timeout rules.
+- Use `adr-author` for architecture decisions and `humanize-korean`/`im-not-ai`
+  for Korean prose, preserving meaning, facts, numbers, and proper names. For UI
+  changes, use Figma, Storybook, `ui-ux-pro-max`, and `anti-slop-ui` when
+  available; verify actual component states, accessibility, responsive layouts,
+  and affected locales rather than treating a design artifact as runtime proof.
+- After tracing the affected flow, apply Superpowers systematic debugging and
+  test-first verification, then use the Ponytail ladder: reuse repository code,
+  standard-library or platform behavior, and installed dependencies before
+  adding the smallest complete implementation. This ordering never removes
+  trust-boundary validation, data-loss protection, accessibility, or the check
+  that reproduces a non-trivial fix.
+- Use Context7 for current third-party API contracts, DeepWiki for public
+  external-repository architecture, and sequential thinking for multi-step
+  design or debugging. Send only public metadata to remote MCP services;
+  private source and customer data require an organization-approved ZDR
+  endpoint.
 - Apply the mutation loop only to implementation, remediation, and landing
   tasks. Review-only agents stop after publishing evidence-backed findings and
   must not edit, execute project code, push, approve, or merge.
-- For every open PR, repeat: fetch the exact remote base and head, inspect
+- For implementation, remediation, or landing tasks, repeat for every open PR:
+  fetch the exact remote base and head, inspect
   current-head reviews and unresolved threads, reproduce failed checks from
   their logs, repair the canonical owner, run focused tests plus the applicable
   contract/security suite, push without force, and re-fetch evidence. A new
@@ -175,10 +212,19 @@ in this repo.
   with the local remote-tracking ref and start from the verified 40-character
   SHA. Never guess or manually extend abbreviated SHAs in commits, PR bodies,
   release evidence, or gap baselines.
+- Inspect `git config --get-all remote.origin.fetch`: a narrow refspec can make
+  `git fetch origin <branch>` update only `FETCH_HEAD`. Fetch the exact source
+  branch into its explicit `refs/remotes/origin/<branch>` destination, then
+  compare it with `git ls-remote` again. A successful fetch is not proof that
+  the remote-tracking ref used for the merge is current.
+
+#### Commit Attribution
+
 - Create a conventional commit with truthful agent attribution. Add a
   cryptographic signature or `Signed-off-by` footer when repository rules or
-  contributor policy require it; verify that evidence before claiming the
-  commit satisfies that policy. Immediately before updating an existing remote
+  contributor policy require it, and add a truthful `Co-Authored-By` footer for
+  the acting agent; verify that evidence before claiming the commit satisfies
+  that policy. Immediately before updating an existing remote
   branch without force, fetch it and require its head to equal the reviewed
   parent. For an initial push, first verify that the exact remote ref is absent,
   then create it with a normal non-force push. Generated GitHub merge refs are
@@ -188,14 +234,49 @@ in this repo.
   for force-pushing. Merge the updated prerequisite into the same stacked
   branch, preserve its complete delta, rerun focused checks, and retarget only
   when the resulting dependency order is verified.
+- An "empty commit" message or acknowledgement is not tree evidence. Inspect
+  the exact parents with `git show -s --format='%H %P %T' <head>` and compare
+  `git diff --name-status <verified-parent> <head>` before carrying checks
+  forward. For merge commits, record which parent is the comparison baseline.
+  If valid inherited changes disappeared, retain both revisions and read the
+  related reviews/comments; do not reverse an unexplained external deletion
+  until its intent is resolved. Continue independent work without consuming
+  the disputed revision, and invalidate old-head success claims immediately.
 - Preserve unrelated dirty or untracked files. If a command changes the wrong
-  checkout, stop before editing or pushing, record the reflog evidence, restore
-  only the affected branch with a non-destructive detached-head and branch-ref
-  move, and verify the original checkout and untracked files afterward.
+  checkout, stop before editing or pushing. Record before/after SHAs and staged,
+  unstaged, and untracked state; preserve displaced commits under a recovery
+  ref. Restore only proven agent-owned changes with a ref update guarded by the
+  expected old SHA. Stop if ownership or concurrent movement is uncertain.
+
+#### Verification and protected landing
+
+- 검증 대상 worktree는 모든 실행 핸들의 terminal 결과 회수 → 충돌 표시 제거와
+  `git diff --check` → commit/tree 고정 → 검증 순서로 다룬다. 검증 중에는
+  편집·merge·restack을 하지 않고 읽기 전용 조사만 한다. 관찰 timeout은
+  실행 종료가 아니다. 도중 소스가 바뀐 결과는 로그와 함께 오염된 실행으로
+  분리하고 특정 HEAD의 통과·회귀 근거로 쓰지 않는다. 재발 수리는
+  `.agents/skills/fix-development-mistakes/SKILL.md`를 적용한다.
+- 보안 검사 exit 0만으로 전체 범위를 검증했다고 쓰지 않는다. exact-head
+  결과의 실제 manifest 목록에 예상 잠금 파일이 있는지 확인한다. 기본
+  탐지에서 빠지는 `requirements-*.txt`도 포함하고 취약 버전 RED와 수정
+  버전 GREEN을 비교한다. 중앙 탐지 수정은
+  [#1969](https://github.com/ContextualWisdomLab/.github/pull/1969), 의존성
+  통합 근거는 [#1244](https://github.com/ContextualWisdomLab/naruon/pull/1244)이며,
+  열린 PR을 보호 브랜치 반영으로 취급하지 않는다.
+- lint/test exit 0과 경고 없는 검증을 구분한다. `eslint --max-warnings 0`과
+  원래 출력을 유지하는 React 경고 spy·단언으로 실패를 재현한다. 비동기
+  렌더와 입력 이벤트는 `await act`로 기다리며 `console.error`를 끄지 않는다.
+  [#1245](https://github.com/ContextualWisdomLab/naruon/pull/1245)의 수리처럼
+  남은 다른 화면의 경고와 커버리지 부족은 별도 미완료 항목으로 기록한다.
 - Tests invoked with `--noconftest` must bootstrap every required setting in
   the test or trusted workflow step. Use explicit test-only values and fresh
   random secrets; do not weaken production validation or depend on a developer
   shell's environment.
+- For warning-strict pytest evidence, use `python -m pytest -W error` and audit
+  ini filters, per-test marks, and warning-catching contexts. The environment
+  setting `PYTHONWARNINGS=error` alone does not override pytest ignore rules;
+  record intentional warning assertions separately and repair deprecated
+  dependencies in their existing prerequisite PR instead of hiding warnings.
 - Exact changed-line review evidence must be generated only from real
   current-head added or modified lines. Do not invent line 1 for deleted-only,
   binary, oversized, or otherwise ineligible files, and do not relax the
@@ -204,11 +285,60 @@ in this repo.
 - Do not present a heuristic as a security, AI-quality, or completion
   guarantee. State its evidence boundary and replace it at the canonical owner
   when the workflow requires an enforceable contract.
+- General JSON Schema validation does not prove that a model endpoint accepts
+  the schema. Verify the provider's supported subset for the selected endpoint
+  and model before proposing schema changes; retain semantic checks at the
+  canonical owner when the wire format cannot express an invariant. For
+  OpenAI Structured Outputs, check the current guide before using composition
+  keywords: `allOf`, `if`/`then`/`else`, and root-level `anyOf` are unsupported
+  as of 2026-09-06; nested `anyOf` has separate subset constraints.
+
+  - OpenAI. (n.d.). [*Structured model outputs*](https://developers.openai.com/api/docs/guides/structured-outputs#supported-schemas). Retrieved September 6, 2026.
+
+- An offline/source reproduction without the original model response is a
+  counterexample, not the proven cause of a hosted failure. Bind a causal claim
+  to the exact source SHA, request schema, sanitized response/error evidence,
+  and run ID/attempt; keep missing evidence explicit. Synthetic counterexamples
+  belong in unit tests and cannot stand in for actual provider execution.
+- Close HTTP error responses at the resource-owning transport boundary on
+  success and failure. Parsers receiving borrowed streams must not close them
+  unless their contract explicitly transfers ownership; test that ownership
+  transfer and exception paths. Do not rely on garbage collection to release
+  sockets. Reproduce `ResourceWarning` with warning-strict tests and deterministic
+  cleanup assertions at the acquiring caller, not by adding cleanup to every
+  helper or hiding the warning.
 - Pending or queued reviews and checks are wait states. Continue safe work on
   another gap. Before calling a PR merge-ready, freshly verify the exact head
   and base, live rulesets, required checks, unresolved threads, and applicable
   current-head CodeRabbit or structured OpenCode fallback evidence. After the
   merge, verify the merge commit and protected target branch.
+  Read each job's name alongside its ID, head SHA, status, and conclusion so a
+  successful `Detect changed scope` job is never counted as the later
+  dependency-review or security job's success, even within the same run.
+- Never authenticate review evidence by its display name or status context.
+  Verify the check App or exact Bot creator against the owner contract; reject
+  missing or unrelated publishers. Inspect blocking output even when the check
+  conclusion is success or skipped. Cover forged publishers with and without
+  pending notices, missing/wrong-type creators, and trusted positive cases.
+  [Governance repair #1531](https://github.com/ContextualWisdomLab/naruon/pull/1531#issuecomment-5559591367)
+  records the counterexamples; an open repair PR is not protected integration.
+- Ready for review is review admission, not merge authorization. Keep a PR
+  Draft while its delta, ownership, conflict repair or required foundation is
+  incomplete. Once the bounded slice is independently reviewable and its
+  current-head local checks pass, mark it Ready to obtain independent review;
+  do not require that review before leaving Draft. The central OpenCode
+  entrypoint declines dispatch for a live Draft, so that requirement would
+  prevent review from starting. Pending hosted checks remain required; Ready
+  does not waive them, accept a Proposed contract, or authorize a merge.
+  Immediately before the transition, re-fetch the head/base and confirm the
+  local receipts still match. Read back the state and head afterward; a moved
+  head invalidates those receipts and needs revalidation. Record the transition
+  and verify fresh workflow/review evidence. Never toggle Draft repeatedly or
+  add an empty commit to requeue.
+
+  - GitHub. (n.d.). [*Changing the stage of a pull request*](https://docs.github.com/en/pull-requests/how-tos/create-pull-requests/changing-the-stage-of-a-pull-request). Retrieved September 6, 2026.
+  - ContextualWisdomLab. (2026). [*Required OpenCode review admission*](https://github.com/ContextualWisdomLab/.github/blob/43024633eba9d96b0456970391360da5a171fbda/.github/workflows/opencode-review.yml#L360-L369) [Workflow source].
+
 - Audit workflow triggers and concurrency as parsed YAML behavior, not by text
   search. PR review and repair groups use
   `<workflow>-<repository>-<PR number>` with `cancel-in-progress: true`, so a
@@ -226,22 +356,26 @@ in this repo.
 - A queued workflow record is not proof of an occupied runner. Inspect jobs and
   preserve current-head release, deployment, image, migration, SBOM,
   provenance, and security evidence. Do not use administrative merge bypass.
-  The only permitted temporary required-context adjustment is the documented
-  stale-context procedure in `docs/development/merge-gate-policy.md`: capture
-  equivalent current-head evidence, make a reversible ruleset change, restore
-  the context after protected-branch repair, and rerun its evidence. It does not
-  authorize suppressing a product or security finding.
+  The stale-context procedure in `docs/development/merge-gate-policy.md`
+  requires explicit maintainer authorization for the exact ruleset change and
+  substitute evidence; a delivery request alone is not that authorization.
+  Restore the captured configuration on success, failure, cancellation, or
+  expiry, and block further landing until restoration is verified. It never
+  authorizes suppressing a product or security finding.
 - Model-backed OpenCode, Strix, and Noema workflows request only
-  `contextual-orchestrator/orchestrator/free` with the gateway credential.
+  `contextual-orchestrator/orchestrator/free` with the gateway token.
   Provider discovery, capability routing, and fallback belong to the
-  orchestrator; consumer workflows do not carry provider names, direct-provider
-  credentials, or paid fallbacks. Verify the requested logical model, endpoint,
-  served-model metadata, and terminal response in the same run.
+  orchestrator; consumer workflows do not carry provider names, model names,
+  direct-provider credentials, or paid fallbacks. Production consumption
+  requires an immutable released owner API/client/schema; an open PR or
+  unreleased branch is proposed evidence, not a consumable contract. Verify the
+  requested logical model, endpoint, served-model metadata, and terminal
+  response in the same run.
 - Keep private-source review fail closed and ZDR-only. Never log or copy bearer
   tokens, provider credentials, request payloads, or secret-derived values.
   Repair shared sidecar startup, credential bootstrap, timeout handling, and
   response normalization where all review paths converge.
-- Do not impose a shared application, agent, or gateway wall-clock timeout on
+- Do not impose a shared application/agent/gateway wall-clock timeout on
   model work. The default is unset; only explicit user cancellation, a provider
   terminal result, or a configured administrator limit ends it. OpenCode,
   Strix, and Noema jobs must permit at least two hours, but that job budget is
@@ -253,6 +387,48 @@ in this repo.
 - Do not close a PR merely to reach zero open PRs. Close only with explicit user
   direction, no valid delta, a malicious change, or a verified successor that
   carries the predecessor's complete delta and records the lineage.
+- 미완료 이슈는 `Refs`와 남은 수용 기준으로 참조한다. 부정문에서도 자동 종료
+  키워드와 이슈 번호의 조합을 쓰지 않는다. 병합 전 `closingIssuesReferences`를
+  조회해 실제 완료된 수용 기준과 대조한다. #1365에서 부정문이 #1022 자동 종료로
+  해석된 사례처럼, 문장의 의도만으로 GitHub 동작을 추정하지 않는다.
+- 작업 중 재현·수리한 반복 오류는 같은 owner의 `AGENTS.md`에 지속 반영한다.
+  재사용할 규칙과 적용 스킬·절차만 남기고 exact-head 로그·실험·실패 이력은
+  기존 PR·doctoring·Gap 원장에 연결한다. 일시적인 큐 상태를 영구 규칙으로
+  만들거나 기존 규칙을 중복 복사하지 않으며 문서 검사와 실제 렌더 검수를 수행한다.
+- Keep the handoff in the existing PR and `docs/product-technical-gap-baseline.md`:
+  owner, worktree, full head/base SHAs, changed contract, reproduction command,
+  exit status, pass/fail/skip counts, evidence link, and next safe action. Record
+  skipped PostgreSQL or browser paths as unverified, even when the command exits
+  zero. Local tests, protected merge, published release, and live operation are
+  separate claims; source/config assertions do not prove network behavior.
+- Track protected source SHA, actual consumer pin, configuration scope and
+  revision, API readback, and the matching execution's run ID, attempt, and
+  terminal result separately. A merged parser fix does not update a repository
+  variable or prove successful dispatch. Retain sanitized evidence for each
+  stage; never include secret values or secret-derived fingerprints.
+- Schema or parser support is not authorization. Before changing an allowlist,
+  read the owner decision and require explicit authorization for the exact
+  principal and resource. Do not infer it from test fixtures or a known bot
+  sender. Keep an unresolved authorization decision pending; do not broaden
+  access to make a check pass. Before restoring an agent-owned temporary
+  change, compare the current value and revision with the recorded write, stop
+  on concurrent drift, and preserve the restoration receipt after readback.
+- GitHub re-runs retain the original `github.actor` privileges and event SHA/ref;
+  `github.triggering_actor` can differ. Inspect which identity fields the exact
+  workflow checks before choosing a re-run. Do not blindly rerun a dispatch
+  whose gate rejects the re-run initiator, and do not treat a re-run as evidence
+  for a newer head. Verify an authorized execution on the intended event/head.
+
+  - GitHub. (n.d.-a). [*Contexts reference*](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context).
+  - GitHub. (n.d.-b). [*Re-running workflows and jobs*](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs).
+
+- When filtering reviews, bind the root `headRefOid` before iterating
+  `.reviews[]`; inside that iterator, `.` is the review, not the PR. A useful
+  read-only snapshot is `gh pr view <pr> --repo ContextualWisdomLab/naruon
+  --json headRefOid,reviews --jq '.headRefOid as $head | {head: $head,
+  reviews: [.reviews[] | select(.commit.oid == $head)]}'`. Empty output or
+  omitted/paginated evidence is not approval; verify checks, unresolved threads,
+  and live rules separately under the merge-gate policy.
 
 Evidence basis: Souppaya, M., Scarfone, K., & Dodson, D. (2022). *Secure
 Software Development Framework (SSDF) Version 1.1: Recommendations for
@@ -299,7 +475,7 @@ subject to U.S. copyright, while attribution remains required.
 - Strix logs may print the report's `Model ...` line after the title, endpoint,
   and Code Locations block. Failed-check evidence parsers and OpenCode review
   validators must attribute each vulnerability to that in-report model line, not
-  to a previous retry attempt such as a failed primary `openai/gpt-5` run.
+  to a previous failed routing attempt.
 - OpenCode Agent PR reviews must be general-purpose and meticulous rather than
   narrowly scenario-specific. Configure the review prompt to use all relevant
   MCP sources: CodeGraph for structural source evidence, DeepWiki for repo docs,
@@ -351,6 +527,11 @@ subject to U.S. copyright, while attribution remains required.
 
 - First-run frontend sessions should open the Today execution dashboard while
   preserving explicit Dashboard, Email, and Calendar startup choices.
+- A successful HTTP response and `Array.isArray` do not establish dashboard
+  readiness. Validate each consumed member before storing it: null records,
+  malformed display fields, task states, and calendar capabilities must enter
+  the existing unavailable/retry state, not crash rendering or become empty
+  success. Keep valid empty arrays distinct and test each affected source.
 - Workspace navigation changes must keep the desktop primary nav and the
   tablet/mobile drawer in sync for Mail, Calendar, Tasks, Projects, Context
   Search, AI Hub, Data, Security, and Settings; add route and responsive E2E
@@ -398,6 +579,17 @@ subject to U.S. copyright, while attribution remains required.
   only to prevalidated global IP addresses while TLS/SNI still uses the
   allowlisted hostname; do not hand a freshly validated URL to a generic client
   that can resolve DNS again at connect time.
+- Dynamic tool registration (`POST /api/tools`), update (`PATCH
+  /api/tools/{code}`), and deletion (`DELETE /api/tools/{code}`) must fail closed
+  until durable signed-session tenant/workspace ownership, administrative
+  authorization, built-in immutability, and a real provider/adapter execution
+  target are implemented and verified. Do not substitute a process-global
+  registry or placeholder success. A mock or placeholder handler must never
+  report successful work. Preserve the built-in catalog and supported
+  `POST /api/tools/{code}/execute` path; the mutation restriction is not a ban on
+  all POST requests. Keep behavioral tests for rejected writes, unchanged
+  built-ins, signed-session scope, and actual execution results with the product
+  implementation; documentation alone does not establish runtime readiness.
 - OIDC issuer and JWKS URLs are outbound identity-provider fetch surfaces. They
   must use HTTPS, must not include userinfo or fragments, must reject localhost
   and non-global IP literals, and must be exact-host allowlisted by
@@ -521,6 +713,13 @@ subject to U.S. copyright, while attribution remains required.
   topic components, or label evidence by a bare document, model, topic, rank,
   label, or display value.
 - When reviews find public/private identifier leaks, stale API fixture shapes, or recurring bug patterns, update tests, frontend mocks, E2E mocks, README examples, architecture docs, and explicitly record the anti-pattern in `AGENTS.md` so the same bug pattern does not reappear in copied examples.
+- `/api/llm/summarize` confidence uses an integer percentage in `0..100`, not
+  a `0..1` ratio: `1` means `1%`. Frontend consumers must reject fractional,
+  non-finite, out-of-range, and non-number values without rounding, coercion,
+  or unit inference; absent or invalid confidence stays unavailable, not `0%`.
+  Unit/E2E fixtures and pilot/full-product smoke data must use this contract.
+  Keep boundary and rendered-output tests with the product consumer; guidance
+  does not prove that the consumer fix has been released.
 - Memoized id-to-record Maps must be first-wins (`if (!map.has(key)) map.set(...)`).
   `new Map(items.map((item) => [String(item.id), item]))` is last-wins and
   desynchronizes first-wins label maps from the selected node or edge when
@@ -533,9 +732,9 @@ subject to U.S. copyright, while attribution remains required.
   responses must include `Referrer-Policy`, and `target="_blank"` links must
   use explicit `rel="noopener noreferrer"`.
 - When robot review cites an obsolete Strix provider policy, update the docs and
-  tests to the current GitHub Models default contract before accepting a
-  rollback suggestion; do not reintroduce generic `LLM_API_KEY` or
-  cross-provider credential forwarding while trying to satisfy old comments.
+  tests to the current `contextual-orchestrator/orchestrator/free` contract
+  before accepting a rollback suggestion; do not reintroduce generic
+  `LLM_API_KEY` or direct-provider credential forwarding to satisfy old comments.
 - When reviews find inert navigation/dead-space controls, either wire them to an
   implemented workspace route/API or remove the control; do not leave
   high-traffic drawer/sidebar entries as permanent `준비 중` copy.
@@ -559,6 +758,76 @@ subject to U.S. copyright, while attribution remains required.
   fail closed on any remaining warning-class report log output.
 - DB-affecting API slices need both mocked fast tests and a real PostgreSQL
   bootstrap/smoke path before PR merge evidence is considered complete.
+- Required DB evidence must reject collection skips and expected failures as
+  well as fixture skips. Check the actual process exit status: a printed pytest
+  error can still exit zero when expected-failure metadata is retained. Exercise
+  these cases with real pytest reports, not only source-string assertions.
+- For long-running verification, redirect output directly to task-owned durable
+  files and capture the final runner exit separately. A disconnected observation
+  pipe can fail test output and cleanup; partial progress or a missing tool
+  handle is not completion or permission to restart a process still alive.
+  Verify the full redacted report, explicit skip reasons, exit status and
+  absence of that run's labelled containers, volumes and networks independently.
+  Keep failed attempts and retry receipts separate; do not infer the original
+  pipe-closure cause from a successful retry or alter application timeouts.
+- Negative configuration probes must use task-owned decoy files or controlled
+  readers and key-only assertions. Never read an operator file to prove that it
+  should not be read, or let assertion introspection print credential mappings.
+  Isolate inherited provider and replica settings as well as the primary DB URL;
+  Compose's env-file selection does not control Python's configuration sources.
+  Preserve normal operator defaults outside the explicitly selected test path.
+- On cancellation, stop task-owned process groups and retain the cancellation
+  exit status. Sanitize reports before potentially blocking teardown, bound
+  cleanup, and test both an interrupted worker and interruption during cleanup.
+  Delete only the generated test project and raw temporary report after safe
+  redaction. These cleanup bounds are not application or model timeouts.
+  The shared database runner remains proposed in
+  [CI owner #1562](https://github.com/ContextualWisdomLab/naruon/pull/1562)
+  until protected integration; its branch-local results do not prove hosted CI.
+- ORM `Base.metadata.create_all()` success is not migration evidence. On an
+  isolated empty PostgreSQL database, run `scripts/migrate_db.py` from `backend/`,
+  rerun it, and verify the recorded Alembic head. Also exercise upgrades from
+  supported historical revisions and data-preserving rollback where supported.
+  An already-stamped database needs a forward repair; editing an old revision
+  alone will not rerun it. Integrate the existing migration owner prerequisite,
+  rerun the combined revision graph, and never stamp past a failure or create a
+  fake legacy table to make the consumer pass.
+- After migration succeeds, run the affected application tests against that
+  migrated database, not a replacement ORM-only schema. Migration-created
+  indexes and constraints must remain active for supported size limits and
+  high-entropy content cases; do not shrink inputs, drop indexes, or omit failing
+  cases to manufacture passing evidence. Record migration and application-test
+  results separately and repair the shared schema owner when they disagree.
+- A rollback check must persist representative records before downgrade and
+  compare their values and portable identities after downgrade and re-upgrade.
+  A successful command or an empty schema proves no data preservation. Retain
+  non-rebuildable identity/provenance history; destructive retirement requires
+  a separately authorized migration with recovery evidence.
+- A session-level advisory lock that spans item commits or rollbacks needs a
+  held physical connection; keeping the ORM session object does not preserve
+  backend ownership. Budget any separate lease connection explicitly and test
+  a supported one-slot pool. Do not replace the lock with a transaction-level
+  lock that ends coordination at the first item commit.
+- On uncertain acquisition, work cancellation, or unconfirmed unlock,
+  invalidate before session-close rollback can wait on a broken connection.
+  Abort a disconnected cycle instead of reconnecting without a lease. Advance
+  recovery cursors only through the last completed item or healthy item
+  rollback, so unattempted prefetched rows are not skipped after interruption.
+- Test lease lifetime on real PostgreSQL across commit and rollback with a
+  same-pool reader and an independent replica. Cover actual task cancellation,
+  cleanup ordering, connection loss, strict unlock confirmation, and resumption
+  of unattempted work while retaining representative source bytes. Source-only
+  checks do not prove these runtime outcomes or exactly-once provider execution.
+- A conflict rollback expires loaded ORM records even when commit expiration is
+  disabled. Await refresh/reload before fallback reads; savepoint rollback already
+  removes failed new inserts, so do not expunge them again. A cached `get()` is
+  not a fresh authority check: revalidate configuration in the database before
+  processing another workspace when deletion must revoke further work.
+- Reproduce competing manual writes and configuration deletion with a second
+  real database session. Assert lease exclusion during work and availability
+  after cleanup; keep assertions outside handlers that intentionally catch
+  per-item errors. A test named "between workspaces" must finish the first
+  workspace before injecting its failure, not only execute a matching branch.
 - When a backend container reports missing `DATABASE_URL` or
   `AUTH_SESSION_HMAC_SECRET`, verify the runtime path injects the operator env
   through `scripts/naruon_compose.sh`, Kubernetes secrets, or an explicit
@@ -724,6 +993,57 @@ subject to U.S. copyright, while attribution remains required.
 
 ## Development environment and tooling defaults
 
+### Evidence discipline
+
+- Treat every PR head as an immutable evidence boundary: re-read the current
+  head and protected base before relying on reviews, Checks, screenshots, or
+  release claims; a new push invalidates prior evidence.
+- Separate focused test success, protected-branch merge, immutable artifact
+  publication, and deployed/runtime verification. Record the exact commit,
+  command, exit status, viewport/locale/state, and any unverified scope.
+- For UI changes, inspect the rendered page at the tested viewport and retain
+  a screenshot receipt; DOM assertions and a successful build are not visual
+  inspection. Do not claim locale, responsive, production, or deployment
+  coverage that was not actually exercised.
+- A queued or failed external review is a wait/finding state, not permission
+  to force-push, dismiss a review, bypass protection, or close a PR with a
+  still-valid delta. Preserve valid successor work and fix the canonical
+  owner when the defect is shared.
+- Automatic publication is allowed only after the canonical release path
+  proves exact artifact identity, environment approval, and a tested rollback
+  route; package-secret presence is not release evidence.
+- When the foreground browser cannot be inspected (for example, the host is
+  locked), a headless render may provide bounded visual evidence only if the
+  exact head, fixed local origin, viewport, route, locale, state, and image
+  receipt are recorded and the images are opened for direct inspection. Mark
+  foreground interaction and live-product behavior as unverified; screenshots
+  and DOM assertions must not be presented as proof of those broader claims.
+
+### Package Manager
+
+- Backend: use the project-local `backend/.venv`, `uv sync --project backend
+  --locked`, and `uv run --project backend --frozen python -m pytest` with the
+  relevant test paths. Keep `backend/uv.lock`; never install into a system
+  Python runtime or treat a one-off `PYTHONPATH=.` workaround as a root fix.
+- Clean-lock evidence requires an exact `uv sync --locked` in a task-owned
+  project environment before testing. `uv run --frozen` alone can retain
+  extraneous packages and mask a missing dependency. Do not prune a shared
+  environment; use a dedicated worktree environment and keep supplemented-local
+  results separate from a clean-lock run.
+- Frontend: use Corepack and the `packageManager` pin in
+  `frontend/package.json`, `corepack pnpm --dir frontend install
+  --frozen-lockfile`, and its existing test/lint/build scripts. The test script
+  uses Vitest; do not append Jest-only `--runInBand`.
+- For this playbook's source-only contracts, run from the repository root:
+  `uv run --project backend --frozen python -m pytest -q --noconftest
+  backend/tests/test_agent_llm_authority_docs.py
+  backend/tests/test_release_governance.py`. This bypass is limited to tests
+  that do not need application fixtures; API/DB validation must use conftest.
+- Keep `CLAUDE.md` as complementary guidance; do not replace an existing file
+  with a symlink or copy the whole playbook into it.
+
+### Local tooling and cleanup
+
 - If CodeGraph is not initialized for this repository, agents may run
   `codegraph init -i` autonomously without asking first; keep generated
   `.codegraph/` and `.cursor/rules/codegraph.mdc` artifacts local unless a
@@ -751,7 +1071,7 @@ subject to U.S. copyright, while attribution remains required.
   the changed contract and include exact commands in the PR body. For release
   and Docker changes, at minimum verify `python -m pytest
   backend/tests/test_release_governance.py backend/tests/test_runtime_config_api.py
-  -q`, `corepack pnpm@11.5.3 --dir frontend test --runInBand` when frontend
+  -q`, `corepack pnpm --dir frontend test` when frontend
   behavior changes, and a Docker build of the affected image.
 - GHCR publishing evidence for the combined `naruon` image must include the
   exact image name, tag, local image ID, push result, and registry verification
@@ -768,17 +1088,69 @@ subject to U.S. copyright, while attribution remains required.
   container scanner such as Trivy or Grype against the exact pushed image tag
   and treat high/critical actionable findings as blockers until fixed or
   documented with precise non-applicability evidence.
-- Docker Compose and Podman live-E2E work must clean up after itself. Stop
-  stale `naruon*` containers, remove unused volumes/layers with
-  `podman system prune --all --volumes --force` when safe, and verify
-  `podman ps` has no stale Naruon services. If Podman reports broken storage
-  metadata such as missing overlay layers or `readlink ... overlay: invalid
-  argument`, run `podman system check --repair --force` before relying on
-  `podman system df` or additional image scans.
+- Docker Compose and Podman live-E2E work must clean up only resources created
+  by that task, identified by exact IDs and project labels. Use an isolated test
+  project and free loopback ports; preserve pre-existing services and persistent
+  volumes. System-wide pruning or forced storage repair requires separate
+  authorization covering the identified affected resources. Verify cleanup of
+  the task-owned resources; do not infer ownership from a `naruon*` name match.
 - Keep contributor setup friction low: document any new required environment
   variables, model tags, package-manager version pins, or live-E2E ports in the
   same PR that introduces them, and avoid hidden local-only defaults that make
   another committer's PR fail after checkout.
+
+### Upstream gateway failure boundary
+
+- An HTTP 500/502 or wrapper-exhausted message from a model-backed workflow is
+  transport evidence, not proof of a product or consumer defect. Preserve the
+  exact status, phase, duration, served-model field, and retry count, then
+  route provider discovery, failover, and capability repair to the CO
+  canonical owner. Do not add consumer-side paid fallbacks or downgrade a
+  failed verdict to clean.
+
+- CodeQL compatibility results require lineage, not just a check name. Record
+  the exact PR head, workflow run, job, target language, and log/annotation
+  evidence before acting on a failure. If a failed compatibility result is
+  visible but its run or job log endpoint returns `404`, classify the cause as
+  untriaged infrastructure or publication evidence, keep the gate blocked,
+  and wait for the current-head CodeQL dispatch; do not blind-rerun the same
+  head or weaken the gate. A later successful result counts only when its run
+  and target SHA match the exact current head.
+
+- GitHub Actions run-list access is a separate evidence surface from the PR
+  check rollup. A `gh run list` or Actions API `403` can occur while ordinary
+  REST/PR reads still work; record it as unavailable run-detail evidence, not
+  as a failed job or proof that the process stopped. Keep the exact PR head,
+  use the available check rollup and job/log endpoints when authorized, and
+  retry only after the access limit or permission condition changes.
+
+- `CLEAN` with no reported required Checks is not protected-merge evidence.
+  Stacked or non-protected bases can legitimately report no required checks;
+  retain the exact head/base and verify the target protected branch's ruleset,
+  qualifying review, and hosted checks before treating a PR as merge-ready.
+
+- Before pushing a repair, compare the worktree branch with the PR's live
+  `headRefName`, head owner, base ref, and exact head. A similarly named branch
+  can be a different PR source; never assume a successful push updated the
+  intended PR. If the source branch cannot be safely updated, preserve the
+  commit on its own branch and open a stacked successor that names the
+  predecessor and proves the inherited delta.
+
+- A review bot's `skipped` result on a non-default stacked base is not a
+  qualifying review and must not be promoted to approval. Keep the successor
+  linked to its predecessor, record the exact head/base, and require an
+  independently qualifying review on a supported base before protected merge.
+
+- Archive and fixture importers are security boundaries. Log fixed operation
+  messages only; never include archive paths, extracted filenames, provider
+  exception text, or secret-bearing traceback values. Catch extraction and
+  parsing failures at their boundary, return the documented failure result,
+  and add regression tests that exercise each prohibited value through its
+  actual input channel (archive path, extracted filename, provider error, and
+  traceback) and assert neither the value nor its fixed log record leaks into
+  captured logs. An exception-only sentinel is insufficient because it can
+  miss a separate path-bearing log argument. This applies to ZIP, EML, MBOX,
+  and attachment import paths.
 
 ## Phase 10 development rules
 
@@ -794,7 +1166,7 @@ subject to U.S. copyright, while attribution remains required.
 - **UI/Browser Testing**: Use a real browser for testing (do not rely on assumptions).
 - **Strict Errors**: Treat `Timeout`, `Fatal`, `Warn`, and `Denied` outputs as hard failures.
 - **Goal**: Converge open PRs through protected merges or verified full-delta
-  succession, never by count-only closure.
+  succession, never through count-only closure.
 
 - When the gate exhausts fallbacks after the primary model produces a finding at or above threshold and then fails with a retryable error (like `NOT_FOUND`), ensure the final output explicitly reports `Strix quick scan failed with a non-recoverable error.` to prevent downgrading the finding to pass or misleadingly reporting an unavailability error.
 

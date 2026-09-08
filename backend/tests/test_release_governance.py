@@ -72,10 +72,51 @@ def test_agent_lifecycle_governance_artifacts_stay_aligned() -> None:
     assert "owner-issued" in readme
     assert "docs/development/merge-gate-policy.md" in guidance
     assert "prove complete-delta succession" in guidance
+    assert "Superpowers systematic debugging" in guidance
+    assert "Ponytail ladder" in guidance
     assert "Do not use administrative merge bypass" in guidance
     assert "stale-context procedure" in guidance
     assert "successor's exact tree, effective diff, tests, and lineage record" in guidance
     assert research_artifact.read_bytes().startswith(b"%PDF-")
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "AGENTS.md",
+        "docs/development/merge-gate-policy.md",
+        ".agents/skills/github-robot-review-gate/SKILL.md",
+    ],
+)
+def test_gate_guidance_requires_authorized_recoverable_changes(relative_path: str) -> None:
+    """Every linked gate procedure must retain authorization and failure rollback."""
+    guidance_text = " ".join(read_repo_text(relative_path).split())
+    assert "explicit maintainer authorization" in guidance_text
+    assert "success, failure, cancellation, or expiry" in guidance_text
+
+
+def test_agent_playbook_keeps_skill_links_and_safe_execution_boundaries() -> None:
+    """Keep local skill references runnable and prevent known unsafe copy patterns."""
+    guidance_text = read_repo_text("AGENTS.md")
+    skill_paths = re.findall(r"\]\((\.agents/skills/[^)]+/SKILL\.md)\)", guidance_text)
+    assert {
+        ".agents/skills/fix-development-mistakes/SKILL.md",
+        ".agents/skills/github-actions-privileged-pr-scan/SKILL.md",
+        ".agents/skills/github-robot-review-gate/SKILL.md",
+    } <= set(skill_paths)
+    for skill_path in skill_paths:
+        assert read_repo_text(skill_path).startswith("---\nname:")
+    assert "git config --get-all remote.origin.fetch" in guidance_text
+    assert ".headRefOid as $head" in guidance_text
+    assert "select(.commit.oid == $head)" in guidance_text
+    assert "podman system prune --all --volumes --force" not in guidance_text
+    assert "podman system check --repair --force" not in guidance_text
+    assert "--dir frontend test --runInBand" not in guidance_text
+    assert "documentation-only work" in guidance_text
+    assert "closingIssuesReferences" in guidance_text
+    assert "기존 canonical release workflow" in guidance_text
+    assert "레지스트리 게시 성공과 실제 서비스 배포를 구분" in guidance_text
+    assert "`AGENTS.md`에 지속 반영" in guidance_text
 
 
 def assert_dockerfile_stage_from(dockerfile: str, image: str, stage_alias: str) -> None:

@@ -185,6 +185,12 @@ describe("SearchLayout product events", () => {
     ));
     await waitForCondition(() => getRecordedProductEvents().some((event) => event.name === "context_search_result_action_created"));
 
+    expect(container.textContent).toContain("발신자 맥락");
+    expect(container.textContent).toContain("다음 행동");
+    expect(container.textContent).not.toContain("sender_context");
+    expect(container.textContent).not.toContain("thread-contract");
+    expect(container.textContent).not.toContain("<contract-source@example.com>");
+
     expect(getRecordedProductEvents().some((event) =>
       event.name === "context_search_result_action_created" &&
       event.payload.result_id === 202 &&

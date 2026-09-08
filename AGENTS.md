@@ -273,6 +273,15 @@ in this repo.
 
 ## Workspace and task tracking defaults
 
+- Browser smoke must check collected console and page errors after interaction,
+  accessibility, screenshot capture, and page cleanup, not only after navigation.
+  Keep the early check for fast failure and a final check before returning success.
+  Regression tests must inject late errors into the actual route-smoke execution;
+  a successful screenshot or a passing render assertion does not prove clean interactions.
+  If screenshot retries are exhausted, throw the capture failure; do not create
+  diagnostic text files in the temporary capture directory or count them as screenshots.
+  Close the page in a finally block, including navigation and capture failures.
+
 - First-run frontend sessions should open the Today execution dashboard while
   preserving explicit Dashboard, Email, and Calendar startup choices.
 - Workspace navigation changes must keep the desktop primary nav and the
@@ -648,6 +657,28 @@ in this repo.
 
 ## Development environment and tooling defaults
 
+- Read the applicable repository skill before changing its contract:
+  [fix-development-mistakes](.agents/skills/fix-development-mistakes/SKILL.md)
+  for failures and security findings,
+  [github-actions-privileged-pr-scan](.agents/skills/github-actions-privileged-pr-scan/SKILL.md)
+  for privileged PR scanners, and
+  [github-robot-review-gate](.agents/skills/github-robot-review-gate/SKILL.md)
+  for check/review diagnosis. Record the failing reproduction, smallest causal
+  repair, exact verification command, and remaining gates in the existing PR.
+- Visual Inspection requires opening the actual rendered pages or captured
+  images, not merely counting PNG files. Record app/build SHA separately from
+  runner SHA, viewport, routes, and observed defects. Mocked browser evidence
+  does not prove live provider behavior, all locales, or deployment readiness.
+  Inspect the changed AGENTS.md rendering on the pushed revision as well.
+- Preserve concurrent commits with ordinary history integration, then verify
+  the combined tree before pushing. Update these instructions with reusable
+  failure-prevention lessons; keep dated findings in the gap baseline/PR.
+- Package registry credentials alone do not authorize or configure a cluster
+  deployment. Use the existing release workflow only after its protected-source,
+  checks, target credentials, and destination prerequisites are verified; report
+  package publication and live deployment as separate outcomes.
+- Before relocating guidance out of a PR, verify its complete successor delta
+  and record the destination PR, commit, and path; a named owner alone is not succession.
 - If CodeGraph is not initialized for this repository, agents may run
   `codegraph init -i` autonomously without asking first; keep generated
   `.codegraph/` and `.cursor/rules/codegraph.mdc` artifacts local unless a

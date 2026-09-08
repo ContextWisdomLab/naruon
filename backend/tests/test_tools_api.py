@@ -1193,6 +1193,58 @@ async def test_keyword_extractor_handler():
     assert empty == {"keywords": [], "keyword_count": 0}
 
 
+
+def test_execute_url_extractor():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/url_extractor/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={
+                "parameters": {
+                    "text": "Check out https://example.com and http://test.com/path, also https://example.com again."
+                }
+            },
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert set(data["result"]["urls"]) == {"https://example.com", "http://test.com/path"}
+    assert data["result"]["url_count"] == 2
+
+def test_execute_url_extractor_rejects_oversized_text():
+    from api.tools import ANALYSIS_TEXT_MAX_CHARS
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/url_extractor/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"text": "x" * (ANALYSIS_TEXT_MAX_CHARS + 1)}},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "failed",
+        "result": None,
+        "message": (
+            f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"
+        ),
+    }
+
+@pytest.mark.asyncio
+async def test_url_extractor_handler():
+    from api.tools import url_extractor_handler
+
+    text = "Find http://example.com and https://example.com"
+    result = await url_extractor_handler({"text": text})
+
+    assert result == {
+        "urls": ["http://example.com", "https://example.com"],
+        "url_count": 2,
+    }
+
+    empty = await url_extractor_handler({"text": "No urls here."})
+    assert empty == {"urls": [], "url_count": 0}
+
 def test_execute_analysis_tool_rejects_oversized_text():
     from api.tools import ANALYSIS_TEXT_MAX_CHARS
 

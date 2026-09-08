@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import inspect
+import ipaddress
 import json
 import logging
 import re
@@ -753,6 +754,76 @@ registry.register(
 )
 
 
+_URL_CANDIDATE_PATTERN = re.compile(r'https?://[^\s"\'<>]+', re.IGNORECASE)
+_DNS_LABEL_PATTERN = re.compile(
+    r"^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$"
+)
+_IPISH_HOST_PATTERN = re.compile(r"[\d.]+")
+
+
+def _url_candidate_has_valid_host(url_str: str) -> bool:
+    """Validate an HTTP(S) candidate's host syntax without DNS or network access."""
+    try:
+        parsed = urllib.parse.urlsplit(url_str)
+        _ = parsed.port
+    except ValueError:
+        return False
+    if not parsed.netloc or not parsed.hostname:
+        return False
+
+    host = parsed.hostname
+    ip_str = host.strip("[]")
+    if _IPISH_HOST_PATTERN.fullmatch(ip_str) or ":" in ip_str:
+        try:
+            ipaddress.ip_address(ip_str)
+        except ValueError:
+            return False
+        return True
+
+    try:
+        idna_host = host.encode("idna").decode("ascii")
+    except UnicodeError:
+        return False
+    if not 1 <= len(idna_host) <= 253:
+        return False
+    return all(_DNS_LABEL_PATTERN.fullmatch(label) for label in idna_host.split("."))
+
+
+async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
+    text = params.get("text") or ""
+    if len(text) > ANALYSIS_TEXT_MAX_CHARS:
+        raise ValueError(f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters")
+
+    raw_urls = _URL_CANDIDATE_PATTERN.findall(text)
+    cleaned_urls = []
+    for url_str in raw_urls:
+        while True:
+            original = url_str
+            url_str = re.sub(r'[,.;:?!]+$', '', url_str)
+            if url_str.endswith(')'):
+                if url_str.count('(') < url_str.count(')'):
+                    url_str = url_str[:-1]
+            if url_str == original:
+                break
+
+        if _url_candidate_has_valid_host(url_str):
+            cleaned_urls.append(url_str)
+
+    urls = list(dict.fromkeys(cleaned_urls))
+    return {"urls": urls, "url_count": len(urls)}
+
+
+registry.register(
+    ToolInfo(
+        code="url_extractor",
+        name="URL 추출기 (URL Extractor)",
+        description="텍스트 본문에서 URL을 찾아 중복 없이 추출합니다.",
+        category="이메일 분석",
+        parameters={"text": "string"},
+    ),
+    url_extractor_handler,
+)
+
 async def uuid_v4_generator_handler(params: Dict[str, Any]) -> Dict[str, str]:
     return {"uuid": str(uuid.uuid4())}
 
@@ -767,7 +838,6 @@ registry.register(
     ),
     uuid_v4_generator_handler,
 )
-
 
 
 @router.get("/tools", response_model=list[ToolInfo])

@@ -6,6 +6,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: internal-mail-smoke-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   smoke:
     runs-on: [self-hosted, mail-egress]

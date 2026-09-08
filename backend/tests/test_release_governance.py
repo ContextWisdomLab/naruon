@@ -118,6 +118,16 @@ def test_container_images_use_pinned_node_runtimes() -> None:
     assert "Node 22" not in render_deployment
 
 
+def test_non_pr_workflows_serialize_writers_without_cancelling_them() -> None:
+    for workflow_name, group in (
+        (".github/workflows/mail-smoke.yml", "internal-mail-smoke-${{ github.repository }}"),
+        (".github/workflows/deploy.yml", "deploy-aks-${{ github.repository }}"),
+    ):
+        workflow = read_repo_text(workflow_name)
+        assert f"group: {group}" in workflow
+        assert "cancel-in-progress: false" in workflow
+
+
 def test_backend_images_use_python_314_runtime() -> None:
     root_dockerfile = read_repo_text("Dockerfile")
     docker_publish_workflow = read_repo_text(".github/workflows/docker-publish.yml")

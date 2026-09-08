@@ -11,6 +11,7 @@ import os
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from services.archive import extract_backup_async
+from services.exceptions import ArchiveError
 from services.email_parser import parse_eml
 from services.embedding import (
     STORAGE_EMBEDDING_DIMENSION,
@@ -30,10 +31,17 @@ IMPORT_USER_ID = os.environ.get("NARUON_IMPORT_USER_ID", "default")
 IMPORT_ORGANIZATION_ID = os.environ.get("NARUON_IMPORT_ORGANIZATION_ID", "default")
 
 
-async def process_zip_file(zip_path: str | Path, session: AsyncSession):
+async def process_zip_file(zip_path: str | Path, session: AsyncSession) -> bool:
+    """Import one fixture archive and report whether extraction was accepted."""
     with tempfile.TemporaryDirectory() as temp_dir:
-        logger.info(f"Extracting {zip_path}...")
-        extracted_files = await extract_backup_async(zip_path, temp_dir)
+        logger.info("Extracting fixture archive")
+        try:
+            extracted_files = await extract_backup_async(zip_path, temp_dir)
+        except ArchiveError:
+            logger.error("Fixture archive extraction failed")
+            return False
+        except Exception:
+            raise ArchiveError("Fixture archive extraction failed") from None
 
         batch_values = []
         for file_path in extracted_files:
@@ -118,7 +126,8 @@ async def process_zip_file(zip_path: str | Path, session: AsyncSession):
             )
             await session.execute(stmt, batch_values)
         await session.commit()
-        logger.info(f"Finished processing {zip_path}")
+        logger.info("Finished processing fixture archive")
+        return True
 
 
 async def main():
@@ -126,12 +135,13 @@ async def main():
     fixtures_dir = root_dir / "secret_fixtures"
 
     if not fixtures_dir.exists():
-        logger.error(f"Fixtures directory {fixtures_dir} does not exist.")
+        logger.error("Fixture directory is unavailable")
         return
 
     async with AsyncSessionLocal() as session:
         for zip_file in fixtures_dir.glob("*.zip"):
-            await process_zip_file(zip_file, session)
+            if not await process_zip_file(zip_file, session):
+                raise ArchiveError("Fixture archive extraction failed")
 
 
 if __name__ == "__main__":

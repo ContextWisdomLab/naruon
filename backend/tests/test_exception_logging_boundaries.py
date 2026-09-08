@@ -14,6 +14,7 @@ from core.exceptions import LLMServiceError
 from core.safe_logging import redacted_exception_info
 from scripts import import_fixtures as zip_import_fixtures
 from services.llm_service import draft_reply
+from services.exceptions import ArchiveError
 
 _SECRET_EXCEPTION_TEXT = "provider token=super-secret-value"
 _SECRET_FIXTURE_PATH = "/private/customer/secret-message.eml"
@@ -98,14 +99,16 @@ async def test_llm_service_error_does_not_chain_secret_bearing_provider_text() -
     fake_client = MagicMock()
     fake_client.close = AsyncMock()
 
-    with patch(
-        "services.llm_service.build_llm_provider_http_client",
-        new=AsyncMock(return_value=(None, fake_http_client)),
-    ), patch(
-        "services.llm_service.AsyncOpenAI", return_value=fake_client
-    ), patch(
-        "services.llm_service.provider_circuit_breaker.call",
-        new=AsyncMock(side_effect=RuntimeError(_SECRET_EXCEPTION_TEXT)),
+    with (
+        patch(
+            "services.llm_service.build_llm_provider_http_client",
+            new=AsyncMock(return_value=(None, fake_http_client)),
+        ),
+        patch("services.llm_service.AsyncOpenAI", return_value=fake_client),
+        patch(
+            "services.llm_service.provider_circuit_breaker.call",
+            new=AsyncMock(side_effect=RuntimeError(_SECRET_EXCEPTION_TEXT)),
+        ),
     ):
         with pytest.raises(LLMServiceError) as raised:
             await draft_reply("email body", "draft reply", "test-key")
@@ -122,14 +125,21 @@ async def test_llm_service_error_does_not_chain_secret_bearing_provider_text() -
 
 
 @pytest.mark.asyncio
-async def test_root_fixture_parse_failure_logs_bounded_message(caplog, tmp_path) -> None:
+async def test_root_fixture_parse_failure_logs_bounded_message(
+    caplog, tmp_path
+) -> None:
     session = _FixtureSession()
     eml_file = tmp_path / "secret-message.eml"
 
-    with caplog.at_level(logging.ERROR, logger=import_fixtures.logger.name), patch.object(
-        import_fixtures,
-        "parse_eml",
-        side_effect=RuntimeError(f"{_SECRET_EXCEPTION_TEXT} {_SECRET_FIXTURE_PATH}"),
+    with (
+        caplog.at_level(logging.ERROR, logger=import_fixtures.logger.name),
+        patch.object(
+            import_fixtures,
+            "parse_eml",
+            side_effect=RuntimeError(
+                f"{_SECRET_EXCEPTION_TEXT} {_SECRET_FIXTURE_PATH}"
+            ),
+        ),
     ):
         imported = await import_fixtures.import_eml_file(session, eml_file)
 
@@ -141,18 +151,74 @@ async def test_root_fixture_parse_failure_logs_bounded_message(caplog, tmp_path)
 
 
 @pytest.mark.asyncio
+async def test_zip_archive_extraction_failure_logs_bounded_message(
+    caplog, tmp_path
+) -> None:
+    session = MagicMock()
+    zip_path = tmp_path / "customer-secret.zip"
+
+    with (
+        caplog.at_level(logging.INFO, logger=zip_import_fixtures.logger.name),
+        patch.object(
+            zip_import_fixtures,
+            "extract_backup_async",
+            new=AsyncMock(
+                side_effect=ArchiveError(
+                    f"{_SECRET_EXCEPTION_TEXT} {_SECRET_FIXTURE_PATH}"
+                )
+            ),
+        ),
+    ):
+        await zip_import_fixtures.process_zip_file(zip_path, session)
+
+    assert "Fixture archive extraction failed" in caplog.text
+    assert "Extracting fixture archive" in caplog.text
+    assert "Finished processing fixture archive" not in caplog.text
+    assert _SECRET_EXCEPTION_TEXT not in caplog.text
+    assert _SECRET_FIXTURE_PATH not in caplog.text
+    assert str(zip_path) not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_unexpected_zip_extraction_failure_is_sanitized(caplog, tmp_path) -> None:
+    session = MagicMock()
+    zip_path = tmp_path / "customer-secret.zip"
+    unexpected = RuntimeError(f"{_SECRET_EXCEPTION_TEXT} {_SECRET_FIXTURE_PATH}")
+
+    with (
+        caplog.at_level(logging.INFO, logger=zip_import_fixtures.logger.name),
+        patch.object(
+            zip_import_fixtures,
+            "extract_backup_async",
+            new=AsyncMock(side_effect=unexpected),
+        ),
+    ):
+        with pytest.raises(
+            ArchiveError, match="^Fixture archive extraction failed$"
+        ) as raised:
+            await zip_import_fixtures.process_zip_file(zip_path, session)
+
+    assert raised.value.__cause__ is None
+    assert "Fixture archive extraction failed" not in caplog.text
+    assert _SECRET_EXCEPTION_TEXT not in caplog.text
+    assert _SECRET_FIXTURE_PATH not in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_root_fixture_body_embedding_failure_logs_bounded_message(
     caplog, tmp_path
 ) -> None:
     session = _FixtureSession()
     eml_file = tmp_path / "secret-body.eml"
 
-    with caplog.at_level(logging.ERROR, logger=import_fixtures.logger.name), patch.object(
-        import_fixtures, "parse_eml", return_value=_parsed_email()
-    ), patch.object(
-        import_fixtures,
-        "generate_fixture_embedding",
-        new=AsyncMock(side_effect=RuntimeError(_SECRET_EXCEPTION_TEXT)),
+    with (
+        caplog.at_level(logging.ERROR, logger=import_fixtures.logger.name),
+        patch.object(import_fixtures, "parse_eml", return_value=_parsed_email()),
+        patch.object(
+            import_fixtures,
+            "generate_fixture_embedding",
+            new=AsyncMock(side_effect=RuntimeError(_SECRET_EXCEPTION_TEXT)),
+        ),
     ):
         imported = await import_fixtures.import_eml_file(session, eml_file)
 
@@ -173,16 +239,21 @@ async def test_root_fixture_attachment_embedding_failure_skips_attachment_safely
     )
     embedding = [0.0] * import_fixtures.EMBEDDING_DIMENSION
 
-    with caplog.at_level(logging.ERROR, logger=import_fixtures.logger.name), patch.object(
-        import_fixtures, "parse_eml", return_value=parsed
-    ), patch.object(
-        import_fixtures,
-        "generate_fixture_embedding",
-        new=AsyncMock(side_effect=[embedding, RuntimeError(_SECRET_EXCEPTION_TEXT)]),
-    ), patch.object(
-        import_fixtures,
-        "assign_thread_id",
-        new=AsyncMock(return_value="fixture-thread"),
+    with (
+        caplog.at_level(logging.ERROR, logger=import_fixtures.logger.name),
+        patch.object(import_fixtures, "parse_eml", return_value=parsed),
+        patch.object(
+            import_fixtures,
+            "generate_fixture_embedding",
+            new=AsyncMock(
+                side_effect=[embedding, RuntimeError(_SECRET_EXCEPTION_TEXT)]
+            ),
+        ),
+        patch.object(
+            import_fixtures,
+            "assign_thread_id",
+            new=AsyncMock(return_value="fixture-thread"),
+        ),
     ):
         imported = await import_fixtures.import_eml_file(session, eml_file)
 
@@ -204,16 +275,19 @@ async def test_root_fixture_commit_failure_rolls_back_without_sensitive_log(
     eml_file = tmp_path / "secret-commit.eml"
     embedding = [0.0] * import_fixtures.EMBEDDING_DIMENSION
 
-    with caplog.at_level(logging.ERROR, logger=import_fixtures.logger.name), patch.object(
-        import_fixtures, "parse_eml", return_value=_parsed_email()
-    ), patch.object(
-        import_fixtures,
-        "generate_fixture_embedding",
-        new=AsyncMock(return_value=embedding),
-    ), patch.object(
-        import_fixtures,
-        "assign_thread_id",
-        new=AsyncMock(return_value="fixture-thread"),
+    with (
+        caplog.at_level(logging.ERROR, logger=import_fixtures.logger.name),
+        patch.object(import_fixtures, "parse_eml", return_value=_parsed_email()),
+        patch.object(
+            import_fixtures,
+            "generate_fixture_embedding",
+            new=AsyncMock(return_value=embedding),
+        ),
+        patch.object(
+            import_fixtures,
+            "assign_thread_id",
+            new=AsyncMock(return_value="fixture-thread"),
+        ),
     ):
         imported = await import_fixtures.import_eml_file(session, eml_file)
 
@@ -229,16 +303,18 @@ async def test_zip_fixture_parse_failure_logs_bounded_message(caplog) -> None:
     file_path = Path(_SECRET_FIXTURE_PATH)
     session = AsyncMock()
 
-    with caplog.at_level(
-        logging.ERROR, logger=zip_import_fixtures.logger.name
-    ), patch.object(
-        zip_import_fixtures,
-        "extract_backup_async",
-        new=AsyncMock(return_value=[file_path]),
-    ), patch.object(
-        zip_import_fixtures,
-        "parse_eml",
-        side_effect=RuntimeError(_SECRET_EXCEPTION_TEXT),
+    with (
+        caplog.at_level(logging.ERROR, logger=zip_import_fixtures.logger.name),
+        patch.object(
+            zip_import_fixtures,
+            "extract_backup_async",
+            new=AsyncMock(return_value=[file_path]),
+        ),
+        patch.object(
+            zip_import_fixtures,
+            "parse_eml",
+            side_effect=RuntimeError(_SECRET_EXCEPTION_TEXT),
+        ),
     ):
         await zip_import_fixtures.process_zip_file("fixture.zip", session)
 

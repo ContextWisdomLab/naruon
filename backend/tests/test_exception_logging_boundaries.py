@@ -166,20 +166,25 @@ async def test_zip_archive_extraction_failure_logs_bounded_message(caplog, tmp_p
 
 
 @pytest.mark.asyncio
-async def test_unexpected_zip_extraction_failure_propagates(caplog, tmp_path) -> None:
+async def test_unexpected_zip_extraction_failure_is_sanitized(caplog, tmp_path) -> None:
     session = MagicMock()
     zip_path = tmp_path / "customer-secret.zip"
-    unexpected = RuntimeError("unexpected extraction defect")
+    unexpected = RuntimeError(f"{_SECRET_EXCEPTION_TEXT} {_SECRET_FIXTURE_PATH}")
 
     with caplog.at_level(logging.INFO, logger=zip_import_fixtures.logger.name), patch.object(
         zip_import_fixtures,
         "extract_backup_async",
         new=AsyncMock(side_effect=unexpected),
     ):
-        with pytest.raises(RuntimeError, match="unexpected extraction defect"):
+        with pytest.raises(
+            ArchiveError, match="^Fixture archive extraction failed$"
+        ) as raised:
             await zip_import_fixtures.process_zip_file(zip_path, session)
 
+    assert raised.value.__cause__ is None
     assert "Fixture archive extraction failed" not in caplog.text
+    assert _SECRET_EXCEPTION_TEXT not in caplog.text
+    assert _SECRET_FIXTURE_PATH not in caplog.text
 
 
 @pytest.mark.asyncio

@@ -19,7 +19,43 @@ import {
   resolveFullProductChromePath,
   resolveFullProductScreenshotProfile,
   resolveFullProductViewportSpecs,
+  runRouteSmoke,
 } from "./full-product-ui-smoke.mjs";
+
+describe("route smoke late browser errors", () => {
+  it.each(["console", "pageerror"])("rejects %s errors emitted during capture", async (eventName) => {
+    const handlers = {};
+    let evaluationCount = 0;
+    const page = {
+      on: (name, handler) => { handlers[name] = handler; },
+      route: async () => {},
+      goto: async () => {},
+      waitForLoadState: async () => {},
+      locator: () => ({ waitFor: async () => {}, innerText: async () => "Naruon" }),
+      evaluate: async () => {
+        evaluationCount += 1;
+        if (evaluationCount === 1) return { duplicateIds: [], unnamedInteractive: [] };
+        return { tagName: "BUTTON" };
+      },
+      keyboard: { press: async () => {} },
+      screenshot: async () => {
+        if (eventName === "console") {
+          handlers.console({ type: () => "error", text: () => "late-browser-failure" });
+        } else {
+          handlers.pageerror(new Error("late-browser-failure"));
+        }
+      },
+      close: async () => {},
+    };
+    await expect(runRouteSmoke(
+      { newPage: async () => page },
+      FULL_PRODUCT_ROUTES[0],
+      { name: "desktop", width: 1440, height: 1024 },
+      1,
+      path.join(tmpdir(), "naruon-full-product-smoke-unit"),
+    )).rejects.toThrow("late-browser-failure");
+  });
+});
 
 describe("full product UI smoke base URL guard", () => {
   it("allows localhost full-product smoke targets", () => {

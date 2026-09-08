@@ -274,6 +274,12 @@ in this repo.
 
 ## Workspace and task tracking defaults
 
+- Browser smoke must check collected console and page errors after interaction,
+  accessibility, screenshot capture, and page cleanup, not only after navigation.
+  Keep the early check for fast failure and a final check before returning success.
+  Regression tests must inject late errors into the actual route-smoke execution;
+  a successful screenshot or a passing render assertion does not prove clean interactions.
+
 - First-run frontend sessions should open the Today execution dashboard while
   preserving explicit Dashboard, Email, and Calendar startup choices.
 - Workspace navigation changes must keep the desktop primary nav and the

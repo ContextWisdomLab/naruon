@@ -1555,7 +1555,7 @@ async function runAccessibilitySmoke(page, routeSpec) {
   return [`${routeSpec.name}:a11y-basics`];
 }
 
-async function runRouteSmoke(context, routeSpec, viewportSpec, viewportCount, screenshotDir) {
+export async function runRouteSmoke(context, routeSpec, viewportSpec, viewportCount, screenshotDir) {
   const page = await context.newPage();
   const consoleErrors = [];
   page.on("console", (message) => {
@@ -1594,6 +1594,9 @@ async function runRouteSmoke(context, routeSpec, viewportSpec, viewportCount, sc
     `${viewportSpec.name}:${routeSpec.path}`,
   );
   await page.close();
+  if (consoleErrors.length > 0) {
+    throw new Error(`Route ${routeSpec.path} emitted console errors:\n${consoleErrors.join("\n")}`);
+  }
   return { screenshotPath: screenshotArtifact, interactionEvidence, accessibilityEvidence };
 }
 

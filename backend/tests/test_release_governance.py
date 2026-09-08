@@ -703,7 +703,11 @@ def test_app_ci_runs_backend_and_frontend_checks_without_duplicate_release_pushe
     assert "npm run build" in workflow
     assert "permissions:\n  contents: read" in workflow
     assert "concurrency:" in workflow
-    assert "${{ github.event.pull_request.number || github.ref }}" in workflow
+    assert (
+        "application-ci-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}"
+        in workflow
+    )
+    assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in workflow
     assert "uses: actions/checkout@v" not in workflow
     assert "uses: actions/setup-python@v" not in workflow
     assert "uses: actions/setup-node@v" not in workflow

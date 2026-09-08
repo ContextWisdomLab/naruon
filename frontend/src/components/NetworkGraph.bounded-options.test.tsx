@@ -8,6 +8,7 @@ const { apiGetMock } = vi.hoisted(() => ({
 }));
 
 const destroyMock = vi.fn();
+const originalMapValues = Map.prototype.values;
 
 vi.mock("@/lib/api-client", () => ({
   apiClient: {
@@ -45,6 +46,7 @@ describe("NetworkGraph bounded option materialization", () => {
   let container: HTMLDivElement | null = null;
 
   afterEach(() => {
+    Map.prototype.values = originalMapValues;
     if (root) {
       act(() => root?.unmount());
     }
@@ -54,7 +56,7 @@ describe("NetworkGraph bounded option materialization", () => {
     vi.clearAllMocks();
   });
 
-  it("instrumented iterable/Map fixture proves iteration stops early", async () => {
+  it("stops option iteration at the configured limits without changing insertion order", async () => {
     const nodes = Array.from({ length: 50 }, (_, index) => ({
       id: `node-${index}`,
       label: `노드 ${index}`,
@@ -68,26 +70,27 @@ describe("NetworkGraph bounded option materialization", () => {
 
     apiGetMock.mockResolvedValue({ nodes, edges });
 
-    const originalMapValues = Map.prototype.values;
     let edgeIterationCount = 0;
     let nodeIterationCount = 0;
 
-    // Instrument Map.prototype.values to count iterations for our specific edges and nodes
+    // Count only the populated graph maps so unrelated framework Maps cannot affect the bound.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Map.prototype.values = function(this: Map<any, any>) {
+    Map.prototype.values = function (this: Map<any, any>) {
       const iterator = originalMapValues.call(this);
-      const isEdgeMap = this.has('edge-0');
-      const isNodeMap = this.has('node-0');
+      const isEdgeMap = this.has("edge-0");
+      const isNodeMap = this.has("node-0");
 
       return {
         next: () => {
-          if (isEdgeMap) edgeIterationCount++;
-          if (isNodeMap) nodeIterationCount++;
+          if (isEdgeMap) edgeIterationCount += 1;
+          if (isNodeMap) nodeIterationCount += 1;
           return iterator.next();
         },
-        [Symbol.iterator]() { return this; }
+        [Symbol.iterator]() {
+          return this;
+        },
       };
-    } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    } as typeof Map.prototype.values;
 
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -98,8 +101,6 @@ describe("NetworkGraph bounded option materialization", () => {
     });
     await flushAsyncWork();
 
-    Map.prototype.values = originalMapValues;
-
     const relationshipSelect = container.querySelector(
       'select[aria-label="관계 선택"]',
     ) as HTMLSelectElement | null;
@@ -107,12 +108,29 @@ describe("NetworkGraph bounded option materialization", () => {
       'select[aria-label="노드 선택"]',
     ) as HTMLSelectElement | null;
 
-    // Verify option caps still apply
-    expect(relationshipSelect?.options.length).toBe(6); // 1 default + 5 options
-    expect(nodeSelect?.options.length).toBe(9); // 1 default + 8 options
+    expect(relationshipSelect).toBeInstanceOf(HTMLSelectElement);
+    expect(nodeSelect).toBeInstanceOf(HTMLSelectElement);
+    expect(Array.from(relationshipSelect?.options ?? []).map((option) => option.value)).toEqual([
+      "",
+      "edge-0",
+      "edge-1",
+      "edge-2",
+      "edge-3",
+      "edge-4",
+    ]);
+    expect(Array.from(nodeSelect?.options ?? []).map((option) => option.value)).toEqual([
+      "",
+      "node-0",
+      "node-1",
+      "node-2",
+      "node-3",
+      "node-4",
+      "node-5",
+      "node-6",
+      "node-7",
+    ]);
 
-    // Verify the iteration count was strictly bounded and did not iterate all 50 items
-    // (We use a margin since React might double-render in some strict mode setups, but it should be vastly less than 50 * renders)
+    // A sixth/ninth iterator read can occur because for...of retrieves the next item before the body breaks.
     expect(edgeIterationCount).toBeLessThanOrEqual(15);
     expect(nodeIterationCount).toBeLessThanOrEqual(25);
   });

@@ -740,7 +740,7 @@ def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_
     )
     assert "concurrency:" in workflow
     assert (
-        "docker-publish-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}"
+        "docker-publish-${{ github.repository }}-${{ github.event_name == 'pull_request' && format('{0}-{1}', github.event.pull_request.number,"
         in workflow
     )
     assert (

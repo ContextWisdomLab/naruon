@@ -17,9 +17,10 @@ concurrency:
   # First-attempt PR validations share a generation key so a newer event
   # supersedes only another first attempt. Manual reruns add their stable
   # run_id and therefore cannot cancel, or be cancelled by, a newer PR event.
-  # Tag publication is unique per run and cancel-in-progress remains false.
-  group: docker-publish-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && github.run_attempt == 1 && 'first-attempt' || github.run_id }}
+  # Releases share the GHCR/AKS destination and retain up to 100 pending runs.
+  group: docker-publish-${{ github.repository }}-${{ github.event_name == 'pull_request' && format('{0}-{1}', github.event.pull_request.number, github.run_attempt == 1 && 'first-attempt' || github.run_id) || 'release-ghcr-aks' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  queue: ${{ github.event_name == 'pull_request' && 'single' || 'max' }}
 
 env:
   REGISTRY: ghcr.io

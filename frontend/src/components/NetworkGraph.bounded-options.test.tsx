@@ -73,6 +73,7 @@ describe("NetworkGraph bounded option materialization", () => {
     let nodeIterationCount = 0;
 
     // Instrument Map.prototype.values to count iterations for our specific edges and nodes
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Map.prototype.values = function(this: Map<any, any>) {
       const iterator = originalMapValues.call(this);
       const isEdgeMap = this.has('edge-0');
@@ -86,7 +87,7 @@ describe("NetworkGraph bounded option materialization", () => {
         },
         [Symbol.iterator]() { return this; }
       };
-    } as any;
+    } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
     container = document.createElement("div");
     document.body.appendChild(container);

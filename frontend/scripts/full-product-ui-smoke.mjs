@@ -704,7 +704,7 @@ const llmProvider = {
   name: "Primary OpenAI",
   provider_type: "openai",
   base_url: "https://api.openai.com/v1",
-  model_identifier: "gpt-5.4",
+  model_identifier: "gpt-4o",
   embedding_model: "text-embedding-3-small",
   is_active: true,
   configured: true,

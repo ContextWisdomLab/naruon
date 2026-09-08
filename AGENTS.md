@@ -713,12 +713,6 @@ in this repo.
 - **Collaboration**: Respect other agents' concurrent work; do not overwrite or dismiss unfamiliar changes.
 - **Subagent Delegation**: Actively delegate tasks to Subagents.
 - **UI/Browser Testing**: Use a real browser for testing (do not rely on assumptions).
-- **Search presentation boundary**: Search relationship APIs may retain source
-  message/thread identifiers and machine relationship/action codes for scoped
-  requests, state, and analytics, but the Search UI must render
-  customer-facing labels and outcomes only. Unknown enum-like values need a
-  safe product-language fallback; never expose raw identifiers, `snake_case`
-  action codes, API names, or ontology plumbing.
 - **Strict Errors**: Treat `Timeout`, `Fatal`, `Warn`, and `Denied` outputs as hard failures.
 - **Goal**: Actively manage tasks to ensure open PR counts converge to 0.
 

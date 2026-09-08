@@ -35,13 +35,17 @@ async def process_zip_file(zip_path: str | Path, session: AsyncSession) -> bool:
     """Import one fixture archive and report whether extraction was accepted."""
     with tempfile.TemporaryDirectory() as temp_dir:
         logger.info("Extracting fixture archive")
+        extracted_files: list[Path] | None
         try:
             extracted_files = await extract_backup_async(zip_path, temp_dir)
         except ArchiveError:
             logger.error("Fixture archive extraction failed")
             return False
         except Exception:
-            raise ArchiveError("Fixture archive extraction failed") from None
+            extracted_files = None
+
+        if extracted_files is None:
+            raise ArchiveError("Fixture archive extraction failed")
 
         batch_values = []
         for file_path in extracted_files:

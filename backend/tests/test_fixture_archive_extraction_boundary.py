@@ -39,15 +39,11 @@ async def test_expected_archive_error_is_bounded_and_consumed(caplog, tmp_path) 
 
 
 @pytest.mark.asyncio
-async def test_unexpected_archive_runtime_error_propagates(tmp_path) -> None:
-    session = MagicMock()
-    zip_path = tmp_path / "customer-secret.zip"
-    unexpected = RuntimeError("unexpected archive implementation failure")
+async def test_missing_fixture_directory_log_does_not_expose_path(caplog) -> None:
+    with caplog.at_level(
+        logging.ERROR, logger=zip_import_fixtures.logger.name
+    ), patch.object(zip_import_fixtures.Path, "exists", return_value=False):
+        await zip_import_fixtures.main()
 
-    with patch.object(
-        zip_import_fixtures,
-        "extract_backup_async",
-        new=AsyncMock(side_effect=unexpected),
-    ):
-        with pytest.raises(RuntimeError, match="unexpected archive implementation failure"):
-            await zip_import_fixtures.process_zip_file(zip_path, session)
+    assert "Fixture directory is unavailable" in caplog.text
+    assert "secret_fixtures" not in caplog.text

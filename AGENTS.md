@@ -1093,6 +1093,15 @@ subject to U.S. copyright, while attribution remains required.
   same PR that introduces them, and avoid hidden local-only defaults that make
   another committer's PR fail after checkout.
 
+### Upstream gateway failure boundary
+
+- An HTTP 500/502 or wrapper-exhausted message from a model-backed workflow is
+  transport evidence, not proof of a product or consumer defect. Preserve the
+  exact status, phase, duration, served-model field, and retry count, then
+  route provider discovery, failover, and capability repair to the CO
+  canonical owner. Do not add consumer-side paid fallbacks or downgrade a
+  failed verdict to clean.
+
 ## Phase 10 development rules
 
 - **Stepwise execution**: Each phase requires an atomic PR, GitHub PR Tracking,

@@ -1,8 +1,35 @@
 # Naruon Product and Technical Gap Baseline
 
-**Baseline version:** 1.2
-**Observed on:** 2026-08-26 (Asia/Seoul)
-**Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@e5e99b4e3bb081b92c602358878856536030e2ca`
+## 2026-09-08 visual evidence: smoke success is not product acceptance
+
+This observation supplements the historical inventory below. PR
+[#1599](https://github.com/ContextualWisdomLab/naruon/pull/1599) built source
+`877f0d5c1b96c3ac212ecc86630afb75532f5880` and ran the same implementation
+through test descendant `af4df216b3533ebb82dab9d361b415ddb941fa24`.
+The production build and mocked browser smoke exited zero across ten routes at
+1440×1024 and 390×844, and all twenty PNGs were directly inspected. The
+[inspection receipt](https://github.com/ContextualWisdomLab/naruon/pull/1599#issuecomment-5578964200)
+records scope and observed defects. It does not prove live provider writes,
+real backend contracts, every locale, deployment, or complete accessibility.
+
+| Observed customer gap | Canonical owner action | Acceptance evidence still required |
+| --- | --- | --- |
+| Home exposed English skip-link and `source-linked` | #1578 owns customer status copy; #1601 owns keyboard navigation copy | Merge both successors normally, then repeat keyboard-focused desktop/mobile inspection on the deployed product |
+| Search displayed raw source/thread identifiers and `sender_context` | Product Search presentation must retain identifiers at request/state boundaries while rendering relationship labels | Contract-preserving UI tests and desktop/mobile detail inspection |
+| Calendar, Data, and Security exposed intent/ETag, verifier commands/schema names, and event codes | Each product surface must replace implementation vocabulary with outcomes and next actions while retaining evidence in authorized diagnostics | Rendered-copy tests, authorization tests, and responsive screenshots |
+| Mobile Search, Projects, and Settings placed content behind sticky headers | Reproduce scrolling and keyboard focus before selecting a layout repair | Focused controls and relevant text remain visible and reachable at 390×844 |
+
+The screenshot-failure RED at `af4df216` returned a diagnostic text path as
+successful screenshot evidence. PR #1599 successor `9bb0dc7e` now throws the
+capture error, leaves no false PNG, closes the page, and retains late browser
+error detection; its focused suite passed 16/16. PR #1600 separately owns
+source-head-bound artifact retention. Both remain Proposed until current-head
+hosted checks and independent review finish. Unknown `/api/**` mocks can still
+default to HTTP 200 `{ok: true}` and remain a separate reality-gap repair.
+
+**Baseline version:** 1.3
+**Observed on:** 2026-09-08 (Asia/Seoul)
+**Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@042b0c70531b229af3acbd0421a2f23098d848b3`
 **Observed product version:** `0.14.4`  
 **Canonical completion issue:** [#1428](https://github.com/ContextualWisdomLab/naruon/issues/1428)
 

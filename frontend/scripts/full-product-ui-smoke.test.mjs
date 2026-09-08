@@ -23,13 +23,13 @@ import {
 } from "./full-product-ui-smoke.mjs";
 
 describe("route smoke late browser errors", () => {
-  it.each(["console", "pageerror"])("rejects %s errors emitted during page close", async (eventName) => {
+  it.each(["console", "pageerror", "unhandled-api"])("rejects %s errors emitted during page close", async (eventName) => {
     const handlers = {};
     let evaluationCount = 0;
     let closeCalled = false;
     const page = {
       on: (name, handler) => { handlers[name] = handler; },
-      route: async () => {},
+      route: async (pattern, handler) => { handlers[pattern] = handler; },
       goto: async () => {},
       waitForLoadState: async () => {},
       locator: () => ({ waitFor: async () => {}, innerText: async () => "Naruon" }),
@@ -44,8 +44,13 @@ describe("route smoke late browser errors", () => {
         closeCalled = true;
         if (eventName === "console") {
           handlers.console({ type: () => "error", text: () => "late-browser-failure" });
-        } else {
+        } else if (eventName === "pageerror") {
           handlers.pageerror(new Error("late-browser-failure"));
+        } else {
+          await handlers["**/api/**"]({
+            request: () => ({ url: () => "http://127.0.0.1:3001/api/unregistered?private=value" }),
+            fulfill: async () => {},
+          });
         }
       },
     };
@@ -55,7 +60,7 @@ describe("route smoke late browser errors", () => {
       { name: "desktop", width: 1440, height: 1024 },
       1,
       path.join(tmpdir(), "naruon-full-product-smoke-unit"),
-    )).rejects.toThrow("late-browser-failure");
+    )).rejects.toThrow(eventName === "unhandled-api" ? "Unhandled smoke API request" : "late-browser-failure");
     expect(closeCalled).toBe(true);
   });
 });

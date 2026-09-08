@@ -769,7 +769,7 @@ function routeJson(route, body, status = 200) {
   });
 }
 
-async function installRoutes(page) {
+async function installRoutes(page, smokeErrors) {
   let emailSendCount = 0;
   let savedAccountConfig = { ...accountConfig };
   let savedLlmProviders = [{ ...llmProvider }];
@@ -1072,7 +1072,8 @@ async function installRoutes(page) {
     if (endpoint.startsWith("/api/tools/")) return routeJson(route, { output: "ok", status: "success" });
     if (endpoint === "/api/runtime-config") return routeJson(route, {});
 
-    return routeJson(route, { ok: true });
+    smokeErrors.push("Unhandled smoke API request");
+    return routeJson(route, { error: "Unhandled smoke API request" }, 501);
   });
 }
 
@@ -1560,7 +1561,7 @@ export async function runRouteSmoke(context, routeSpec, viewportSpec, viewportCo
       }
     });
     page.on("pageerror", (error) => consoleErrors.push(`pageerror: ${error.message}`));
-    await installRoutes(page);
+    await installRoutes(page, consoleErrors);
     await page.goto(new URL(routeSpec.path, baseUrl).href, { waitUntil: "domcontentloaded" });
     await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
     await page.locator("body").waitFor({ state: "visible", timeout: 20_000 });

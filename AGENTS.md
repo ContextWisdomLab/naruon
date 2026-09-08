@@ -1102,6 +1102,15 @@ subject to U.S. copyright, while attribution remains required.
   canonical owner. Do not add consumer-side paid fallbacks or downgrade a
   failed verdict to clean.
 
+- CodeQL compatibility results require lineage, not just a check name. Record
+  the exact PR head, workflow run, job, target language, and log/annotation
+  evidence before acting on a failure. If a failed compatibility result is
+  visible but its run or job log endpoint returns `404`, classify the cause as
+  untriaged infrastructure or publication evidence, keep the gate blocked,
+  and wait for the current-head CodeQL dispatch; do not blind-rerun the same
+  head or weaken the gate. A later successful result counts only when its run
+  and target SHA match the exact current head.
+
 ## Phase 10 development rules
 
 - **Stepwise execution**: Each phase requires an atomic PR, GitHub PR Tracking,

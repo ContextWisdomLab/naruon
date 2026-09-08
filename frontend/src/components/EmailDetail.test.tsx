@@ -349,6 +349,22 @@ describe("EmailDetail", () => {
     expect(container.textContent).toContain("Thread B sibling body");
     expect(container.textContent).toContain("2개 메시지");
     expect(container.textContent).not.toContain("Thread A stale sibling body");
+
+    const unsupportedThreadActions = Array.from(
+      container.querySelectorAll<HTMLButtonElement>("button"),
+    ).filter((button) => {
+      const accessibleName = [
+        button.textContent,
+        button.getAttribute("aria-label"),
+        button.getAttribute("title"),
+      ]
+        .filter((value): value is string => Boolean(value))
+        .join(" ");
+      return ["다른 스레드 병합", "스레드 분리"].some((label) =>
+        accessibleName.includes(label),
+      );
+    });
+    expect(unsupportedThreadActions).toHaveLength(0);
   });
 
   it("renders 맥락 종합, action items, and reply drafting in reusable 판단 포인트 cards", async () => {

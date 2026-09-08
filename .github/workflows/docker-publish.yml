@@ -32,18 +32,21 @@ jobs:
           - component: backend
             image: ai_email_client-backend
             dockerfile: Dockerfile
+            base_dockerfile: Dockerfile
             context: .
             build_args: |
               BUILDKIT_INLINE_CACHE=1
           - component: naruon
             image: naruon
             dockerfile: Dockerfile
+            base_dockerfile: Dockerfile
             context: .
             build_args: |
               BUILDKIT_INLINE_CACHE=1
           - component: frontend
             image: ai_email_client-frontend
             dockerfile: frontend/Dockerfile
+            base_dockerfile: frontend/Dockerfile
             context: .
             build_args: |
               BUILDKIT_INLINE_CACHE=1
@@ -64,9 +67,28 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
+      - name: Resolve pinned Ollama base manifest
+        if: matrix.component == 'naruon'
+        run: |
+          base_image="$(awk 'toupper($1) == "FROM" { print $2; exit }' Dockerfile.ollama)"
+          if ! printf '%s\n' "$base_image" | grep -Eq '^ollama/ollama@sha256:[0-9a-f]{64}$'; then
+            printf '::error file=Dockerfile.ollama,line=1::Expected an exact ollama/ollama sha256 base pin; found %s\n' "$base_image"
+            exit 1
+          fi
+          printf 'Resolving pinned Ollama base manifest: %s\n' "$base_image"
+          manifest_output="$(docker buildx imagetools inspect "$base_image")"
+          printf '%s\n' "$manifest_output"
+          for platform in linux/amd64 linux/arm64; do
+            if ! printf '%s\n' "$manifest_output" | grep -Eq "^[[:space:]]*Platform:[[:space:]]+${platform}[[:space:]]*$"; then
+              printf '::error file=Dockerfile.ollama,line=1::Pinned Ollama manifest is missing %s\n' "$platform"
+              exit 1
+            fi
+          done
+
       - name: Prepare OCI annotation values
         id: oci
         env:
+          BASE_DOCKERFILE: ${{ matrix.base_dockerfile }}
           GIT_REF_NAME: ${{ github.ref_name }}
           IMAGE_COMPONENT: ${{ matrix.component }}
           IMAGE_NAME: ${{ matrix.image }}
@@ -76,24 +98,29 @@ jobs:
           version="$(cat VERSION)"
           created="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           vendor="${REPOSITORY%%/*}"
+          base_reference="$(awk 'toupper($1) == "FROM" { print $2; exit }' "$BASE_DOCKERFILE")"
+          if ! printf '%s\n' "$base_reference" | grep -Eq '^[A-Za-z0-9._/-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$'; then
+            printf '::error file=%s,line=1::Expected an exact tagged sha256 base pin; found %s\n' "$BASE_DOCKERFILE" "$base_reference"
+            exit 1
+          fi
+          base_digest="${base_reference##*@}"
+          base_repository="${base_reference%@*}"
+          case "$base_repository" in
+            */*) base_name="$base_reference" ;;
+            *) base_name="docker.io/library/$base_reference" ;;
+          esac
           case "$IMAGE_COMPONENT" in
             frontend)
               title="naruon frontend"
               description="Naruon Next.js frontend runtime image"
-              base_digest="sha256:191ef878ecb351d68b78219593de18bd8942afd59af59f29960dc4b24805a3f1"
-              base_name="docker.io/library/node:26-slim@${base_digest}"
               ;;
             backend)
               title="naruon backend"
               description="Naruon FastAPI backend runtime image"
-              base_digest="sha256:44dd04494ee8f3b538294360e7c4b3acb87c8268e4d0a4828a6500b1eff50061"
-              base_name="docker.io/library/python:3.14-slim@${base_digest}"
               ;;
             *)
               title="naruon"
               description="Naruon combined FastAPI and Next.js runtime image"
-              base_digest="sha256:44dd04494ee8f3b538294360e7c4b3acb87c8268e4d0a4828a6500b1eff50061"
-              base_name="docker.io/library/python:3.14-slim@${base_digest}"
               ;;
           esac
           {
@@ -158,18 +185,21 @@ jobs:
           - component: backend
             image: ai_email_client-backend
             dockerfile: Dockerfile
+            base_dockerfile: Dockerfile
             context: .
             build_args: |
               BUILDKIT_INLINE_CACHE=1
           - component: naruon
             image: naruon
             dockerfile: Dockerfile
+            base_dockerfile: Dockerfile
             context: .
             build_args: |
               BUILDKIT_INLINE_CACHE=1
           - component: frontend
             image: ai_email_client-frontend
             dockerfile: frontend/Dockerfile
+            base_dockerfile: frontend/Dockerfile
             context: .
             build_args: |
               BUILDKIT_INLINE_CACHE=1
@@ -204,6 +234,7 @@ jobs:
       - name: Prepare OCI annotation values
         id: oci
         env:
+          BASE_DOCKERFILE: ${{ matrix.base_dockerfile }}
           GIT_REF_NAME: ${{ github.ref_name }}
           IMAGE_COMPONENT: ${{ matrix.component }}
           IMAGE_NAME: ${{ matrix.image }}
@@ -214,24 +245,29 @@ jobs:
           version="${VERSION_VALUE:-$(cat VERSION)}"
           created="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           vendor="${REPOSITORY%%/*}"
+          base_reference="$(awk 'toupper($1) == "FROM" { print $2; exit }' "$BASE_DOCKERFILE")"
+          if ! printf '%s\n' "$base_reference" | grep -Eq '^[A-Za-z0-9._/-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$'; then
+            printf '::error file=%s,line=1::Expected an exact tagged sha256 base pin; found %s\n' "$BASE_DOCKERFILE" "$base_reference"
+            exit 1
+          fi
+          base_digest="${base_reference##*@}"
+          base_repository="${base_reference%@*}"
+          case "$base_repository" in
+            */*) base_name="$base_reference" ;;
+            *) base_name="docker.io/library/$base_reference" ;;
+          esac
           case "$IMAGE_COMPONENT" in
             frontend)
               title="naruon frontend"
               description="Naruon Next.js frontend runtime image"
-              base_digest="sha256:191ef878ecb351d68b78219593de18bd8942afd59af59f29960dc4b24805a3f1"
-              base_name="docker.io/library/node:26-slim@${base_digest}"
               ;;
             backend)
               title="naruon backend"
               description="Naruon FastAPI backend runtime image"
-              base_digest="sha256:44dd04494ee8f3b538294360e7c4b3acb87c8268e4d0a4828a6500b1eff50061"
-              base_name="docker.io/library/python:3.14-slim@${base_digest}"
               ;;
             *)
               title="naruon"
               description="Naruon combined FastAPI and Next.js runtime image"
-              base_digest="sha256:44dd04494ee8f3b538294360e7c4b3acb87c8268e4d0a4828a6500b1eff50061"
-              base_name="docker.io/library/python:3.14-slim@${base_digest}"
               ;;
           esac
           {

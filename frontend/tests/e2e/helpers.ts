@@ -1023,6 +1023,40 @@ export async function mockDashboardApi(page: Page, onApiRequest?: (path: string,
       return;
     }
 
+    if (path === '/api/calendar/conflicts/evaluate' && request.method() === 'POST') {
+      const payload = JSON.parse(request.postData() || '{}') as {
+        existing_ics?: string;
+      };
+      if (payload.existing_ics?.includes('STATUS:CANCELLED')) {
+        await fulfillJson(route, {
+          decision_code: 'available',
+          reason_code: 'no_overlapping_commitment',
+          conflicts: [],
+          recommended_action: 'Proceed with scheduling.',
+          policy_version: 'status-weighted-v1',
+        });
+        return;
+      }
+      if (payload.existing_ics?.includes('STATUS:TENTATIVE')) {
+        await fulfillJson(route, {
+          decision_code: 'review_required',
+          reason_code: 'lower_priority_conflict_requires_explicit_resolution',
+          conflicts: [],
+          recommended_action: 'Review the lower-priority conflict.',
+          policy_version: 'status-weighted-v1',
+        });
+        return;
+      }
+      await fulfillJson(route, {
+        decision_code: 'blocked',
+        reason_code: 'equal_or_higher_priority_conflict',
+        conflicts: [],
+        recommended_action: 'Choose another time.',
+        policy_version: 'status-weighted-v1',
+      });
+      return;
+    }
+
     if (path === '/api/calendar/writeback-intent' && request.method() === 'POST') {
       await fulfillJson(route, {
         workspace_id: 'default',

@@ -22,6 +22,10 @@ def test_strip_html_markup_never_returns_raw_tag_like_payloads(payload, expected
     assert strip_html_markup(payload) == expected
 
 
+def test_strip_html_markup_preserves_legitimate_comment_terminator_text():
+    assert strip_html_markup("Keep --&gt; as text") == "Keep --> as text"
+
+
 @pytest.mark.parametrize(
     "safe_text",
     [

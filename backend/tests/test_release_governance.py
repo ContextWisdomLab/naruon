@@ -138,6 +138,15 @@ def test_backend_images_use_python_314_runtime() -> None:
     assert 'python-version: "3.12"' not in bandit_workflow
 
 
+def test_bandit_pr_runs_share_only_the_same_repository_pr_group() -> None:
+    workflow = read_repo_text(".github/workflows/bandit.yml")
+    assert (
+        "group: bandit-${{ github.repository }}-${{ github.event_name == 'pull_request' "
+        "&& github.event.pull_request.number || github.ref }}"
+    ) in workflow
+    assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in workflow
+
+
 def test_python_314_backend_image_uses_binary_wheel_dependencies() -> None:
     dockerfile = read_repo_text("Dockerfile")
     requirements = read_repo_text("backend/requirements.txt")

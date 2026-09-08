@@ -39,6 +39,8 @@ async def process_zip_file(zip_path: str | Path, session: AsyncSession):
         except ArchiveError:
             logger.error("Fixture archive extraction failed")
             return
+        except Exception:
+            raise ArchiveError("Fixture archive extraction failed") from None
 
         batch_values = []
         for file_path in extracted_files:

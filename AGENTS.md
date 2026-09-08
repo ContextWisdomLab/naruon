@@ -1145,9 +1145,12 @@ subject to U.S. copyright, while attribution remains required.
   messages only; never include archive paths, extracted filenames, provider
   exception text, or secret-bearing traceback values. Catch extraction and
   parsing failures at their boundary, return the documented failure result,
-  and add a regression test that injects both a secret path and secret text
-  into the exception and asserts neither reaches captured logs. This applies
-  to ZIP, EML, MBOX, and attachment import paths.
+  and add regression tests that exercise each prohibited value through its
+  actual input channel (archive path, extracted filename, provider error, and
+  traceback) and assert neither the value nor its fixed log record leaks into
+  captured logs. An exception-only sentinel is insufficient because it can
+  miss a separate path-bearing log argument. This applies to ZIP, EML, MBOX,
+  and attachment import paths.
 
 ## Phase 10 development rules
 

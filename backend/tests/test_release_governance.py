@@ -713,6 +713,19 @@ def test_app_ci_runs_backend_and_frontend_checks_without_duplicate_release_pushe
     assert "release/**" not in push_block
 
 
+def test_pr_governance_coalesces_only_pr_events() -> None:
+    workflow = read_repo_text(".github/workflows/pr-governance.yml")
+
+    assert (
+        "${{ github.workflow }}-${{ github.repository }}-${{ github.event.pull_request.number"
+        in workflow
+    )
+    assert (
+        "cancel-in-progress: ${{ github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review' }}"
+        in workflow
+    )
+
+
 def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_tags() -> (
     None
 ):

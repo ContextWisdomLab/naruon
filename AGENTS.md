@@ -653,8 +653,11 @@ in this repo.
   `codegraph init -i` autonomously without asking first; keep generated
   `.codegraph/` and `.cursor/rules/codegraph.mdc` artifacts local unless a
   future repository policy explicitly says to commit them. OpenCode PR review
-  uses the project `opencode.jsonc` MCP servers for CodeGraph, DeepWiki,
-  Context7, and web search. It must initialize CodeGraph before review so
+  receives the canonical `opencode.jsonc` from the central required workflow;
+  do not add repository-local `opencode.json` or `opencode.jsonc` files. The
+  central runtime owns model routing and MCP registration, including Graphify;
+  consumer repositories own no provider or MCP fallback configuration. It must
+  initialize CodeGraph before review so
   structural findings cite graph-backed evidence instead of relying only on grep
   or raw file reads; use Context7 for current library docs, DeepWiki for
   repository documentation, and web search only for bounded external lookups.

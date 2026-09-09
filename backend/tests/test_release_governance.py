@@ -633,14 +633,20 @@ def test_review_automation_uses_central_required_workflows_without_local_copies(
             f"central review automation must not be copied locally: {relative_path}"
         )
 
+    for relative_path in ("opencode.json", "opencode.jsonc"):
+        assert not (REPO_ROOT / relative_path).exists(), (
+            f"central OpenCode configuration must not be copied locally: {relative_path}"
+        )
+
     assert "ContextualWisdomLab central required workflows" in normalized_readme
     assert "This repository does not carry repo-local" in normalized_readme
-    assert "OpenCode, Strix, or merge-scheduler workflow copies" in normalized_readme
+    assert "OpenCode configuration copies" in normalized_readme
     assert (
         "branch updates, auto-merge, and mechanical merge actions" in normalized_readme
     )
     assert "central required workflows" in architecture
     assert "ContextualWisdomLab/.github" in architecture
+    assert "central `opencode.jsonc`" in architecture
     assert "central required workflow" in normalized_security
     assert "openai/openai/gpt-4.1" not in architecture
 

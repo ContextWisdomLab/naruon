@@ -46,7 +46,8 @@ mail/calendar/file systems.
 - OpenCode Review, Strix Security Scan, and PR Review Merge Scheduler are
   supplied by the ContextualWisdomLab central required workflows from
   `ContextualWisdomLab/.github`. This repository does not carry repo-local
-  OpenCode, Strix, or merge-scheduler workflow copies; branch updates,
+  OpenCode configuration copies, Strix workflows, or merge-scheduler workflows;
+  branch updates,
   auto-merge, and mechanical merge actions run as the target repository's
   `github-actions[bot]` through the central workflow. Pending CodeRabbit or
   required-check evidence is a wait state, not a hard blocker.

@@ -232,7 +232,11 @@ and grounding: [`docs/architecture/kg-extractor-seam.md`](docs/architecture/kg-e
 OpenCode Review, Strix Security Scan, and PR Review Merge Scheduler are supplied
 by the ContextualWisdomLab central required workflows in
 `ContextualWisdomLab/.github`; this repository does not carry repo-local copies
-of those workflows or their dedicated support scripts. The central Strix
+of those workflows, their dedicated support scripts, or OpenCode JSON files.
+The required review runtime copies the central `opencode.jsonc` into its
+exact-head isolation directory, so a repository-local `opencode.json` or
+`opencode.jsonc` would only create an unaudited provider and MCP policy fork.
+The central Strix
 workflow treats pull request code as untrusted whenever repository secrets are
 available: privileged PR scans run from trusted workflow code, fetch the pull
 request head as Git objects, and copy PR-head blobs into temporary scan scopes

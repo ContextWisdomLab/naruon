@@ -17,6 +17,9 @@ merged by metadata-only robot governance (see
 `docs/development/merge-gate-policy.md`); OpenCode Review, Strix Security Scan,
 and the merge scheduler come from central workflows in
 `ContextualWisdomLab/.github` — do not reintroduce repo-local copies.
+That owner also supplies the only `opencode.jsonc` used by required review;
+do not add a repository-local `opencode.json` or `opencode.jsonc`. A local copy
+forks model and MCP policy without changing the isolated central review runtime.
 
 ## Common commands
 

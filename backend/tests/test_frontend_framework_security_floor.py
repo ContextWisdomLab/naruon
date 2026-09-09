@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -12,6 +13,8 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_ROOT = REPO_ROOT / "frontend"
+NEXT_SECURITY_FLOOR = (16, 3, 3)
+SHARP_SECURITY_FLOOR = (0, 35, 4)
 
 
 def _exact_version(value: str) -> tuple[int, int, int]:
@@ -22,88 +25,142 @@ def _exact_version(value: str) -> tuple[int, int, int]:
     return tuple(int(part) for part in match.groups())
 
 
-def _assert_weak_lock_text_contract(
-    lock_text: str, next_value: str, sharp_value: str
+def _resolved_version(value: str) -> tuple[int, int, int]:
+    """Return the exact version prefix from a pnpm peer-qualified resolution."""
+
+    version = value.split("(", 1)[0]
+    return _exact_version(version)
+
+
+def _package_key_version(package_key: str, package_name: str) -> tuple[int, int, int]:
+    """Return the version encoded by one pnpm package/snapshot key."""
+
+    prefix = f"{package_name}@"
+    assert package_key.startswith(prefix), (
+        f"expected {package_name!r} lock key, got {package_key!r}"
+    )
+    return _resolved_version(package_key[len(prefix) :])
+
+
+def _assert_lock_contract(
+    lock: dict[str, Any],
+    next_value: str,
+    eslint_next_value: str,
+    sharp_value: str,
 ) -> None:
-    """Preserve the predecessor lock checks while stronger regressions are RED."""
+    """Validate root resolution identity and every locked Next.js/sharp security floor."""
 
-    assert f"next@{next_value}" in lock_text, (
-        "lockfile must resolve the reviewed Next.js release"
+    importer = lock["importers"]["."]
+    next_import = importer["dependencies"]["next"]
+    assert next_import["specifier"] == next_value, (
+        "root importer must preserve the package.json Next.js specifier"
     )
-    assert f"sharp@{sharp_value}" in lock_text, (
-        "lockfile must resolve the reviewed sharp release"
+    assert _resolved_version(str(next_import["version"])) == _exact_version(next_value), (
+        "root importer must resolve the reviewed Next.js release"
     )
-    assert "next@16.3.1" not in lock_text, (
-        "vulnerable Next.js 16.3.1 must not remain locked"
-    )
-    assert "sharp@0.35.0" not in lock_text, (
-        "vulnerable sharp 0.35.0 must not remain locked"
+    assert f"next@{next_import['version']}" in lock["snapshots"], (
+        "root importer Next.js resolution must reference an existing snapshot"
     )
 
+    eslint_next_import = importer["devDependencies"]["eslint-config-next"]
+    assert eslint_next_import["specifier"] == eslint_next_value, (
+        "root importer must preserve the eslint-config-next specifier"
+    )
+    assert _resolved_version(str(eslint_next_import["version"])) == _exact_version(
+        eslint_next_value
+    ), "root importer must resolve the reviewed eslint-config-next release"
+    assert f"eslint-config-next@{eslint_next_import['version']}" in lock["snapshots"], (
+        "root importer eslint-config-next resolution must reference an existing snapshot"
+    )
 
-def test_frontend_framework_and_image_security_floors() -> None:
-    """Keep Next.js and sharp at releases containing the reviewed security fixes."""
+    assert str(lock["overrides"]["sharp"]) == sharp_value, (
+        "lockfile sharp override must match the reviewed workspace override"
+    )
+
+    expected_next = _exact_version(next_value)
+    expected_sharp = _exact_version(sharp_value)
+    for section_name in ("packages", "snapshots"):
+        section = lock[section_name]
+        next_keys = [key for key in section if key.startswith("next@")]
+        sharp_keys = [key for key in section if key.startswith("sharp@")]
+
+        assert next_keys, f"{section_name} must contain a Next.js resolution"
+        assert sharp_keys, f"{section_name} must contain a sharp resolution"
+        assert any(
+            _package_key_version(key, "next") == expected_next for key in next_keys
+        ), f"{section_name} must contain the reviewed Next.js release"
+        assert any(
+            _package_key_version(key, "sharp") == expected_sharp for key in sharp_keys
+        ), f"{section_name} must contain the reviewed sharp release"
+
+        for package_key in next_keys:
+            assert _package_key_version(package_key, "next") >= NEXT_SECURITY_FLOOR, (
+                f"{section_name} contains Next.js below the reviewed security floor: "
+                f"{package_key}"
+            )
+        for package_key in sharp_keys:
+            assert _package_key_version(package_key, "sharp") >= SHARP_SECURITY_FLOOR, (
+                f"{section_name} contains sharp below the reviewed security floor: "
+                f"{package_key}"
+            )
+
+
+def _frontend_security_inputs() -> tuple[str, str, str, dict[str, Any]]:
+    """Load the manifest, workspace override, and generated lock contract."""
 
     package = json.loads((FRONTEND_ROOT / "package.json").read_text(encoding="utf-8"))
     next_value = package["dependencies"]["next"]
     eslint_next_value = package["devDependencies"]["eslint-config-next"]
+    workspace = yaml.safe_load(
+        (FRONTEND_ROOT / "pnpm-workspace.yaml").read_text(encoding="utf-8")
+    )
+    sharp_value = str(workspace["overrides"]["sharp"])
+    lock = yaml.safe_load(
+        (FRONTEND_ROOT / "pnpm-lock.yaml").read_text(encoding="utf-8")
+    )
+    return next_value, eslint_next_value, sharp_value, lock
 
-    assert _exact_version(next_value) >= (16, 3, 3), (
+
+def test_frontend_framework_and_image_security_floors() -> None:
+    """Keep manifests and every generated lock resolution at reviewed patched releases."""
+
+    next_value, eslint_next_value, sharp_value, lock = _frontend_security_inputs()
+
+    assert _exact_version(next_value) >= NEXT_SECURITY_FLOOR, (
         "Next.js must include the fixes for CVE-2026-75604 and "
         "GHSA-2xp9-vwfh-vxw4"
     )
     assert eslint_next_value == next_value, (
         "eslint-config-next must stay on the same reviewed release as Next.js"
     )
-
-    workspace = yaml.safe_load(
-        (FRONTEND_ROOT / "pnpm-workspace.yaml").read_text(encoding="utf-8")
-    )
-    sharp_value = str(workspace["overrides"]["sharp"])
-    assert _exact_version(sharp_value) >= (0, 35, 4), (
+    assert _exact_version(sharp_value) >= SHARP_SECURITY_FLOOR, (
         "sharp must include the fix for GHSA-rgj7-g3m4-5g8c"
     )
-
-    lock_text = (FRONTEND_ROOT / "pnpm-lock.yaml").read_text(encoding="utf-8")
-    _assert_weak_lock_text_contract(lock_text, next_value, sharp_value)
+    _assert_lock_contract(lock, next_value, eslint_next_value, sharp_value)
 
 
-def test_security_floor_rejects_importer_drift() -> None:
-    """Reject a partially regenerated lock whose root importer drifts below the floor."""
+@pytest.mark.parametrize("field", ["specifier", "version"])
+def test_security_floor_rejects_root_importer_drift(field: str) -> None:
+    """Reject a partially regenerated lock whose root Next.js importer drifts."""
 
-    package = json.loads((FRONTEND_ROOT / "package.json").read_text(encoding="utf-8"))
-    next_value = package["dependencies"]["next"]
-    workspace = yaml.safe_load(
-        (FRONTEND_ROOT / "pnpm-workspace.yaml").read_text(encoding="utf-8")
-    )
-    sharp_value = str(workspace["overrides"]["sharp"])
-    lock = yaml.safe_load(
-        (FRONTEND_ROOT / "pnpm-lock.yaml").read_text(encoding="utf-8")
-    )
-    lock["importers"]["."]["dependencies"]["next"]["specifier"] = "16.3.2"
+    next_value, eslint_next_value, sharp_value, lock = _frontend_security_inputs()
+    lock["importers"]["."]["dependencies"]["next"][field] = "16.3.2"
 
     with pytest.raises(AssertionError):
-        _assert_weak_lock_text_contract(
-            yaml.safe_dump(lock, sort_keys=False), next_value, sharp_value
-        )
+        _assert_lock_contract(lock, next_value, eslint_next_value, sharp_value)
 
 
-def test_security_floor_rejects_any_below_floor_lock_entry() -> None:
-    """Reject stale vulnerable package/snapshot entries, not only two known literals."""
+@pytest.mark.parametrize(
+    ("section_name", "package_key"),
+    [("packages", "next@16.3.2"), ("snapshots", "sharp@0.35.3")],
+)
+def test_security_floor_rejects_every_below_floor_lock_entry(
+    section_name: str, package_key: str
+) -> None:
+    """Reject any stale vulnerable Next.js or sharp package/snapshot entry."""
 
-    package = json.loads((FRONTEND_ROOT / "package.json").read_text(encoding="utf-8"))
-    next_value = package["dependencies"]["next"]
-    workspace = yaml.safe_load(
-        (FRONTEND_ROOT / "pnpm-workspace.yaml").read_text(encoding="utf-8")
-    )
-    sharp_value = str(workspace["overrides"]["sharp"])
-    lock = yaml.safe_load(
-        (FRONTEND_ROOT / "pnpm-lock.yaml").read_text(encoding="utf-8")
-    )
-    lock["packages"]["next@16.3.2"] = {}
-    lock["snapshots"]["sharp@0.35.3"] = {}
+    next_value, eslint_next_value, sharp_value, lock = _frontend_security_inputs()
+    lock[section_name][package_key] = {}
 
     with pytest.raises(AssertionError):
-        _assert_weak_lock_text_contract(
-            yaml.safe_dump(lock, sort_keys=False), next_value, sharp_value
-        )
+        _assert_lock_contract(lock, next_value, eslint_next_value, sharp_value)

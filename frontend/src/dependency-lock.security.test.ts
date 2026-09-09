@@ -13,17 +13,17 @@ const lockfile = readFileSync(
 );
 
 describe("frontend dependency lock security contract", () => {
-  it("pins the patched js-yaml release in the workspace override and lock metadata", () => {
-    expect(workspaceManifest).toMatch(/^\s{2}js-yaml:\s*"4\.3\.1"\s*$/m);
-    expect(lockfile).toMatch(/^\s{2}js-yaml:\s*4\.3\.1\s*$/m);
+  it("pins js-yaml at the current reviewed patched 4.x release", () => {
+    expect(workspaceManifest).toMatch(/^\s{2}js-yaml:\s*"4\.3\.2"\s*$/m);
+    expect(lockfile).toMatch(/^\s{2}js-yaml:\s*4\.3\.2\s*$/m);
   });
 
-  it("contains no vulnerable js-yaml resolution and routes ESLint through 4.3.1", () => {
+  it("contains no pre-4.3.2 js-yaml resolution and routes ESLint through 4.3.2", () => {
     const resolvedVersions = [...lockfile.matchAll(/^\s{2}js-yaml@(\d+\.\d+\.\d+):\s*$/gm)]
       .map((match) => match[1]);
 
-    expect([...new Set(resolvedVersions)]).toEqual(["4.3.1"]);
-    expect(lockfile).not.toMatch(/js-yaml@4\.3\.0|js-yaml:\s*4\.3\.0/);
+    expect([...new Set(resolvedVersions)]).toEqual(["4.3.2"]);
+    expect(lockfile).not.toMatch(/js-yaml@4\.3\.[01]|js-yaml:\s*4\.3\.[01]/);
 
     const snapshots = lockfile.slice(lockfile.indexOf("\nsnapshots:\n"));
     const eslintConfigSnapshot = snapshots.match(
@@ -31,6 +31,6 @@ describe("frontend dependency lock security contract", () => {
     )?.[1];
 
     expect(eslintConfigSnapshot).toBeDefined();
-    expect(eslintConfigSnapshot).toContain("js-yaml: 4.3.1");
+    expect(eslintConfigSnapshot).toContain("js-yaml: 4.3.2");
   });
 });

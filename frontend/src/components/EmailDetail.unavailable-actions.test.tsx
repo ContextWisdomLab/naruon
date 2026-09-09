@@ -80,6 +80,14 @@ function setInputValue(input: HTMLInputElement, value: string) {
   });
 }
 
+function isZeroOpacityUtility(utility: string) {
+  if (utility === "opacity-0") return true;
+  const arbitraryOpacity = utility.match(
+    /^opacity-\[([+-]?(?:\d+(?:\.\d*)?|\.\d+))%?\]$/,
+  );
+  return arbitraryOpacity ? Number(arbitraryOpacity[1]) === 0 : false;
+}
+
 function hiddenReasonUtility(className: string) {
   return className.split(/\s+/).find((token) => {
     const utility = token.slice(token.lastIndexOf(":") + 1).replace(/^!/, "");
@@ -87,8 +95,7 @@ function hiddenReasonUtility(className: string) {
       utility === "sr-only" ||
       utility === "hidden" ||
       utility === "invisible" ||
-      utility === "opacity-0" ||
-      /^opacity-\[0(?:\.0+)?\]$/.test(utility)
+      isZeroOpacityUtility(utility)
     );
   });
 }
@@ -121,6 +128,8 @@ describe("EmailDetail unavailable reply actions", () => {
     ["responsive hidden utility", (reason: HTMLElement) => reason.classList.add("max-sm:hidden")],
     ["important hidden utility", (reason: HTMLElement) => reason.classList.add("md:!hidden")],
     ["zero-opacity utility", (reason: HTMLElement) => reason.classList.add("opacity-0")],
+    ["arbitrary zero-percent opacity", (reason: HTMLElement) => reason.classList.add("opacity-[0%]")],
+    ["arbitrary fractional zero opacity", (reason: HTMLElement) => reason.classList.add("opacity-[.0]")],
     ["inline display none", (reason: HTMLElement) => reason.style.setProperty("display", "none")],
     ["inline visibility hidden", (reason: HTMLElement) => reason.style.setProperty("visibility", "hidden")],
     ["inline zero opacity", (reason: HTMLElement) => reason.style.setProperty("opacity", "0")],

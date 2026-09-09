@@ -6,13 +6,6 @@
 **Observed product version:** `0.14.4`  
 **Canonical completion issue:** [#1428](https://github.com/ContextualWisdomLab/naruon/issues/1428)
 
-**Central OpenCode consumer boundary:** Draft PR
-[#1625](https://github.com/ContextualWisdomLab/naruon/pull/1625) removes both
-repository-local OpenCode JSON names and pins that absence in a focused
-contract. Central owner PR [#2052](https://github.com/ContextualWisdomLab/.github/pull/2052)
-remains the prerequisite for Graphify and the canonical `opencode.jsonc`;
-neither open PR is protected-release or deployment evidence.
-
 **Inventory observation:** the 106-PR open surface below is a fresh live
 scan captured at `2026-08-25T15:52:01Z`, which returned 106 open PRs after
 PR #1337 merged into protected `develop` at `2026-08-25T00:10:39Z` and

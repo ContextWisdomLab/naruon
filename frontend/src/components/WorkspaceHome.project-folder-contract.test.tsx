@@ -57,7 +57,7 @@ async function waitForCondition(condition: () => boolean) {
 
 function stubDesktopViewport() {
   vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
-    matches: query.includes("min-width: 1024px") ? false : false,
+    matches: false,
     media: query,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
@@ -114,6 +114,7 @@ describe("WorkspaceHome project-folder response contract", () => {
     {},
     { folder_uid: 7, project_name: "Project", webdav_path: "/projects/one", owner_user_id: "user-1", organization_id: null },
     { folder_uid: "folder-1", project_name: null, webdav_path: "/projects/one", owner_user_id: "user-1", organization_id: null },
+    { folder_uid: "folder-1", project_name: "Project", webdav_path: null, owner_user_id: "user-1", organization_id: null },
     { folder_uid: "folder-1", project_name: "Project", webdav_path: "/projects/one", organization_id: null },
     { folder_uid: "folder-1", project_name: "Project", webdav_path: "/projects/one", owner_user_id: "user-1", organization_id: 42 },
   ])("fails closed for malformed project-folder member %#", async (member) => {
@@ -126,13 +127,13 @@ describe("WorkspaceHome project-folder response contract", () => {
     expect(container?.querySelector('[role="alert"] button')?.textContent).toBe("다시 시도");
   });
 
-  it("keeps a backend-contract project folder available", async () => {
+  it.each([null, "org-1"])("keeps a backend-contract project folder available with organization_id=%s", async (organizationId) => {
     await renderDashboard([{
       folder_uid: "folder-1",
       project_name: "Project",
       webdav_path: "/projects/one",
       owner_user_id: "user-1",
-      organization_id: null,
+      organization_id: organizationId,
     }]);
     await waitForCondition(() => container?.querySelector('[aria-label="프로젝트 원본"]')?.textContent?.includes("1") ?? false);
 

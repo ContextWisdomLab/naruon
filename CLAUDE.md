@@ -2,11 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-For horizontally scrolling workspace navigation, preserve real leading and
-trailing container padding. jsdom does not enforce the browser's maximum
-`scrollLeft`, so verify first/last active destinations in a real browser at the
-target breakpoint instead of accepting mocked rectangle tests alone.
-
 ## Read AGENTS.md first
 
 `AGENTS.md` at the repo root is the canonical agent operating guide. Read it

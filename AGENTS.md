@@ -480,11 +480,6 @@ in this repo.
 - Icon-only workspace controls must carry localized `aria-label` text matching
   the visible app language; do not rely on the SVG icon alone for Calendar,
   Tasks, drawer, modal, or toolbar actions.
-- Horizontal navigation visibility tests that assign `scrollLeft` in jsdom do
-  not model the browser's maximum scroll clamp. Give the scroll container real
-  leading/trailing padding, then verify the first and last active destinations
-  in an actual browser at the target breakpoint; a mocked rectangle assertion
-  alone cannot prove the requested inset.
 - Execution steps resulting in `Timeout`, `Fatal`, `Warn`, or `Denied` outputs are considered hard failures. Tests must run without these warnings to be considered passing.
 - Strix success artifacts must also be scanned for `Timeout`, `Fatal`, `Warn`,
   or `Denied` output before accepting clean evidence. Filter only narrowly known

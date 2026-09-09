@@ -178,6 +178,9 @@ jobs:
     name: publish ${{ matrix.component }} image
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    concurrency:
+      group: Build and Publish Docker Images-publish-${{ github.repository }}-${{ github.ref }}
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write

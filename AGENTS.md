@@ -135,6 +135,11 @@ in this repo.
   feature PR onto the owner branch, and byte-compare manifests and lockfiles.
   The feature diff must contain no competing dependency policy; keep it Draft
   until the owner PR is protected-merged.
+- Do not run `next build` concurrently with `next start`, Playwright, or `tsc`
+  in the same worktree. They share the mutable `.next` directory and can cause
+  request timeouts or missing generated type files. Run build first, restart
+  the server from that artifact, then run browser and type checks sequentially;
+  use separate worktrees only when parallel evidence is necessary.
 - OpenCode Review, Strix Security Scan, and PR Review Merge Scheduler are
   provided by ContextualWisdomLab central required workflows in
   `ContextualWisdomLab/.github`; do not reintroduce repo-local copies of

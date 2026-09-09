@@ -164,6 +164,10 @@ Next.js frontend ──> FastAPI backend (control plane) ──> Postgres + pgve
   merge the owner's exact head normally, retarget onto that owner branch, and
   verify the manifests and lockfile are byte-identical. Keep the dependent PR
   Draft until the owner change is protected-merged.
+- In one worktree, serialize `next build`, `next start`/Playwright, and `tsc`.
+  They mutate or consume the same `.next` tree; overlap presents as request
+  timeouts or missing generated types. Build, restart, then verify, or isolate
+  truly parallel checks in separate worktrees.
 - Never expose sequential database ids through APIs or UI — use opaque public
   ids (`task_uid`, `source_uid`, `folder_uid`, `document_id`). New tables and
   columns use at least two-word `snake_case` names (`task_title`, not `title`).

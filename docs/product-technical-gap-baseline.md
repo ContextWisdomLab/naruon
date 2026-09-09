@@ -1,6 +1,6 @@
 # Naruon Product and Technical Gap Baseline
 
-**Baseline version:** 1.58
+**Baseline version:** 1.59
 **Observed on:** 2026-09-09 (Asia/Seoul; earlier dated receipts remain historical snapshots)
 **Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@042b0c70531b229af3acbd0421a2f23098d848b3`
 **Observed product version:** `0.14.4`  
@@ -27,6 +27,16 @@ source·lock·config Trivy HIGH/CRITICAL fixable-only 검사는 취약점·오�
 각 0건이었다. lock 생성 중 나온 ESLint 지원 종료 경고와 ESLint 10 실험의 peer
 경고는 실패한 조사 출력으로 남기고 검증 근거에서 제외했다. hosted current-head
 Checks와 독립 review는 진행 중이며 이 로컬 결과로 대신하지 않는다.
+
+현재 head의 Strix run `34330773245`, job `102400192673`은 gateway preflight 뒤
+두 scanner attempt 모두 Caido proxy `127.0.0.1:48080`의 `loginAsGuest` 10회 안에
+준비되지 않아 `STRIX_SANDBOX_UNAVAILABLE`로 실패했다. `Vulnerabilities 0` 표시는
+완결 보고서가 아니며 clean evidence로 쓰지 않는다. upstream
+[usestrix/strix#1036](https://github.com/usestrix/strix/issues/1036)과 Proposed
+[#1056](https://github.com/usestrix/strix/pull/1056)은 sandbox image의 선행
+`chown -R`과 고정 약 68초 readiness budget을 원인으로 연결한다. upstream main과
+현재 1.5.3에는 출시된 deadline 설정이 없으므로 provider 변경이나 blind rerun 대신
+owner release를 기다려 exact version으로 채택하고 실 runner에서 다시 검증한다.
 
 NetworkGraph successor [#1593](https://github.com/ContextualWisdomLab/naruon/pull/1593)은
 현재 `8d18e790ed97ef4caaf028c71e4ea6a77713da3d`, 고객 문구 successor

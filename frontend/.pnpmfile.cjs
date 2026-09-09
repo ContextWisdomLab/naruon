@@ -7,7 +7,7 @@ module.exports = {
       if (pkg.peerDependencies && pkg.peerDependencies.postcss) {
         pkg.peerDependencies.postcss = '^8.5.15';
       }
-      if (pkg.devDependencies && pkg.devDependencies.postcss) {
+      if (pkg.devDependencies && pkg.devDependencies.postcss && pkg.devDependencies.postcss !== '8.5.26') {
         pkg.devDependencies.postcss = '^8.5.15';
       }
       return pkg;

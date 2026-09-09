@@ -24,5 +24,5 @@ def test_frontend_lock_resolves_only_patched_nanoid_3x() -> None:
         )
         assert nanoid_3x == [f"nanoid@{PATCHED_NANOID_VERSION}"]
 
-    postcss_snapshot = lock["snapshots"]["postcss@8.5.24"]
+    postcss_snapshot = lock["snapshots"]["postcss@8.5.26"]
     assert postcss_snapshot["dependencies"]["nanoid"] == PATCHED_NANOID_VERSION

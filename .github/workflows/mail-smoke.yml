@@ -6,6 +6,11 @@ on:
 permissions:
   contents: read
 
+# 수동 self-hosted 스모크는 취소하지 않고 직렬화한다.
+concurrency:
+  group: mail-smoke-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   smoke:
     runs-on: [self-hosted, mail-egress]

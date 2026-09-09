@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# 배포는 취소하지 않고 직렬화한다 (태그별 독립 큐).
+concurrency:
+  group: deploy-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy to AKS

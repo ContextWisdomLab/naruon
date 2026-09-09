@@ -13,11 +13,6 @@ on:
 permissions:
   contents: read
 
-# 같은 PR의 구형 실행만 취소한다. 태그 푸시는 ref가 달라 독립 실행된다.
-concurrency:
-  group: docker-publish-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 env:
   REGISTRY: ghcr.io
   # Keep the explicit opt-in as belt-and-suspenders. The real warning removal
@@ -179,10 +174,6 @@ jobs:
   publish_images:
     name: publish ${{ matrix.component }} image
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    # 릴리스 발행은 취소하지 않고 직렬화한다. 태그별 독립 큐.
-    concurrency:
-      group: docker-publish-release-${{ github.repository }}-${{ github.ref }}
-      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: read

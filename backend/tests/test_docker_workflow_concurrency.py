@@ -24,7 +24,7 @@ def test_docker_pr_concurrency_isolates_reruns_from_first_attempts() -> None:
     )
 
     assert expected_group in header
-    assert bare_group not in header.splitlines()
+    assert bare_group not in {line.strip() for line in header.splitlines()}
     assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in header
 
 
@@ -63,6 +63,20 @@ def test_docker_release_publication_serializes_whole_image_set_per_ref() -> None
     assert "cancel-in-progress: false" in publish_section
     assert "packages: write" in publish_section
     assert "matrix.component" not in publish_section
+
+
+def test_release_latest_tag_is_stable_version_only() -> None:
+    """Fail closed before a prerelease VERSION can mutate the latest image tag."""
+    release_workflow = (
+        REPO_ROOT / ".github/workflows/docker-release-images.yml"
+    ).read_text(encoding="utf-8")
+
+    assert 'if ! [[ "$VERSION" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]]; then' in (
+        release_workflow
+    )
+    assert "must be a stable X.Y.Z release" in release_workflow
+    assert "flavor: |\n            latest=false" in release_workflow
+    assert "type=raw,value=latest" in release_workflow
 
 
 def test_release_serialization_decision_and_operability_docs_match_active_pr() -> None:

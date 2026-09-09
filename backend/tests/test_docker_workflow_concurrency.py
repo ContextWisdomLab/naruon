@@ -30,6 +30,19 @@ def test_docker_pr_concurrency_isolates_reruns_from_first_attempts() -> None:
 
 def test_docker_release_publication_queues_each_component_per_ref() -> None:
     """Serialize same-ref image publication without evicting pending release jobs."""
+    release_workflow = (
+        REPO_ROOT / ".github/workflows/docker-release-images.yml"
+    ).read_text(encoding="utf-8")
+    publish_section = release_workflow.split("jobs:\n", 1)[1]
+
+    assert "workflow_call:" in release_workflow
+    assert "matrix.component" in publish_section
+    assert "push: true" in publish_section
+    assert "sbom: true" in publish_section
+
+
+def test_docker_release_publication_serializes_whole_image_set_per_ref() -> None:
+    """Hold one same-ref release lock until every component publication completes."""
     workflow = (REPO_ROOT / ".github/workflows/docker-publish.yml").read_text(
         encoding="utf-8"
     )
@@ -37,15 +50,12 @@ def test_docker_release_publication_queues_each_component_per_ref() -> None:
         "\n  deploy_preflight:", 1
     )[0]
     expected_group = (
-        "group: Build and Publish Docker Images-publish-${{ github.repository }}-"
-        "${{ github.ref }}-${{ matrix.component }}"
-    )
-    bare_group = (
-        "group: Build and Publish Docker Images-publish-${{ github.repository }}-"
-        "${{ github.ref }}"
+        "group: Build and Publish Docker Images-publish-set-"
+        "${{ github.repository }}-${{ github.ref }}"
     )
 
+    assert "uses: ./.github/workflows/docker-release-images.yml" in publish_section
     assert expected_group in publish_section
-    assert bare_group not in publish_section.splitlines()
     assert "queue: max" in publish_section
     assert "cancel-in-progress: false" in publish_section
+    assert "matrix.component" not in publish_section

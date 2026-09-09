@@ -190,10 +190,6 @@ in this repo.
 ## PR automation and review defaults
 
 - Follow `docs/development/merge-gate-policy.md` for PR gate interpretation.
-- Do not assume a Draft-to-ready toggle reruns required checks. Verify that the
-  repository workflows subscribe to `ready_for_review` and confirm fresh run ids;
-  when they do not, add a genuine evidence or repair delta instead of an empty
-  commit, then validate the unchanged product behavior on the new exact head.
 - PR Governance must stay metadata-only: no PR-head checkout, no admin merge, no
   review dismissal, and no security-check suppression.
 - Pending/queued checks, pending CodeRabbit evidence, and a missing structured

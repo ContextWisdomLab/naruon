@@ -165,9 +165,20 @@ def test_vitest_security_floor_covers_manifest_and_lock() -> None:
     lock = yaml.safe_load(
         (FRONTEND_ROOT / "pnpm-lock.yaml").read_text(encoding="utf-8")
     )
+    importer = lock["importers"]["."]["devDependencies"]
     for package_name in ("vitest", "@vitest/coverage-v8"):
         declared_value = package["devDependencies"][package_name]
         assert _exact_version(declared_value) >= VITEST_SECURITY_FLOOR
+        importer_entry = importer[package_name]
+        assert importer_entry["specifier"] == declared_value, (
+            f"root importer must preserve the package.json {package_name} specifier"
+        )
+        assert _resolved_version(str(importer_entry["version"])) == _exact_version(
+            declared_value
+        ), f"root importer must resolve the reviewed {package_name} release"
+        assert f"{package_name}@{importer_entry['version']}" in lock["snapshots"], (
+            f"root importer {package_name} resolution must reference an existing snapshot"
+        )
         for section_name in ("packages", "snapshots"):
             package_keys = [
                 package_key

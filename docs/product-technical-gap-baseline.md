@@ -1,6 +1,6 @@
 # Naruon Product and Technical Gap Baseline
 
-**Baseline version:** 1.56
+**Baseline version:** 1.57
 **Observed on:** 2026-09-09 (Asia/Seoul; earlier dated receipts remain historical snapshots)
 **Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@042b0c70531b229af3acbd0421a2f23098d848b3`
 **Observed product version:** `0.14.4`  
@@ -31,7 +31,7 @@ Checks와 독립 review는 진행 중이며 이 로컬 결과로 대신하지 �
 NetworkGraph successor [#1593](https://github.com/ContextualWisdomLab/naruon/pull/1593)은
 현재 `8d18e790ed97ef4caaf028c71e4ea6a77713da3d`, 고객 문구 successor
 [#1603](https://github.com/ContextualWisdomLab/naruon/pull/1603)은
-`49bcf8332cbc5aebcd05f4ff93d76b0ade791734`다. 둘 다 #1623 branch를 base로 둔
+`511f7a04d989eed808ac45837ec0b6a2f80f1b3f`다. 둘 다 #1623 branch를 base로 둔
 Draft이며 최신 `09cb87a25`를 force push 없이 normal merge했다. 두 branch의
 package·lock tree는 owner와 동일하다. #1593에서는 #1603이 소유할 Playwright
 설정·locator·screenshot 변경을 normal revert commit으로 제거해 NetworkGraph
@@ -46,8 +46,10 @@ focused NetworkGraph 3파일·17건, ESLint, audit 0건, 16-route build는 통�
 영문 `action_reason`을 그대로 표시하던 공통 경로도 수리했다. bounded
 `next_action`을 제품 소유 행동·판단 근거 문구의 키로 함께 쓰며, 알 수 없는
 action은 중립 문구로 실패 폐쇄한다. 상세 provider/model rationale는 API 계약에
-남더라도 화면에는 직접 내보내지 않는다. 이 원칙은 #1603의 AGENTS와 CLAUDE,
-helper test, signed-session browser assertion에 함께 고정했다.
+남더라도 화면에는 직접 내보내지 않는다. helper test와 signed-session browser
+assertion이 이 경계를 고정한다. 동시 writer의 최신 commit은 AGENTS·CLAUDE를
+문서 owner [#1549](https://github.com/ContextualWisdomLab/naruon/pull/1549)로
+돌려보내 제품 PR에는 Search 구현·검증 delta만 남겼다.
 
 최신 runtime tree에서 focused 2파일·22건, audit 취약점 0건, 16-route build,
 Playwright 1건이 terminal 0이었다. 실제 한국어 `/search`를 1280×1024와
@@ -70,13 +72,16 @@ released observation/blocking contract를 exact version으로 고정하고 실�
 금지한다.
 
 중앙 [`.github#2051`](https://github.com/ContextualWisdomLab/.github/pull/2051)의
-현재 head는 `70e8c1fcf19b2e56578e021e0b4d84a808104b24`다. hosted Agent Review Runtime
-Quality run `34330189849`는 2,998 passed·1 skipped와 100% coverage 뒤
+현재 head는 `558693e0333e48012beea142f739bc634b0674a7`다. 이전 hosted Agent Review
+Runtime Quality run `34330189849`는 2,998 passed·1 skipped와 100% coverage 뒤
 `test_codeql_coordinator_skips_dispatch_when_exact_run_has_terminal_jobs`에서
 `jq`가 숫자 값에 `.jobs`를 적용해 exit 5로 실패했다. 이를 shell echo나 provider
-오류로 오인하지 않고 중앙 coordination owner에 전달했다. 같은 head rerun이나
-consumer workaround 없이 fixture/API shape와 coordinator iteration의 공통 원인을
-수리해야 한다.
+오류로 오인하지 않고 중앙 coordination owner에 전달했다. 후속 normal commits는
+slurped exact-run 응답 fixture와 base-ref 결합을 수리했으며 새 head의 hosted 검증은
+대기 중이다. Naruon #1623의 세 CodeQL compatibility job은 실제 분석 결함이 아니라
+현재 head scan을 dispatch한 뒤 terminal verdict를 기다리도록 exit 1을 낸 상태다.
+같은 head blind rerun이나 consumer workaround 없이 중앙 exact-run·base 결합의 새
+검증 결과를 기다린다.
 
 권위 근거: GitHub Advisory Database. (2026, August 6). *JS-YAML: Quadratic CPU
 consumption in !!omap resolution (3.x and 4.x)*

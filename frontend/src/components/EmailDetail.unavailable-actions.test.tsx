@@ -146,6 +146,9 @@ describe("EmailDetail unavailable reply actions", () => {
     const draftReason = container.querySelector<HTMLElement>(`#${draftReasonId}`);
     expect(draftReason?.textContent).toBe("답장 초안 지시를 입력해주세요");
     expect(draftReason?.classList.contains("sr-only")).toBe(false);
+    expect(draftReason?.classList.contains("hidden")).toBe(false);
+    expect(draftReason?.hidden).toBe(false);
+    expect(draftReason?.getAttribute("aria-hidden")).not.toBe("true");
 
     const sendButton = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
       (button) => button.textContent?.includes("답장 보내기"),
@@ -158,6 +161,9 @@ describe("EmailDetail unavailable reply actions", () => {
     const sendReason = container.querySelector<HTMLElement>(`#${sendReasonId}`);
     expect(sendReason?.textContent).toBe("답장 초안을 먼저 작성해주세요");
     expect(sendReason?.classList.contains("sr-only")).toBe(false);
+    expect(sendReason?.classList.contains("hidden")).toBe(false);
+    expect(sendReason?.hidden).toBe(false);
+    expect(sendReason?.getAttribute("aria-hidden")).not.toBe("true");
 
     await act(async () => {
       root?.render(

@@ -236,10 +236,10 @@ The IA reserves named **slots** each extension point attaches to. Today only two
 | **KG enricher** (LLM extractor, multilingual) | Semantic-graph view in /data | `[NEW]` |
 | **Work-item type** | New object types in /projects, /tasks | `[PARTIAL]` |
 | **UI panel** | Side panel in any context view; or a route segment | `[NEW]` |
-| **Agent** (noema runtime) | /ai-hub + inline action on Decision Points | `[NEW]` |
+| **Agent** (Naruon workspace runtime) | Registered `noema-general-agent` + `run_noema_agent`; product invocation remains unwired | `[PARTIAL]` |
 | **Scheduling** (RSVP, free/busy, room) | The §4.8 scheduling family | `[NEW]` |
 
-**Registry & lifecycle** (`/plugins`, `[NEW]`): browse & enable (enabled set reshapes nav) · manifest & contract (extension points, permissions, version) · versioned stable plugin API · permissions/data-scope grant · isolated execution for untrusted plugins → **noema quarantine sandbox**.
+**Registry & lifecycle** (`/plugins`, `[NEW]`): browse & enable (enabled set reshapes nav) · manifest & contract (extension points, permissions, version) · versioned stable plugin API · permissions/data-scope grant · isolated execution for untrusted plugins through a future immutable contract published by **ContextualWisdomLab/quarantine-sandbox-runtime**. Its repository exists, but no GitHub Release is currently available for adoption.
 
 **Verticals & capabilities that plug in:** **BandScope** (`band/<id>` context + rehearsal scheduling — the killer demo) · **pg-erd-cloud** (ERD panel; data-requirement & erd_candidate) · **Inkspan** (TipTap WYSIWYG compose; Markdown→HTML on send) · **scopeweave** (PM/WBS/EVM/CPM + ITSM) · **codec-carver** (audio/video STT + diarization + consented voiceprint → meeting minutes) · **contextual-orchestrator** (not a UI surface; the LLM cost-router KG enrichers call).
 
@@ -363,7 +363,7 @@ Because the system auto-resolves rather than asking, it never forces a user to r
 
 **6.2 Stable versioned plugin API + registry.** Versioned API; a plugin declares the API version it targets; incompatible versions refused at registration with a clear reason; registry lists installed plugins, versions, occupied extension points (conflict detection when two claim the same exclusive hook).
 
-**6.3 Isolated execution for untrusted plugins (noema sandbox).** Untrusted plugins run least-privilege in the noema sandbox scoped to granted extension points and contexts; cannot bridge/read an ungranted context; attempts denied and audited (G4).
+**6.3 Isolated execution for untrusted plugins.** Untrusted plugins run least-privilege through a released `quarantine-sandbox-runtime` contract scoped to granted extension points and contexts; they cannot bridge or read an ungranted context, and denied attempts are audited (G4). Naruon does not import an owner branch or treat Noema as its application runtime.
 
 **6.4 BandScope vertical (P2's world).** Registers Band/Rehearsal/Setlist entities + rehearsal Events into the shared KG; rehearsal commitments participate in status-weighted conflict detection (Epic 3) and per-band isolation (Epics 4/5) automatically — the killer demo works because BandScope is a first-class plugin.
 
@@ -386,7 +386,7 @@ Because the system auto-resolves rather than asking, it never forces a user to r
 *Link real GitHub/GitLab repos/commits/PRs to the KG and PM — do NOT rebuild GitHub.*
 **9.1 Link real code artifacts to threads/projects.** References live GitHub/GitLab objects (no mirror/rebuild); links carry provenance + confidence (G5); thread into the same synthesis card (Epic 1).
 **9.2 Code ↔ PM traceability.** Commits/PRs traced (*fulfills / relates-to*) to project_graph_objects with citations; requirement → PR → merge-status views (G5); wrong links corrected in one gesture (G2).
-**9.3 In-agent code/graph/data analysis (noema agent).** The do-anything agent runs in the noema runtime with scoped, audited access; answers cite concrete artifacts + confidence; recommends and acts under approve/hold for anything irreversible (G1, G2, G5).
+**9.3 In-agent code/graph/data analysis (Naruon workspace agent).** The workspace agent runs in Naruon's application boundary with scoped, audited access; answers cite concrete artifacts + confidence; recommends and acts under approve/hold for anything irreversible (G1, G2, G5). Model routing is consumed through a released `contextual-orchestrator` contract, while separately isolated execution requires a released `quarantine-sandbox-runtime` contract.
 
 *Coverage: 3 personas × 9 epics × 34 user stories.*
 
@@ -576,7 +576,7 @@ flowchart TB
         SVC["Domain services (backend/services/*)<br/>email·threading·caldav·ontology·reply_sla"]
         PG[("Postgres<br/>+ pgvector + Apache AGE (target)")]
     end
-    subgraph sandbox["noema — Quarantine Sandbox"]
+    subgraph sandbox["quarantine-sandbox-runtime — planned, unreleased contract"]
         UP["Untrusted plugin runtime<br/>(isolated exec, capability-scoped)"]
     end
     subgraph capabilities["Plugins: Verticals + Capabilities"]
@@ -621,7 +621,7 @@ flowchart TB
 | Application | FastAPI, `PRIVATE_API_DEPENDENCIES` on ~25 routers | First-party | ABAC via `access_policy.evaluate_access` + `scoped_role_assignments` |
 | Kernel | Plugin registry, hook bus, worker pool | First-party | New layer (TARGET) the API and services register against |
 | Plugins (trusted) | In-process / first-party capabilities | First-party, reviewed | pg-erd, Inkspan, scopeweave, codec-carver |
-| Plugins (untrusted) | **noema** sandbox | Untrusted | Capability-scoped, no ambient DB/creds |
+| Plugins (untrusted) | **quarantine-sandbox-runtime** contract | Untrusted | Capability-scoped, no ambient DB/creds |
 | Data | Postgres + pgvector (+ Apache AGE, TARGET) | First-party | `EncryptedString` for secrets; row-level owner scoping |
 | Edge | Self-hosted connector | Customer-controlled | Mailbox creds never leave premises |
 
@@ -641,7 +641,7 @@ display_name: "BandScope"
 plugin_kind: "vertical"              # vertical | capability | connector | agent
 api_range: ">=2.0.0 <3.0.0"          # semver range against the Plugin API
 license_spdx: "Apache-2.0"           # gate: must be permissive (see §7.8)
-trust_tier: "trusted"                # trusted (in-proc) | untrusted (noema)
+trust_tier: "trusted"                # trusted (in-proc) | untrusted (external isolation contract)
 extension_points:
   - point: "ingest.source"
     handler: "bandscope.ingest:RehearsalCalendarSource"
@@ -677,14 +677,14 @@ Contract rules: **namespaced graph types** (a plugin may only create node/edge t
 | `search.ranker` | Contribute a signal to hybrid ranking | `api/search` `_search_score` |
 | `workitem.type` | Define a new work-item type + lifecycle | `ticket_tasks.source_type` strings |
 | `ui.panel` | Mount a React panel into a route segment | per-area `*Layout.tsx` |
-| `agent` | Register an autonomous agent (runs in noema if untrusted) | `agent_run_records` |
+| `agent` | Register a Naruon workspace agent; external isolation is contract-bound | `agent_run_records` |
 | `schedule` | Declare recurring jobs | `reply_sla_scheduler` |
 
 Hooks are **typed and ordered** (each point has a Pydantic input/output contract and deterministic invocation order by priority then plugin_id). Enrichers/extractors return **candidate** nodes/edges with confidence; the **kernel — not the plugin — commits them**, applying provenance (`extractor_name`, `version`, cited source segments) and the inference layer's confidence discipline.
 
 **Registry & versioned API** — `plugin_registrations` table + service is source of truth for installed plugins, granted capabilities, trust tier, signature verification, enable/disable per tenant/user. The kernel advertises `platform_api_version`; a plugin's `api_range` must satisfy it. **Additive within a major; breaking changes bump the major** behind a deprecation window (mirrors the org NO-REGRESSION posture). Load-time compatibility gate: license SPDX check → signature verify → api_range satisfiability → capability subset check → type-namespace reservation; any failure = refuse + audit event.
 
-**noema quarantine sandbox** — untrusted plugins never run in-process: separate process/container, seccomp/namespace-restricted, no host filesystem, no ambient network; capability-mediated I/O only (the same `PluginContext` methods, marshalled); CPU/memory/wall-clock/token budgets enforced by the scheduler; every KG mutation tagged with `plugin_id`/`version` and landing as a *candidate* subject to human-correct-by-exception. The GitHub review agent and the naruon "do-anything" agent run here.
+**quarantine-sandbox-runtime contract** — untrusted plugins never run in-process: a separately published owner service provides process/container isolation, seccomp/namespace restrictions, no host filesystem, no ambient network, and capability-mediated I/O. CPU/memory/wall-clock/token budgets are enforced by the scheduler; every KG mutation is tagged with `plugin_id`/`version` and lands as a *candidate* subject to human-correct-by-exception. Naruon's workspace agent remains in the Naruon application boundary; this plan does not assign it to Noema or copy an isolation owner's implementation.
 
 **How verticals attach:** **BandScope** binds `ingest.source` + `kg.enricher` (Band/Rehearsal nodes, `plays_in`, membership as a **norm-group**) + `workitem.type` + `ui.panel` + `agent`, reusing the platform's Event/Commitment entities and status-weighted conflict engine (the killer demo is BandScope contributing nodes + the platform doing the work). **pg-erd-cloud** binds `dom.processor`/`kg.extractor` (schema → `erd_candidate`) + `ui.panel`. **Inkspan** binds `ui.panel` + compose (TipTap Markdown/HTML, offline Noto OFL fonts, base64 inline images). **scopeweave** binds `kg.extractor` + `workitem.type` + `ui.panel` (WBS/EVM/CPM over dependency edges). **codec-carver** binds `dom.processor` (STT/omni over audio+video → transcript content nodes + diarized speaker/voiceprint nodes, consent-gated).
 
@@ -791,6 +791,11 @@ This section is the honest reconciliation of vision against the code as it stand
 - Live screens (`/mail`, `/calendar`, `/tasks`, `/projects`, `/data`, `/search`, `/ai-hub`, `/prompt-studio`, `/tools`, `/security`, `/settings`) + the BFF proxy; `NetworkGraph.tsx` and `DecisionPointCard.tsx` components.
 
 ### 8.2 `[PARTIAL]` — exists but incomplete, **reconcile / wire**
+- **Naruon workspace agent:** `noema-general-agent` is enabled in the registry,
+  resolves through `agent_registry`, and has a tested `run_noema_agent`
+  entrypoint; no product route invokes it yet, and its provider-direct seam must
+  migrate to a released `contextual-orchestrator` contract rather than be
+  duplicated.
 - **Semantic project graph:** a full read/confirm/correct/traceability API over `project_graph_objects`/`_edges`/`_corrections` is live, but its extractor (`extract_project_semantics`/`persist_project_graph_projection`) is **test-only** — no ingest worker or API calls it, so the semantic graph is **unpopulated in production**. (Verified via `callers_of` → not_found + grep showing only test callers.) *Highest-leverage gap: the dense KG is built but empty.*
 - **Multi-account model:** a normalized `email_messages/instances/raws/threads` model exists in parallel to the live `email_records` model and is **not reconciled**; live ingest still writes the legacy model.
 - **Project-graph curation UI** (`/projects`) is read/confirm/correct only; extraction not wired.
@@ -800,7 +805,7 @@ This section is the honest reconciliation of vision against the code as it stand
 - The **inference layer**: norm-group resolution → posterior estimation → status-weighted conflict → DecisionPoint auto-resolve + correct-by-exception wiring.
 - **Scheduling / RSVP family**: status-weighted conflict engine, free/busy, iTIP/iMIP RSVP, room booking, anticipatory approval chaining (today: reply-SLA + DAV writeback only; no attendee/RSVP entities).
 - **LLM-driven, language-agnostic extraction** routed through **contextual-orchestrator** (today: deterministic rules, local LLM keys, no gateway integration).
-- **Plugin architecture**: runtime registry, versioned Plugin API, hook bus, extension slots, and the **noema** quarantine sandbox (today: only two hardcoded static seams).
+- **Plugin architecture**: runtime registry, versioned Plugin API, hook bus, extension slots, and a released **quarantine-sandbox-runtime** contract (today: only two hardcoded static seams).
 - **Privacy**: context switcher + per-context isolation boundary + consent-bridge disclosure model + `disclosure_policies`/`context_boundaries` tables (today: row-level owner scope + ABAC substrate only).
 - **Unified `/streams`** (email+chat+code+issue+audio); **batch embedding pipeline** (`batch_embedding_service` does not exist); hybrid search over segments/entities.
 - **Connector completeness**: CardDAV handler + POP3 over WS (both declared, not implemented end-to-end).
@@ -823,7 +828,7 @@ The single highest-leverage move: the semantic graph exists but is empty.
 
 ### Phase 1 — Platform / Plugin SDK
 5. **Stand up the plugin kernel** — registry (`plugin_registrations`/`plugin_grants`), versioned Plugin API, typed/ordered hook bus — by generalizing the `attachment_parser` + `project_graph` extractor seams into one contract.
-6. Land the **noema quarantine sandbox** for untrusted plugins (capability-scoped, budget-bounded, candidate-only KG mutations).
+6. Adopt a released **ContextualWisdomLab/quarantine-sandbox-runtime** contract for untrusted plugins (capability-scoped, budget-bounded, candidate-only KG mutations); its repository is the canonical owner, but because it currently has no GitHub Release, develop and release the missing owner capability before consumer adoption.
 7. Ship the `/plugins` registry UI and the manifest/license/signature load-gate.
 *Makes "everything is a plugin" real; unblocks every vertical.*
 

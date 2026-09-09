@@ -169,12 +169,19 @@ def test_vitest_security_floor_covers_manifest_and_lock() -> None:
         declared_value = package["devDependencies"][package_name]
         assert _exact_version(declared_value) >= VITEST_SECURITY_FLOOR
         for section_name in ("packages", "snapshots"):
-            for package_key in lock[section_name]:
-                if package_key.startswith(f"{package_name}@"):
-                    assert (
-                        _package_key_version(package_key, package_name)
-                        >= VITEST_SECURITY_FLOOR
-                    ), f"{section_name} contains {package_name} below the reviewed floor"
+            package_keys = [
+                package_key
+                for package_key in lock[section_name]
+                if package_key.startswith(f"{package_name}@")
+            ]
+            assert package_keys, (
+                f"{section_name} must contain a {package_name} resolution"
+            )
+            for package_key in package_keys:
+                assert (
+                    _package_key_version(package_key, package_name)
+                    >= VITEST_SECURITY_FLOOR
+                ), f"{section_name} contains {package_name} below the reviewed floor"
 
 
 @pytest.mark.parametrize("package_name", ["vitest", "@vitest/coverage-v8"])

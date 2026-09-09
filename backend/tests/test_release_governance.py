@@ -601,6 +601,20 @@ def test_scorecard_sarif_normalizer_rejects_escape_links_and_large_input(
     assert module.main([str(normalizer), str(expected)]) == 65
 
 
+def test_agents_entry_points_to_current_product_and_governance_sources() -> None:
+    agents = read_repo_text("AGENTS.md")
+
+    assert "<!-- CWL-ENTRY -->" in agents
+    assert "docs/architecture/naruon-product-spec.md" in agents
+    assert "docs/product-technical-gap-baseline.md" in agents
+    assert "ContextualWisdomLab/projects/1" in agents
+    assert "ContextualWisdomLab/naruon/issues/1428" in agents
+    assert "ContextualWisdomLab/naruon/pull/1436" in agents
+    assert "docs/agent-github-project-protocol.md" in agents
+    assert "docs/product-goal-directive.md" in agents
+    assert "not private agent memory" in agents
+
+
 def test_review_automation_uses_central_required_workflows_without_local_copies() -> (
     None
 ):
@@ -633,20 +647,14 @@ def test_review_automation_uses_central_required_workflows_without_local_copies(
             f"central review automation must not be copied locally: {relative_path}"
         )
 
-    for relative_path in ("opencode.json", "opencode.jsonc"):
-        assert not (REPO_ROOT / relative_path).exists(), (
-            f"central OpenCode configuration must not be copied locally: {relative_path}"
-        )
-
     assert "ContextualWisdomLab central required workflows" in normalized_readme
     assert "This repository does not carry repo-local" in normalized_readme
-    assert "OpenCode configuration copies" in normalized_readme
+    assert "OpenCode, Strix, or merge-scheduler workflow copies" in normalized_readme
     assert (
         "branch updates, auto-merge, and mechanical merge actions" in normalized_readme
     )
     assert "central required workflows" in architecture
     assert "ContextualWisdomLab/.github" in architecture
-    assert "central `opencode.jsonc`" in architecture
     assert "central required workflow" in normalized_security
     assert "openai/openai/gpt-4.1" not in architecture
 

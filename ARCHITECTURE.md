@@ -6,7 +6,7 @@
 flowchart LR
   UI[Next.js frontend] --> API[FastAPI backend / Naruon control plane]
   API --> DB[(Postgres + pgvector)]
-  API --> LLM[OpenAI APIs when configured]
+  API --> LLM[contextual-orchestrator released consumer API]
   API --> CONN[Outbound-only self-hosted connector]
   CONN --> MAIL[Customer IMAP/POP3/SMTP]
   CONN --> DAV[Customer CalDAV/CardDAV/WebDAV]
@@ -19,6 +19,15 @@ inbox, detail, thread history, reply composer, and network graph surfaces.
 Runtime database connectivity is secret-injected: `backend/core/config.py` has
 no fallback `DATABASE_URL`, so missing database configuration fails at startup
 rather than silently using shared development credentials.
+
+Production LLM work crosses an immutable released `contextual-orchestrator`
+API/client/schema. `contextual-orchestrator` owns provider discovery,
+capability-based routing, free-pool membership, and provider fallback; Naruon
+owns product/domain truth, authorization, tools, and context assembly. A missing
+or incompatible released owner contract fails closed instead of creating a
+Naruon-local provider/model fallback. Local deterministic fixtures and legacy
+provider surfaces may remain for migration/testing only when they are explicitly
+identified as non-production authority.
 
 ## Topic-intelligence boundary
 
@@ -83,7 +92,10 @@ registry/list/update/delete plus prompt-preview provider selection paths filter 
 the authenticated organization. Existing local databases get the same fail-closed
 owner backfill through `scripts/bootstrap_db.py`; legacy provider rows require
 explicit non-default `NARUON_IMPORT_USER_ID` and `NARUON_IMPORT_ORGANIZATION_ID`
-before bootstrap will set the new columns non-null.
+before bootstrap will set the new columns non-null. This table and its direct
+provider-routing fields are legacy migration surfaces, not the production
+provider/model authority; new production LLM work must consume the released
+`contextual-orchestrator` contract instead of extending this registry as a router.
 
 `ticket_tasks` stores email-derived execution items as ticket-like work records.
 The table and its new columns use at least two-word `snake_case` database names
@@ -170,13 +182,15 @@ ETag/If-Match-guarded CalDAV/WebDAV PUT local adapter handlers for
 `SelfHostedConnector`; packaging, registration-token lifecycle, backend
 dispatch, and non-DAV protocol adapters remain separate connector delivery work.
 
-LLM provider `base_url` is also a server-side egress boundary, not an arbitrary
-URL field. Provider registry create/update paths are organization-admin scoped,
-and LLM call sinks validate custom OpenAI-compatible base URLs with HTTPS-only
-syntax, no userinfo/query or fragment, exact host membership in
-`ALLOWED_LLM_BASE_URL_HOSTS`, and DNS answers that are all globally routable.
-Missing allowlist configuration fails closed; the default provider path should
-leave `base_url` unset.
+The legacy LLM-provider `base_url` path remains a server-side egress boundary
+while migration is incomplete, not an arbitrary URL field or production routing
+authority. Existing provider registry create/update paths remain
+organization-admin scoped, and current call sinks retain HTTPS-only syntax,
+userinfo/query/fragment rejection, exact `ALLOWED_LLM_BASE_URL_HOSTS` membership,
+and globally routable DNS validation until the legacy path is removed. Missing
+allowlist configuration still fails closed. New production model work must not
+select a provider endpoint through this surface; it uses the immutable released
+`contextual-orchestrator` consumer contract.
 
 ## Batch embedding routing boundary
 
@@ -192,12 +206,13 @@ SSRF-guarded, allowlisted, pinned-address HTTP client
 (`build_llm_provider_http_client`) that fronts every other outbound LLM call.
 naruon records a durable `llm_batch_jobs` / `llm_batch_items` audit trail
 (routing mode, the orchestrator's batch id, reported cost) for observability.
-The path degrades gracefully: if batching is disabled, the orchestrator base URL
-is rejected by the egress guard, or the orchestrator is unreachable, the caller
-transparently falls back to the per-item embedding path. A local `pg-llm-batch`
-package/checkout remains only as an optional offline-dev fallback, gated behind
-orchestrator-unavailable and an explicit local DSN; naruon does not vendor a
-gitlink for that fallback in this PR.
+The currently implemented per-item fallback is migration behavior rather than
+canonical provider authority: if batching is disabled or the orchestrator path
+cannot be used, callers may still reach the legacy per-item embedding path, but
+that path must not grow new production provider/model selection. A local
+`pg-llm-batch` package/checkout remains only as an optional offline-dev fallback,
+gated behind orchestrator-unavailable and an explicit local DSN; naruon does not
+vendor a gitlink for that fallback in this PR.
 
 ## Semantic project-graph extractor seam
 
@@ -216,27 +231,23 @@ and the runner degrades down the chain instead of losing the projection. New
 extractors (including future plugins on the platform plan's `kg.extractor`
 extension point) register a selector without editing ingest.
 
-Routing LLM extraction through **contextual-orchestrator** is modelled as a
-transport concern: the orchestrator is an OpenAI-compatible gateway, so the
-`orchestrator` selector reuses the identical grounded LLM extractor
-(`extract_project_semantics_llm`, which enforces segment citations) but points
-its SSRF-allowlisted client (`build_llm_provider_http_client`) at
-`PROJECT_GRAPH_ORCHESTRATOR_BASE_URL` instead of the raw provider. The provider
-API key stays the tenant's Fernet-encrypted credential, and the orchestrator base
-URL must be HTTPS and exact-host allowlisted by `ALLOWED_LLM_BASE_URL_HOSTS`;
-an unset or rejected endpoint fails closed to the deterministic extractor. Design
-and grounding: [`docs/architecture/kg-extractor-seam.md`](docs/architecture/kg-extractor-seam.md).
+The current `orchestrator` selector still reuses the grounded LLM extractor and
+an OpenAI-compatible transport adapter, but that compatibility layer is legacy
+migration plumbing rather than Naruon-owned provider/model routing. It points the
+SSRF-allowlisted client (`build_llm_provider_http_client`) at
+`PROJECT_GRAPH_ORCHESTRATOR_BASE_URL`; its existing credential and allowlist
+handling remains in place until the released owner client replaces it. New
+production behavior must consume the immutable released `contextual-orchestrator`
+API/client/schema and must not add raw-provider fallback here. An unset or
+rejected endpoint fails closed to the deterministic extractor. Design and
+grounding: [`docs/architecture/kg-extractor-seam.md`](docs/architecture/kg-extractor-seam.md).
 
 ## CI security boundary
 
 OpenCode Review, Strix Security Scan, and PR Review Merge Scheduler are supplied
 by the ContextualWisdomLab central required workflows in
 `ContextualWisdomLab/.github`; this repository does not carry repo-local copies
-of those workflows, their dedicated support scripts, or OpenCode JSON files.
-The required review runtime copies the central `opencode.jsonc` into its
-exact-head isolation directory, so a repository-local `opencode.json` or
-`opencode.jsonc` would only create an unaudited provider and MCP policy fork.
-The central Strix
+of those workflows or their dedicated support scripts. The central Strix
 workflow treats pull request code as untrusted whenever repository secrets are
 available: privileged PR scans run from trusted workflow code, fetch the pull
 request head as Git objects, and copy PR-head blobs into temporary scan scopes

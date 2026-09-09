@@ -1,4 +1,9 @@
 ## [Unreleased]
+
+### Fixed
+- [UX] 비활성화된 메일 답장/전송 버튼의 헬퍼 텍스트가 의도와 다르게 무조건적으로 표시되던 문제를 수정했습니다. 이제 해당 액션이 불가능한 상태일 때만 관련 이유가 시각적으로 표시되며, 레이아웃 깨짐 현상을 해결하기 위해 UI 구조를 flex-col로 개선했습니다.
+
+## [Unreleased]
 - 긴 이메일·첨부 본문을 의미 단위 청크로 임베딩한 뒤 기존 email/attachment 벡터 계약으로 평균화하고, 청크 요청·벡터 누적을 제한된 창으로 처리합니다. OpenAI `text-embedding-3-*`에는 저장 차원(`1536`)을 직접 요청하도록 보강했습니다. 합성 메일 fixture 5건(70청크)과 provider 요청 계약으로 1,536차원 벡터 경로를 검증했으며, 실행 시 선택한 임베딩 제공자에 본문·파싱된 첨부 텍스트를 전송할 수 있습니다. 회사 기밀 데이터는 fixture·commit·PR·log에 포함하지 않습니다.
 - EmailDetail 테스트가 지원하지 않는 스레드 병합/분리 버튼을 `textContent`뿐 아니라 `aria-label`과 `title` 접근 가능 이름으로도 검출하도록 바꿔, 아이콘 전용 버튼 회귀를 놓치지 않습니다.
 
@@ -139,7 +144,8 @@
 - LLM provider 전용 HTTP transport가 검증된 base URL의 scheme/host/port와 `Host` 헤더를 전송 직전에 고정하도록 보강해 임의 요청 URL 또는 헤더 주입을 통한 SSRF 우회를 차단했습니다.
 - 도구 webhook URL 등록 시 localhost, 사설망, link-local, 내부 도메인을 차단해 SSRF 우회를 방지했습니다.
 - release governance 테스트 계약에서 부분 실행 경로 기반 `subprocess.run` 경로를 제거해 테스트 보안 점검이 절대 경로 기반 실행 계약과 어긋나지 않도록 정리했습니다.
-- **CRLF 인젝션 방지:** 이메일 전송 API(`POST /api/emails/send`)의 `subject`, `to`, `in_reply_to`, `references` 파라미터에서 개행 문자(`\r`, `\n`)를 차단하는 엄격한 Pydantic 검증 로직을 추가하여 SMTP 명령 인젝션 취약점을 해결했습니다.
+- **CRLF 인젝션 방지:** 이메일 전송 API(`POST /api/emails/send`)의 `subject`, `to`, `in_reply_to`, `references` 파라미터에서 개행 문자(``, `
+`)를 차단하는 엄격한 Pydantic 검증 로직을 추가하여 SMTP 명령 인젝션 취약점을 해결했습니다.
 - **이중 확장자 검증:** 이메일 파일 업로드 API(`POST /api/emails/import-files`)에서 `.exe.eml` 등 악성 이중 확장자 파일이 업로드되는 것을 방지하도록 확장자 검증 로직을 강화했습니다.
 
 ### 추가
@@ -648,7 +654,7 @@
 - E001.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E001.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E001.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E001.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E001.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E001.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E001.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E001.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -679,7 +685,7 @@
 - E002.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E002.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E002.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E002.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E002.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E002.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E002.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E002.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -710,7 +716,7 @@
 - E003.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E003.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E003.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E003.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E003.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E003.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E003.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E003.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -741,7 +747,7 @@
 - E004.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E004.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E004.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E004.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E004.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E004.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E004.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E004.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -772,7 +778,7 @@
 - E005.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E005.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E005.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E005.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E005.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E005.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E005.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E005.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -803,7 +809,7 @@
 - E006.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E006.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E006.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E006.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E006.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E006.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E006.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E006.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -834,7 +840,7 @@
 - E007.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E007.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E007.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E007.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E007.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E007.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E007.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E007.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -865,7 +871,7 @@
 - E008.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E008.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E008.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E008.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E008.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E008.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E008.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E008.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -896,7 +902,7 @@
 - E009.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E009.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E009.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E009.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E009.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E009.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E009.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E009.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -927,7 +933,7 @@
 - E010.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E010.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E010.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E010.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E010.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E010.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E010.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E010.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -958,7 +964,7 @@
 - E011.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E011.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E011.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E011.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E011.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E011.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E011.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E011.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -989,7 +995,7 @@
 - E012.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E012.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E012.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E012.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E012.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E012.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E012.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E012.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1020,7 +1026,7 @@
 - E013.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E013.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E013.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E013.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E013.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E013.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E013.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E013.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1051,7 +1057,7 @@
 - E014.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E014.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E014.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E014.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E014.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E014.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E014.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E014.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1082,7 +1088,7 @@
 - E015.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E015.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E015.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E015.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E015.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E015.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E015.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E015.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1113,7 +1119,7 @@
 - E016.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E016.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E016.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E016.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E016.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E016.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E016.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E016.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1144,7 +1150,7 @@
 - E017.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E017.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E017.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E017.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E017.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E017.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E017.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E017.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1175,7 +1181,7 @@
 - E018.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E018.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E018.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E018.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E018.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E018.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E018.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E018.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1206,7 +1212,7 @@
 - E019.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E019.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E019.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E019.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E019.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E019.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E019.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E019.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1237,7 +1243,7 @@
 - E020.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E020.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E020.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E020.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E020.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E020.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E020.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E020.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1268,7 +1274,7 @@
 - E021.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E021.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E021.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E021.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E021.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E021.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E021.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E021.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1299,7 +1305,7 @@
 - E022.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E022.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E022.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E022.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E022.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E022.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E022.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E022.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1330,7 +1336,7 @@
 - E023.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E023.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E023.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E023.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E023.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E023.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E023.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E023.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1361,7 +1367,7 @@
 - E024.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E024.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E024.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E024.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E024.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E024.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E024.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E024.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1392,7 +1398,7 @@
 - E025.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E025.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E025.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E025.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E025.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E025.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E025.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E025.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1423,7 +1429,7 @@
 - E026.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E026.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E026.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E026.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E026.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E026.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E026.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E026.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1454,7 +1460,7 @@
 - E027.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E027.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E027.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E027.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E027.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E027.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E027.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E027.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1485,7 +1491,7 @@
 - E028.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E028.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E028.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E028.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E028.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E028.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E028.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E028.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1516,7 +1522,7 @@
 - E029.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E029.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E029.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E029.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E029.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E029.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E029.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E029.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1547,7 +1553,7 @@
 - E030.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E030.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E030.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E030.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E030.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E030.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E030.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E030.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1578,7 +1584,7 @@
 - E031.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E031.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E031.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E031.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E031.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E031.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E031.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E031.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1609,7 +1615,7 @@
 - E032.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E032.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E032.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E032.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E032.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E032.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E032.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E032.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1640,7 +1646,7 @@
 - E033.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E033.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E033.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E033.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E033.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E033.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E033.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E033.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1671,7 +1677,7 @@
 - E034.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E034.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E034.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E034.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E034.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E034.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E034.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E034.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1702,7 +1708,7 @@
 - E035.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E035.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E035.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E035.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E035.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E035.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E035.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E035.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1733,7 +1739,7 @@
 - E036.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E036.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E036.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E036.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E036.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E036.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E036.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E036.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1764,7 +1770,7 @@
 - E037.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E037.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E037.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E037.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E037.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E037.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E037.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E037.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1795,7 +1801,7 @@
 - E038.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E038.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E038.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E038.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E038.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E038.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E038.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E038.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1826,7 +1832,7 @@
 - E039.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E039.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E039.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E039.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E039.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E039.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E039.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E039.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1857,7 +1863,7 @@
 - E040.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E040.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E040.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E040.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E040.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E040.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E040.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E040.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1888,7 +1894,7 @@
 - E041.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E041.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E041.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E041.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E041.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E041.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E041.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E041.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1919,7 +1925,7 @@
 - E042.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E042.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E042.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E042.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E042.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E042.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E042.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E042.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1950,7 +1956,7 @@
 - E043.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E043.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E043.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E043.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E043.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E043.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E043.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E043.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -1981,7 +1987,7 @@
 - E044.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E044.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E044.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E044.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E044.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E044.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E044.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E044.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2012,7 +2018,7 @@
 - E045.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E045.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E045.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E045.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E045.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E045.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E045.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E045.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2043,7 +2049,7 @@
 - E046.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E046.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E046.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E046.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E046.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E046.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E046.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E046.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2074,7 +2080,7 @@
 - E047.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E047.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E047.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E047.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E047.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E047.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E047.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E047.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2105,7 +2111,7 @@
 - E048.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E048.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E048.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E048.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E048.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E048.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E048.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E048.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2136,7 +2142,7 @@
 - E049.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E049.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E049.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E049.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E049.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E049.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E049.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E049.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2167,7 +2173,7 @@
 - E050.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E050.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E050.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E050.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E050.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E050.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E050.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E050.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2198,7 +2204,7 @@
 - E051.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E051.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E051.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E051.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E051.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E051.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E051.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E051.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2229,7 +2235,7 @@
 - E052.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E052.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E052.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E052.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E052.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E052.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E052.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E052.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2260,7 +2266,7 @@
 - E053.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E053.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E053.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E053.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E053.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E053.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E053.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E053.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2291,7 +2297,7 @@
 - E054.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E054.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E054.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E054.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E054.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E054.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E054.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E054.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2322,7 +2328,7 @@
 - E055.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E055.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E055.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E055.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E055.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E055.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E055.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E055.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2353,7 +2359,7 @@
 - E056.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E056.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E056.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E056.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E056.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E056.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E056.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E056.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2384,7 +2390,7 @@
 - E057.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E057.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E057.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E057.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E057.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E057.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E057.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E057.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2415,7 +2421,7 @@
 - E058.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E058.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E058.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E058.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E058.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E058.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E058.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E058.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2446,7 +2452,7 @@
 - E059.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E059.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E059.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E059.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E059.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E059.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E059.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E059.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2477,7 +2483,7 @@
 - E060.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E060.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E060.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E060.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E060.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E060.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E060.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E060.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2508,7 +2514,7 @@
 - E061.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E061.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E061.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E061.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E061.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E061.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E061.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E061.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2539,7 +2545,7 @@
 - E062.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E062.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E062.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E062.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E062.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E062.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E062.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E062.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2570,7 +2576,7 @@
 - E063.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E063.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E063.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E063.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E063.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E063.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E063.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E063.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2601,7 +2607,7 @@
 - E064.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E064.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E064.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E064.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E064.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E064.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E064.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E064.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2632,7 +2638,7 @@
 - E065.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E065.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E065.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E065.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E065.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E065.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E065.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E065.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2663,7 +2669,7 @@
 - E066.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E066.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E066.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E066.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E066.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E066.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E066.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E066.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.
@@ -2694,7 +2700,7 @@
 - E067.18: Mail runner 관점에서는 Naruon이 SMTP/IMAP server가 아니라 outbound client이므로 self-hosted runner는 연결성 검증 전용입니다.
 - E067.19: PostgreSQL 관점에서는 write, migration, DDL, strong consistency flow는 primary-only로 남기고 SELECT 분리는 제공된 read-only DSN이 있을 때만 다룹니다.
 - E067.20: PgBouncer/PgCat 관점에서는 관리 DB에 대한 `SHOW VERSION;` best-effort 감지는 실패 시 unknown으로 기록합니다.
-- E067.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 `\u0000` 또는 `\x00` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
+- E067.21: NUL 입력 정책 관점에서는 text/varchar/json 저장 전 ` ` 또는 ` ` 포함 문자열을 제거하는 안전 기본값을 문서화했습니다.
 - E067.22: Keycloak/Casdoor/Traefik 관점에서는 0.1.0에 즉시 완료된 기능으로 과장하지 않고 follow-up/blocker issue로 추적합니다.
 - E067.23: Frontend UX 관점에서는 PC, Tablet, Phone 반응형 분기와 가로 스크롤 방지, mobile drawer/header 정보 보존을 확인 대상으로 둡니다.
 - E067.24: operator attribution 관점에서는 GitHub mention @seonghobae와 이름 Seongho Bae를 같이 남겨 사람이 읽는 문서와 GitHub audit trail을 연결합니다.

@@ -184,6 +184,9 @@ proposed evidence.
   HTTP status from message substrings. Error responses stay honest and do not
   leak internals or credential-type details (see "Error-message contract" in
   `README.md`).
+- Relationship panels map bounded `next_action` values to customer-owned copy.
+  Never display raw `action_reason`, provider rationale, source keys, or machine
+  action names; use a neutral fallback and assert raw-field absence in browser tests.
 - Never commit `.env`, real mailbox exports, or credentials; email fixtures in
   `backend/tests/fixtures` stay small and synthetic.
 - Release bumps keep `VERSION`, `CHANGELOG.md`, `frontend/package.json`, and

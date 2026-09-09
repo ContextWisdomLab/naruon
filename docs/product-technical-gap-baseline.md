@@ -1,10 +1,49 @@
 # Naruon Product and Technical Gap Baseline
 
-**Baseline version:** 1.54
-**Observed on:** 2026-09-07 (Asia/Seoul; earlier dated receipts remain historical snapshots)
+**Baseline version:** 1.55
+**Observed on:** 2026-09-09 (Asia/Seoul; earlier dated receipts remain historical snapshots)
 **Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@042b0c70531b229af3acbd0421a2f23098d848b3`
 **Observed product version:** `0.14.4`  
 **Canonical completion issue:** [#1428](https://github.com/ContextualWisdomLab/naruon/issues/1428)
+
+## Current visual and stack repair (2026-09-09)
+
+### NetworkGraph 성능 스택과 고객 표현 Gap
+
+[#1593](https://github.com/ContextualWisdomLab/naruon/pull/1593)의
+`fb1929bcdaec10013e25318de29e1604855ad510`는 보안 의존성 owner
+[#1623](https://github.com/ContextualWisdomLab/naruon/pull/1623)의
+`e8a54fc5156ac3ffbb79bc8418c5125d7dcdea60`을 normal merge하고 그 branch로
+retarget했다. 세 package/lock 파일은 owner tree와 byte-identical이며 #1593는
+#1623 보호 병합 전까지 Draft다. 따라서 NetworkGraph의 관계 5개·노드 8개
+bounded iteration만 feature delta로 남고, 상충하는 Next·sharp 정책은 없다.
+
+동결 head에서 production build, TypeScript, focused ESLint, NetworkGraph
+17개 검사, frontend 보안 floor 5개 검사, production audit와 Trivy를 확인했다.
+모두 terminal 0이고 Trivy의 HIGH/CRITICAL 취약점·오구성·secret 분모는 각각
+0건이다. 같은 worktree에서 `next build`와 실행 server·Playwright·`tsc`를
+겹쳤을 때 요청 timeout과 생성 type 누락이 재현돼 최종 검증은 build → server
+재기동 → browser E2E → typecheck 순서로 직렬화했다. 이 RCA는 AGENTS와
+CLAUDE의 재사용 지침에도 반영됐다.
+
+`/search`의 한국어 정상 상태를 1280×1024에서 직접 열어 관계·노드 선택,
+첫 관계, 확대·맞춤, 상태 안내와 graph canvas를 검사했다. 겹침과 가로 잘림은
+보이지 않았고 signed-session mock을 쓴 focused E2E 1건도 경고 없이 통과했다.
+390×844 검색 화면은 가로 넘침이 없었다. 캡처는 같은 E2E의
+`search-network-graph-desktop.png`, `search-dag-reply-mobile.png` 산출물이다.
+실 backend가 없는 `/mail` 오류 상태도 1280×720에서 직접 확인했으며 내부
+예외 대신 한국어 오류 경계를 표시했다. 이는 실제 고객 DB·인증·provider
+통합 증거가 아니며 loading·empty·permission·8개 locale 육안 검사는 남았다.
+
+정상 검색 화면에는 `track_reply_and_tasks`, 영문 판단 근거,
+`source=<...> / thread=...` 같은 ontology plumbing이 고객에게 그대로 보인다.
+제품 UI는 출시된 ontology 계약을 소비하되 표시 문구를 고객 행동과 결과로
+변환해야 한다. 원시 식별자는 화면에서 숨기고, 관계 유형·다음 행동·근거는
+UI 번역 DB 원장과 ontology locale label 원장을 섞지 않은 채 각각 표시용
+계약으로 매핑한다. 수용 기준은 정상·loading·empty·error·permission과 8개
+locale에서 원시 key/식별자 노출 0건, screenshot 직접 검사, signed-session
+E2E, source-backed 관계 선택 동작이다. 이 Gap은 #1593 성능 수리에 섞지 않고
+제품 UI owner의 후속 PR에서 RED → fix → GREEN으로 닫는다.
 
 ## Current clean-summary regression repair (2026-09-07)
 

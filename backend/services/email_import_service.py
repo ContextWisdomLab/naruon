@@ -158,15 +158,6 @@ def canonical_email_import_upload_filename(filename: str | None) -> str | None:
         or Path(canonical_name).suffix.lower() not in SUPPORTED_EMAIL_IMPORT_SUFFIXES
     ):
         return None
-
-    # Reject files with embedded dangerous extensions (e.g. malicious.exe.eml)
-    # Exclude .com and .js as they can be part of valid email addresses or filenames
-    dangerous_extensions = {".exe", ".sh", ".bat", ".cmd", ".vbs", ".ps1"}
-    parts = canonical_name.split(".")
-    for part in parts:
-        if f".{part.lower()}" in dangerous_extensions:
-            return None
-
     return canonical_name
 
 

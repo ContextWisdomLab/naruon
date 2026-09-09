@@ -1,6 +1,6 @@
 # Naruon Product and Technical Gap Baseline
 
-**Baseline version:** 1.57
+**Baseline version:** 1.58
 **Observed on:** 2026-09-09 (Asia/Seoul; earlier dated receipts remain historical snapshots)
 **Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@042b0c70531b229af3acbd0421a2f23098d848b3`
 **Observed product version:** `0.14.4`  
@@ -48,8 +48,10 @@ focused NetworkGraph 3파일·17건, ESLint, audit 0건, 16-route build는 통�
 action은 중립 문구로 실패 폐쇄한다. 상세 provider/model rationale는 API 계약에
 남더라도 화면에는 직접 내보내지 않는다. helper test와 signed-session browser
 assertion이 이 경계를 고정한다. 동시 writer의 최신 commit은 AGENTS·CLAUDE를
-문서 owner [#1549](https://github.com/ContextualWisdomLab/naruon/pull/1549)로
-돌려보내 제품 PR에는 Search 구현·검증 delta만 남겼다.
+문서 owner [#1549](https://github.com/ContextualWisdomLab/naruon/pull/1549)의
+`a2759019b4b0f5c96605b43b0857197c3b6bfb19`로 돌려보내 제품 PR에는 Search
+구현·검증 delta만 남겼다. 이 owner head의 AGENTS·CLAUDE는 raw-field 금지와
+브라우저 부재 assertion을 함께 기록했다.
 
 최신 runtime tree에서 focused 2파일·22건, audit 취약점 0건, 16-route build,
 Playwright 1건이 terminal 0이었다. 실제 한국어 `/search`를 1280×1024와
@@ -63,8 +65,11 @@ scroll을 직접 검사했다. 영문 rationale와 machine key는 보이지 않�
 ### 중앙 Graphify·CodeQL와 네트워크 MCP 경계
 
 중앙 [`.github#2052`](https://github.com/ContextualWisdomLab/.github/pull/2052)는
-`f6e87ff21f7427c6bc4338812954ef7a29b6487c`에서 root `opencode.jsonc` 하나와
-hash-pinned Graphify MCP를 소유한다. repository-local `opencode.json` 또는
+`d9195193f00dd40c87f85a640992d0baba2b3a46`에서 root `opencode.jsonc` 하나와
+hash-pinned Graphify MCP를 소유한다. dormant `github-models`와 named-model
+정의를 제거해 provider는 contextual-orchestrator 하나, model은
+`orchestrator/free` 하나만 남겼다. 관련 provider-boundary 계약 84건이
+terminal 0이었다. repository-local `opencode.json` 또는
 `opencode.jsonc` 복제는 만들지 않는다. 직접 webfetch/websearch 제한은 네트워크
 MCP 전체 금지가 아니다. EgressWeave의 released outbound enforcement와 wardnet의
 released observation/blocking contract를 exact version으로 고정하고 실패 폐쇄를

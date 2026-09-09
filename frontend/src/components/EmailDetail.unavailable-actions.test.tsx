@@ -133,6 +133,7 @@ describe("EmailDetail unavailable reply actions", () => {
     ["inline display none", (reason: HTMLElement) => reason.style.setProperty("display", "none")],
     ["inline visibility hidden", (reason: HTMLElement) => reason.style.setProperty("visibility", "hidden")],
     ["inline zero opacity", (reason: HTMLElement) => reason.style.setProperty("opacity", "0")],
+    ["inline fractional zero opacity", (reason: HTMLElement) => reason.style.setProperty("opacity", "0.0")],
   ])("visibility guard rejects %s", (_label, hideReason) => {
     const reason = document.createElement("p");
     hideReason(reason);

@@ -1,21 +1,5 @@
 # Naruon Product and Technical Gap Baseline
 
-## 2026-09-09 중앙 OpenCode 설정 소비 경계
-
-- **Gap:** Naruon의 저장소별 `opencode.jsonc`가 모델과 MCP를 별도로 선언해
-  중앙 required review의 격리 설정과 서로 다른 정책을 만들 수 있었다.
-- **조치:** 저장소별 OpenCode JSON을 제거하고, release-governance 계약이
-  `opencode.json`과 `opencode.jsonc`의 재도입을 모두 거부하도록 고정했다.
-  README·ARCHITECTURE·AGENTS·CLAUDE는 중앙 owner가 exact-head 격리 경로에
-  설정을 주입한다는 같은 책임 경계를 설명한다.
-- **선행조건:** 중앙 Graphify owner
-  [ContextualWisdomLab/.github#2052](https://github.com/ContextualWisdomLab/.github/pull/2052)가
-  보호 병합되기 전까지 이 consumer delta는 Proposed/Draft다. 중앙 실패 시
-  consumer 파일을 되살리는 대신 owner를 수리한다.
-- **검증 범위:** focused release-governance 테스트와 파일 부재 검증이다.
-  실제 중앙 review 실행·Graphify handshake·보호 병합은 owner PR의 exact-head
-  evidence이며 이 변경만으로 재증명하지 않는다.
-
 **Baseline version:** 1.2
 **Observed on:** 2026-08-26 (Asia/Seoul)
 **Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@e5e99b4e3bb081b92c602358878856536030e2ca`

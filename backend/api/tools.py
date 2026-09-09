@@ -1,4 +1,5 @@
 import base64
+import datetime
 import hashlib
 import inspect
 import json
@@ -549,6 +550,38 @@ registry.register(
         parameters={"draft_content": "string", "recipient_relationship": "string"},
     ),
     tone_analyzer_handler,
+)
+
+
+
+
+async def date_calculator_handler(params: Dict[str, Any]) -> Dict[str, str]:
+    '''날짜 계산 핸들러'''
+    try:
+        base_date_str = params.get("base_date", "")
+        days_to_add = int(params.get("days_to_add", 0))
+
+        # 1. Parsing YYYY-MM-DD
+        base_date = datetime.datetime.strptime(base_date_str, "%Y-%m-%d").date()
+
+        # 2. Calculation
+        target_date = base_date + datetime.timedelta(days=days_to_add)
+
+        return {
+            "result_date": target_date.strftime("%Y-%m-%d")
+        }
+    except Exception as e:
+        raise ValueError(f"Invalid parameters for date calculator: {e}")
+
+registry.register(
+    ToolInfo(
+        code="date_calculator",
+        name="날짜 계산기 (Date Calculator)",
+        description="기준 날짜(YYYY-MM-DD)로부터 입력받은 일 수(days)만큼 더하거나 뺀 날짜를 계산합니다.",
+        category="유틸리티",
+        parameters={"base_date": "string", "days_to_add": "integer"},
+    ),
+    date_calculator_handler,
 )
 
 

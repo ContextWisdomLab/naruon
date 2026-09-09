@@ -15,6 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_ROOT = REPO_ROOT / "frontend"
 NEXT_SECURITY_FLOOR = (16, 3, 3)
 SHARP_SECURITY_FLOOR = (0, 35, 4)
+JS_YAML_SECURITY_FLOOR = (4, 3, 2)
+VITEST_SECURITY_FLOOR = (4, 1, 11)
 
 
 def _exact_version(value: str) -> tuple[int, int, int]:
@@ -137,6 +139,42 @@ def test_frontend_framework_and_image_security_floors() -> None:
         "sharp must include the fix for GHSA-rgj7-g3m4-5g8c"
     )
     _assert_lock_contract(lock, next_value, eslint_next_value, sharp_value)
+
+
+def test_js_yaml_security_floor_covers_every_lock_resolution() -> None:
+    """Keep every js-yaml resolution above the reviewed denial-of-service floor."""
+
+    lock = yaml.safe_load(
+        (FRONTEND_ROOT / "pnpm-lock.yaml").read_text(encoding="utf-8")
+    )
+    for section_name in ("packages", "snapshots"):
+        js_yaml_keys = [
+            key for key in lock[section_name] if key.startswith("js-yaml@")
+        ]
+        for package_key in js_yaml_keys:
+            assert (
+                _package_key_version(package_key, "js-yaml")
+                >= JS_YAML_SECURITY_FLOOR
+            ), f"{section_name} contains js-yaml below the reviewed security floor"
+
+
+def test_vitest_security_floor_covers_manifest_and_lock() -> None:
+    """Keep Vitest and its coverage package above the reviewed traversal floor."""
+
+    package = json.loads((FRONTEND_ROOT / "package.json").read_text(encoding="utf-8"))
+    lock = yaml.safe_load(
+        (FRONTEND_ROOT / "pnpm-lock.yaml").read_text(encoding="utf-8")
+    )
+    for package_name in ("vitest", "@vitest/coverage-v8"):
+        declared_value = package["devDependencies"][package_name]
+        assert _exact_version(declared_value) >= VITEST_SECURITY_FLOOR
+        for section_name in ("packages", "snapshots"):
+            for package_key in lock[section_name]:
+                if package_key.startswith(f"{package_name}@"):
+                    assert (
+                        _package_key_version(package_key, package_name)
+                        >= VITEST_SECURITY_FLOOR
+                    ), f"{section_name} contains {package_name} below the reviewed floor"
 
 
 @pytest.mark.parametrize("field", ["specifier", "version"])

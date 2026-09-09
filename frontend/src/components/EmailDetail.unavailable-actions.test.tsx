@@ -92,7 +92,7 @@ describe("EmailDetail unavailable reply actions", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps unavailable reasons keyboard-reachable and rejects whitespace draft commands", async () => {
+  it("keeps unavailable reasons keyboard- and touch-discoverable and rejects whitespace draft commands", async () => {
     let draftRequests = 0;
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -143,7 +143,9 @@ describe("EmailDetail unavailable reply actions", () => {
     expect(draftUnavailable?.tabIndex).toBe(0);
     const draftReasonId = draftUnavailable?.getAttribute("aria-describedby");
     expect(draftReasonId).toBe("reply-draft-unavailable-reason");
-    expect(container.querySelector(`#${draftReasonId}`)?.textContent).toBe("답장 초안 지시를 입력해주세요");
+    const draftReason = container.querySelector<HTMLElement>(`#${draftReasonId}`);
+    expect(draftReason?.textContent).toBe("답장 초안 지시를 입력해주세요");
+    expect(draftReason?.classList.contains("sr-only")).toBe(false);
 
     const sendButton = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
       (button) => button.textContent?.includes("답장 보내기"),
@@ -153,7 +155,9 @@ describe("EmailDetail unavailable reply actions", () => {
     expect(sendUnavailable?.tabIndex).toBe(0);
     const sendReasonId = sendUnavailable?.getAttribute("aria-describedby");
     expect(sendReasonId).toBe("reply-send-unavailable-reason");
-    expect(container.querySelector(`#${sendReasonId}`)?.textContent).toBe("답장 초안을 먼저 작성해주세요");
+    const sendReason = container.querySelector<HTMLElement>(`#${sendReasonId}`);
+    expect(sendReason?.textContent).toBe("답장 초안을 먼저 작성해주세요");
+    expect(sendReason?.classList.contains("sr-only")).toBe(false);
 
     await act(async () => {
       root?.render(

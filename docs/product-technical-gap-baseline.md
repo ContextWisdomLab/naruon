@@ -488,6 +488,21 @@ the search-input caret style. This is local diagnostic evidence, not hosted
 release evidence, and is tracked as a separate UX/runtime gap rather than
 mixed into the bounded NetworkGraph change.
 
+PR #1608 exact head `bc08bb938af829315b982c68393d086217d81e4b`
+adds a narrower desktop-navigation acceptance slice. Direct Chromium/Edge
+inspection at 1280×720, locale `ko`, production `/settings`, and an unavailable
+backend found that the predecessor `d8cc3a717…` exposed only 0.234375 CSS px
+between the active Settings destination and the navigation viewport edge. The
+unit test's mocked rectangles had reported the intended 16 px because jsdom
+does not clamp `scrollLeft` to the browser's maximum. Adding real inline layout
+space at the shared navigation boundary produced a measured 16.234375 px inset
+at `bc08bb938…`; the active destination, header controls, and Settings title
+were visible without clipping or overlap in the inspected frame. The same tree
+passed all 487 frontend tests and a 16-route production build. This remains PR
+evidence: it does not prove protected integration, mobile behavior, all eight
+locales, authenticated backend behavior, Storybook state coverage, or a hosted
+deployment.
+
 | Quality axis | Required definition and applied evidence | Audit gate before GA-1 |
 |---|---|---|
 | Accessibility | WCAG 2.2 AA; keyboard order/focus-visible; accessible names; labels; live/status announcements; color is never the only signal; Storybook a11y test is `error` for applicable stories | axe/Vitest Storybook results, keyboard journey, screen-reader name assertions, and zero unresolved accessibility findings |
@@ -587,7 +602,7 @@ button, form, navigation, chart, or asynchronous data surface.
 
 | Gap | Buyer problem | Protected/current evidence | Existing work | Completion evidence |
 |---|---|---|---|---|
-| Responsive shell hydration and unavailable state | a buyer can see a polished navigation shell but no actionable content when a data request is unavailable, and hydration drift can produce inconsistent controls | local fixed-origin capture showed tablet/mobile loading feedback, desktop blank content without the backend, and a development-server caret-style hydration mismatch; this is not a hosted release result | follow-up required; keep separate from #1470's bounded lookup optimization | deterministic server/client markup, explicit desktop unavailable/error state, backend-backed responsive Playwright evidence, and no hydration warnings |
+| Responsive shell hydration and unavailable state | a buyer can see a polished navigation shell but no actionable content when a data request is unavailable, and hydration drift can produce inconsistent controls | #1570 exact head `187f33255…` carries retry/cancellation behavior; #1608 exact head `bc08bb938…` preserves a measured 16.234375 px active-navigation inset at 1280×720 `/settings`; both remain unmerged PR evidence and the latter covers only Korean desktop with the backend unavailable | #1570 → #1578 → #1601 → #1608 owner stack | parent-first protected integration; deterministic server/client markup; explicit unavailable/error state; active destination visible at supported desktop widths; backend-backed responsive Playwright and direct visual evidence across eight locales and required states; no hydration warnings |
 | Stacked PR current-head review dispatch | a dependent PR can show only metadata while the central OpenCode/required checks are still being materialized on a non-default base branch | #1448 exact head `068aefdf…` received a targeted scheduler/ OpenCode dispatch and then merged normally; its merge-result checks on `62a0d645…` remain queued | #1443, #1448, ContextualWisdomLab/.github scheduler | every supported stack base receives a bounded exact-head OpenCode/Noema/required-check run, with queued/provider states observable and no false merge readiness |
 | Typed Person/Event/Commitment graph | generic string graph cannot safely drive high-stakes action | planning spec marks types as new/planned | #977, #978, #1000 | normalized temporal/multi-membership identities, evidence/confidence/correction on every inferred edge |
 | Status-weighted scheduling | calendar CRUD does not prevent harmful double booking | CalDAV source/writeback/retry foundation exists | #978, #988, #989, #990, #1416 | confirmed/tentative/desired + organizer/attendee + recurrence/free-busy/resource end-to-end |

@@ -1383,6 +1383,8 @@ test('renders API-backed context search sender DAG and reply tracking', async ({
   await expect(page.getByText('관계 맥락과 타임라인')).toBeVisible();
   await expect(page.getByText('발신자 관계')).toBeVisible();
   await expect(page.getByText('답장과 후속 작업을 확인합니다.')).toBeVisible();
+  await expect(page.getByText('답장 여부와 이어서 할 일을 놓치지 않도록 제안했습니다.')).toBeVisible();
+  await expect(page.getByText('Same-domain sender; preserve reply and task follow-up.')).toHaveCount(0);
   await expect(page.getByText('track_reply_and_tasks')).toHaveCount(0);
   await expect(page.getByText('source=<q2@example.com> / thread=thread-q2')).toHaveCount(0);
   await expect(page.getByText('김지현 PM').first()).toBeVisible();

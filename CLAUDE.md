@@ -169,6 +169,9 @@ Next.js frontend ──> FastAPI backend (control plane) ──> Postgres + pgve
   HTTP status from message substrings. Error responses stay honest and do not
   leak internals or credential-type details (see "Error-message contract" in
   `README.md`).
+- Relationship panels map the bounded `next_action` code to product-owned
+  action and rationale copy. Never display raw `action_reason`; keep an unknown
+  action fallback and a rendered browser assertion that the raw text is absent.
 - Never commit `.env`, real mailbox exports, or credentials; email fixtures in
   `backend/tests/fixtures` stay small and synthetic.
 - Release bumps keep `VERSION`, `CHANGELOG.md`, `frontend/package.json`, and

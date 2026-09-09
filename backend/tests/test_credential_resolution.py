@@ -6,8 +6,22 @@ import pytest
 from core.credential_resolution import (
     CredentialReference,
     CredentialResolutionUnavailable,
+    ResolvedCredential,
     UnavailableCredentialResolver,
 )
+
+
+def _credential_reference() -> CredentialReference:
+    """Return one complete value-free Keyverse credential reference."""
+    return CredentialReference(
+        authority="keyverse",
+        tenant_id="workspace-123",
+        environment_name="production",
+        secret_namespace="naruon/runtime",
+        secret_key="auth_session_hmac_secret",
+        secret_version="v1",
+        purpose_name="session-signing",
+    )
 
 
 def test_credential_reference_rejects_blank_identity_fields() -> None:
@@ -37,21 +51,25 @@ def test_credential_reference_rejects_blank_identity_fields() -> None:
 
 def test_credential_reference_repr_contains_no_secret_value() -> None:
     """Value-free references are safe to log and review."""
-    reference = CredentialReference(
-        authority="keyverse",
-        tenant_id="workspace-123",
-        environment_name="production",
-        secret_namespace="naruon/runtime",
-        secret_key="auth_session_hmac_secret",
-        secret_version="v1",
-        purpose_name="session-signing",
-    )
-
-    rendered = repr(reference)
+    rendered = repr(_credential_reference())
 
     assert "workspace-123" in rendered
     assert "auth_session_hmac_secret" in rendered
     assert "secret_value" not in rendered
+
+
+def test_resolved_credential_repr_redacts_secret_value() -> None:
+    """Resolved credential values never appear in ordinary object rendering."""
+    credential = ResolvedCredential(
+        secret_value="do-not-log-this-secret",
+        reference=_credential_reference(),
+    )
+
+    rendered = repr(credential)
+
+    assert "do-not-log-this-secret" not in rendered
+    assert "<redacted>" in rendered
+    assert "workspace-123" in rendered
 
 
 def test_unavailable_resolver_fails_closed_without_fallback() -> None:
@@ -59,18 +77,9 @@ def test_unavailable_resolver_fails_closed_without_fallback() -> None:
     resolver = UnavailableCredentialResolver(
         reason="Keyverse workload credential API is not released"
     )
-    reference = CredentialReference(
-        authority="keyverse",
-        tenant_id="workspace-123",
-        environment_name="production",
-        secret_namespace="naruon/runtime",
-        secret_key="encryption_key",
-        secret_version="v1",
-        purpose_name="data-encryption",
-    )
 
     with pytest.raises(
         CredentialResolutionUnavailable,
         match="Keyverse workload credential API is not released",
     ):
-        resolver.resolve_credential(reference)
+        resolver.resolve_credential(_credential_reference())

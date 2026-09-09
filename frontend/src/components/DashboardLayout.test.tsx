@@ -54,6 +54,7 @@ describe("DashboardLayout", () => {
     const primaryNav = container.querySelector<HTMLElement>(
       'nav[aria-label="Primary workspace navigation"]',
     );
+    expect(primaryNav?.className).toContain("px-4");
     const activeLink = container.querySelector<HTMLAnchorElement>('a[href="/search"]');
     vi.spyOn(primaryNav!, "getBoundingClientRect").mockReturnValue({
       left: 0,

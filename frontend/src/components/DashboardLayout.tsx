@@ -383,7 +383,7 @@ export function DashboardLayout({
             <Image src="/brand/naruon-symbol.svg" alt="Naruon" width={32} height={32} style={{ width: '32px', height: '32px' }} />
             <span className="text-lg font-black tracking-tight">Naruon</span>
           </div>
-          <nav aria-label="Primary workspace navigation" className="hidden max-w-[44vw] scroll-px-3 items-center gap-1 overflow-x-auto xl:flex 2xl:max-w-none">
+          <nav aria-label="Primary workspace navigation" className="hidden max-w-[44vw] items-center gap-1 overflow-x-auto px-4 xl:flex 2xl:max-w-none">
             {primaryNavItems.map((item) => (
               <PrimaryNavLink key={item.href} {...item} />
             ))}

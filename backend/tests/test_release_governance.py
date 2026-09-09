@@ -716,16 +716,6 @@ def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_
     assert workflow.count("image: naruon") == 2
     assert "push: false" in workflow
     assert "push: true" in workflow
-    assert (
-        "Build and Publish Docker Images-pr-validation-${{ github.repository }}-"
-        "${{ github.event.pull_request.number || github.ref }}-${{ matrix.component }}"
-        in workflow
-    )
-    assert (
-        "Build and Publish Docker Images-publish-${{ github.repository }}-"
-        "${{ github.ref }}-${{ matrix.component }}" in workflow
-    )
-    assert workflow.count("cancel-in-progress: false") == 1
     assert workflow.count("base_dockerfile: Dockerfile") == 4
     assert workflow.count("base_dockerfile: frontend/Dockerfile") == 2
     assert workflow.count('base_digest="${base_reference##*@}"') == 2
@@ -748,6 +738,15 @@ def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_
     assert (
         "needs.deploy_preflight.outputs.aks_kubeconfig_configured == 'true'" in workflow
     )
+    assert "concurrency:" in workflow
+    assert (
+        "docker-publish-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}"
+        in workflow
+    )
+    assert (
+        "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in workflow
+    )
+    assert "cancel-in-progress: true" not in workflow.split("jobs:", 1)[0]
 
 
 def test_frontend_dockerfile_builds_and_starts_production_artifact() -> None:

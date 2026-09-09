@@ -1376,7 +1376,7 @@ test('renders API-backed context search sender DAG and reply tracking', async ({
     expect(ontologyHeaders[headerName]).toBeUndefined();
   }
 
-  await expect(page.getByRole('heading', { name: '맥락 검색' })).toBeAttached();
+  await expect(page.getByRole('heading', { name: '맥락 검색', exact: true })).toBeAttached();
   await expect(page.getByRole('heading', { name: 'Q2 출시 계획 및 우선순위 조정' }).first()).toBeVisible();
   await expect(page.getByText('메일 흐름 연결됨').first()).toBeVisible();
   await expect(page.getByText('답장 2건').first()).toBeVisible();

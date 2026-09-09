@@ -77,12 +77,24 @@ const CUSTOMER_FACING_RELATIONSHIP_ACTIONS: Record<string, string> = {
   "후속 작업을 확인합니다.": "후속 작업을 확인합니다.",
 };
 
+const CUSTOMER_FACING_RELATIONSHIP_REASONS: Record<string, string> = {
+  summarize_then_archive: "핵심 내용을 확인한 뒤 정리할 수 있습니다.",
+  track_reply_and_tasks: "답장 여부와 이어서 할 일을 놓치지 않도록 제안했습니다.",
+  prepare_response_draft: "대화를 이어갈 답장이 필요한 관계입니다.",
+  classify_sender: "알맞은 후속 행동을 정하려면 발신자 관계 확인이 필요합니다.",
+};
+
 export function customerFacingRelationshipText(
   relationshipAction: string,
   fallbackCopy: string,
 ) {
   const normalizedAction = relationshipAction.trim();
   return CUSTOMER_FACING_RELATIONSHIP_ACTIONS[normalizedAction] ?? fallbackCopy;
+}
+
+export function customerFacingRelationshipReason(relationshipAction: string) {
+  return CUSTOMER_FACING_RELATIONSHIP_REASONS[relationshipAction.trim()] ??
+    "선택한 원본과 발신자 관계를 바탕으로 제안했습니다.";
 }
 
 type SearchResponse = {
@@ -297,7 +309,7 @@ function SenderDagPanel({
             </div>
             <div className="rounded border border-border bg-card px-3 py-2">
               <p className="break-words text-foreground">
-                {relationship.action_reason}
+                {customerFacingRelationshipReason(relationship.next_action)}
               </p>
               <p className="mt-1">판단 근거</p>
             </div>

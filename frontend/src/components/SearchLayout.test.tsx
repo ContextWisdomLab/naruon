@@ -30,7 +30,11 @@ vi.mock("lucide-react", () => ({
   X: () => <svg aria-hidden="true" />,
 }));
 
-import { customerFacingRelationshipText, SearchLayout } from "./SearchLayout";
+import {
+  customerFacingRelationshipReason,
+  customerFacingRelationshipText,
+  SearchLayout,
+} from "./SearchLayout";
 import {
   clearRecordedProductEvents,
   getRecordedProductEvents,
@@ -219,6 +223,16 @@ describe("SearchLayout product events", () => {
     );
     },
   );
+
+  it.each([
+    ["summarize_then_archive", "핵심 내용을 확인한 뒤 정리할 수 있습니다."],
+    ["track_reply_and_tasks", "답장 여부와 이어서 할 일을 놓치지 않도록 제안했습니다."],
+    ["prepare_response_draft", "대화를 이어갈 답장이 필요한 관계입니다."],
+    ["classify_sender", "알맞은 후속 행동을 정하려면 발신자 관계 확인이 필요합니다."],
+    ["unknown_action", "선택한 원본과 발신자 관계를 바탕으로 제안했습니다."],
+  ])("maps relationship reason for %s to customer copy", (nextAction, expectedCopy) => {
+    expect(customerFacingRelationshipReason(nextAction)).toBe(expectedCopy);
+  });
 
   it("shows customer-facing copy when relationship loading fails", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {

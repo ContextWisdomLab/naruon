@@ -25,6 +25,9 @@ jobs:
     name: validate ${{ matrix.component }} image
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    concurrency:
+      group: Build and Publish Docker Images-pr-validation-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:

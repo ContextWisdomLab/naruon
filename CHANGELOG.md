@@ -2737,6 +2737,7 @@
 
 ## [Unreleased]
 ### Added
+- **보안 수정(Security Fix):** `backend/services/email_import_service.py`의 `canonical_email_import_upload_filename` 함수에서 이중 확장자(double extension) 공격(예: `malicious.exe.eml`)을 차단할 수 있도록 검증 로직을 추가했습니다.
 - `backend/api/tools.py` 내의 임시 `mock_handler`를 구체적인 기능을 수행하는 5개의 실제 도구 핸들러로 대체했습니다.
   - `thread_summarizer_handler`: 이메일 스레드 요약 정보 반환
   - `action_item_extractor_handler`: 실행 항목 및 마감일 추출

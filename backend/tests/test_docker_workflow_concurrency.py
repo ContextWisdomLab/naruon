@@ -29,7 +29,7 @@ def test_docker_pr_concurrency_isolates_reruns_from_first_attempts() -> None:
 
 
 def test_docker_release_publication_queues_each_component_per_ref() -> None:
-    """Serialize same-ref image publication without evicting pending release jobs."""
+    """Keep all image components inside the reusable release boundary."""
     release_workflow = (
         REPO_ROOT / ".github/workflows/docker-release-images.yml"
     ).read_text(encoding="utf-8")
@@ -39,6 +39,9 @@ def test_docker_release_publication_queues_each_component_per_ref() -> None:
     assert "matrix.component" in publish_section
     assert "push: true" in publish_section
     assert "sbom: true" in publish_section
+    assert "provenance: true" in publish_section
+    assert "packages: write" in release_workflow
+    assert "password: ${{ secrets.GITHUB_TOKEN }}" in publish_section
 
 
 def test_docker_release_publication_serializes_whole_image_set_per_ref() -> None:
@@ -58,4 +61,27 @@ def test_docker_release_publication_serializes_whole_image_set_per_ref() -> None
     assert expected_group in publish_section
     assert "queue: max" in publish_section
     assert "cancel-in-progress: false" in publish_section
+    assert "packages: write" in publish_section
     assert "matrix.component" not in publish_section
+
+
+def test_release_serialization_decision_and_operability_docs_match_active_pr() -> None:
+    """Keep release-set semantics documented without claiming protected acceptance."""
+    adr = (
+        REPO_ROOT / "docs/adr/0005-whole-release-publication-serialization.md"
+    ).read_text(encoding="utf-8")
+    adr_index = (REPO_ROOT / "docs/adr/README.md").read_text(encoding="utf-8")
+    operations = (
+        REPO_ROOT / "docs/operations/release-deployment-architecture.md"
+    ).read_text(encoding="utf-8")
+
+    assert "**Status:** Proposed" in adr
+    assert "PR #1621; not protected-branch authority" in adr
+    assert "queue: max" in adr
+    assert "cancel-in-progress: false" in adr
+    assert "docker-release-images.yml" in adr
+    assert "ADR-0005" in adr_index
+    assert "PR #1621 `ACTIVE-PR`; no protected-release acceptance yet" in adr_index
+    assert "active-PR evidence, not protected-branch authority" in operations
+    assert "docker-release-images.yml" in operations
+    assert "A failed image publication blocks deployment" in operations

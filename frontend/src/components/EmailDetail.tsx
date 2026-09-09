@@ -811,7 +811,7 @@ export const EmailDetail = memo(function EmailDetail({ emailId, actionCommand = 
                 tabIndex={draftUnavailable ? 0 : undefined}
                 aria-describedby={draftUnavailable ? "reply-draft-unavailable-reason" : undefined}
                 title={draftUnavailable ? "답장 초안 지시를 입력해주세요" : undefined}
-                className="inline-flex flex-col items-end gap-1 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                className="inline-flex rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
               >
                 <Button
                   onClick={handleDraftReply}
@@ -824,10 +824,8 @@ export const EmailDetail = memo(function EmailDetail({ emailId, actionCommand = 
                   {isDrafting && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
                   {isDrafting ? "초안 작성 중" : "답장 초안 생성"}
                 </Button>
-                {draftUnavailable && (
-                  <span id="reply-draft-unavailable-reason" className="text-xs text-muted-foreground">답장 초안 지시를 입력해주세요</span>
-                )}
               </span>
+              <span id="reply-draft-unavailable-reason" className="hidden">답장 초안 지시를 입력해주세요</span>
             </div>
 
             {draftError && <p role="alert" className="text-sm text-red-500">{draftError}</p>}
@@ -866,7 +864,7 @@ export const EmailDetail = memo(function EmailDetail({ emailId, actionCommand = 
                   tabIndex={sendUnavailable ? 0 : undefined}
                   aria-describedby={sendUnavailable ? "reply-send-unavailable-reason" : undefined}
                   title={sendUnavailable ? "답장 초안을 먼저 작성해주세요" : undefined}
-                  className="inline-flex flex-col items-end gap-1 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  className="inline-flex rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 >
                   <Button
                     onClick={handleSendReply}
@@ -878,10 +876,8 @@ export const EmailDetail = memo(function EmailDetail({ emailId, actionCommand = 
                     {isSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
                     {isSending ? "전송 중" : "답장 보내기"}
                   </Button>
-                  {sendUnavailable && (
-                    <span id="reply-send-unavailable-reason" className="text-xs text-muted-foreground">답장 초안을 먼저 작성해주세요</span>
-                  )}
                 </span>
+                <span id="reply-send-unavailable-reason" className="hidden">답장 초안을 먼저 작성해주세요</span>
               </div>
             </div>
           </DecisionPointCard>

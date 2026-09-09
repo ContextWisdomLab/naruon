@@ -568,11 +568,6 @@ in this repo.
   browser-submitted relationship classifications. Route layers should derive the
   thread provenance server-side, persist only scoped ontology metadata, and keep
   provider writes out of relationship capture.
-- Sender relationship UI must derive customer-facing action and rationale copy
-  from the bounded `next_action` contract. Never render provider- or
-  model-authored `action_reason` text directly; unknown actions use a neutral
-  product-owned fallback, and browser evidence must assert that raw rationale
-  text is absent.
 - Unique email and forwarded-import dedupe must use strong scoped signals:
   normalized Message-ID, References/In-Reply-To, persisted duplicate provenance,
   or exact body/attachment fingerprints. Do not merge threads from subject-only

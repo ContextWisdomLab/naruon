@@ -553,25 +553,28 @@ registry.register(
 )
 
 
+_DATE_CALCULATOR_DATE_PATTERN = re.compile(r"\A\d{4}-\d{2}-\d{2}\Z")
 
 
 async def date_calculator_handler(params: Dict[str, Any]) -> Dict[str, str]:
-    '''날짜 계산 핸들러'''
+    """Return a calendar date after applying a whole-day offset."""
+    base_date_str = params.get("base_date", "")
+    if _DATE_CALCULATOR_DATE_PATTERN.fullmatch(base_date_str) is None:
+        raise ValueError("base_date must use YYYY-MM-DD")
+
     try:
-        base_date_str = params.get("base_date", "")
+        base_date = datetime.date.fromisoformat(base_date_str)
+    except ValueError:
+        raise ValueError("base_date must be a valid calendar date") from None
+
+    try:
         days_to_add = int(params.get("days_to_add", 0))
-
-        # 1. Parsing YYYY-MM-DD
-        base_date = datetime.datetime.strptime(base_date_str, "%Y-%m-%d").date()
-
-        # 2. Calculation
         target_date = base_date + datetime.timedelta(days=days_to_add)
+    except (OverflowError, ValueError):
+        raise ValueError("date calculation is outside the supported calendar range") from None
 
-        return {
-            "result_date": target_date.strftime("%Y-%m-%d")
-        }
-    except Exception as e:
-        raise ValueError(f"Invalid parameters for date calculator: {e}")
+    return {"result_date": target_date.isoformat()}
+
 
 registry.register(
     ToolInfo(
@@ -739,6 +742,8 @@ _KEYWORD_STOPWORDS = frozenset(
         "합니다",
     }
 )
+
+
 def _normalize_analysis_text(value: str) -> str:
     """Normalize user text for deterministic, multilingual rule matching."""
     if len(value) > ANALYSIS_TEXT_MAX_CHARS:
@@ -800,7 +805,6 @@ registry.register(
     ),
     uuid_v4_generator_handler,
 )
-
 
 
 @router.get("/tools", response_model=list[ToolInfo])

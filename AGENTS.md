@@ -130,6 +130,12 @@ in this repo.
   them as source can exhaust model context before security evidence finalizes.
 - Prefer upgrading or removing vulnerable dependencies over downgrading patched
   packages unless compatibility evidence is recorded in the PR.
+- Dependency-audit results are time-sensitive. Re-run the exact-head audit
+  immediately before push; a newly published advisory is a source repair, not
+  a reason to reuse an older clean receipt. After regenerating a pnpm lockfile,
+  require a warning-free frozen install and `pnpm peers check`. Do not adopt an
+  unsupported major or silence peer ranges merely to remove a deprecation
+  notice.
 - OpenCode Review, Strix Security Scan, and PR Review Merge Scheduler are
   provided by ContextualWisdomLab central required workflows in
   `ContextualWisdomLab/.github`; do not reintroduce repo-local copies of

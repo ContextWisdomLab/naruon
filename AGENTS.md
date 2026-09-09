@@ -110,6 +110,10 @@ in this repo.
 
 ## Release governance defaults
 
+- Matrix release workflows must include the matrix component in both validation
+  and publication concurrency groups. Keep PR validation cancellable only
+  within the same workflow, repository, PR, and component; keep publication
+  non-cancellable while allowing independent components to publish in parallel.
 - GitHub Actions used by governed workflows must be pinned to full commit SHAs
   with a trailing version comment, for example `# v6`; major-only refs such as
   `@v6` are not allowed in release or security workflows.

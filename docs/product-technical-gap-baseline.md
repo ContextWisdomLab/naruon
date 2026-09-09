@@ -1,49 +1,91 @@
 # Naruon Product and Technical Gap Baseline
 
-**Baseline version:** 1.55
+**Baseline version:** 1.56
 **Observed on:** 2026-09-09 (Asia/Seoul; earlier dated receipts remain historical snapshots)
 **Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@042b0c70531b229af3acbd0421a2f23098d848b3`
 **Observed product version:** `0.14.4`  
 **Canonical completion issue:** [#1428](https://github.com/ContextualWisdomLab/naruon/issues/1428)
 
-## Current visual and stack repair (2026-09-09)
+## Current visual, dependency, and owner-stack repair (2026-09-09)
 
-### NetworkGraph 성능 스택과 고객 표현 Gap
+### 보안 의존성 owner와 두 제품 successor
 
-[#1593](https://github.com/ContextualWisdomLab/naruon/pull/1593)의
-`fb1929bcdaec10013e25318de29e1604855ad510`는 보안 의존성 owner
-[#1623](https://github.com/ContextualWisdomLab/naruon/pull/1623)의
-`e8a54fc5156ac3ffbb79bc8418c5125d7dcdea60`을 normal merge하고 그 branch로
-retarget했다. 세 package/lock 파일은 owner tree와 byte-identical이며 #1593는
-#1623 보호 병합 전까지 Draft다. 따라서 NetworkGraph의 관계 5개·노드 8개
-bounded iteration만 feature delta로 남고, 상충하는 Next·sharp 정책은 없다.
+보안 의존성 owner [#1623](https://github.com/ContextualWisdomLab/naruon/pull/1623)의
+현재 head는 `09cb87a25e59b0b5e737f915f77b404cafe245ab`이고 Draft다. 직전
+`b97f42f16f2dfedccc1e98812c88117132ef8126`에서 새로 공개된 `js-yaml`
+HIGH 두 건과 Vitest moderate 두 건을 수리했다. `js-yaml`은 기존 pnpm
+workspace override로 4.3.2에 고정했고 Vitest와 coverage-v8은 4.1.11로
+올렸다. ESLint 10은 최신 import·JSX accessibility·React plugin의 peer 범위가
+아직 10을 허용하지 않아 기각했으며 peer suppression은 추가하지 않았다.
+동시 writer의 `09cb87a25`는 별도 js-yaml 소비자 계약 검사를 보존하고 이
+dependency lane의 중복 AGENTS·CLAUDE 변경만 제거했다.
 
-동결 head에서 production build, TypeScript, focused ESLint, NetworkGraph
-17개 검사, frontend 보안 floor 5개 검사, production audit와 Trivy를 확인했다.
-모두 terminal 0이고 Trivy의 HIGH/CRITICAL 취약점·오구성·secret 분모는 각각
-0건이다. 같은 worktree에서 `next build`와 실행 server·Playwright·`tsc`를
-겹쳤을 때 요청 timeout과 생성 type 누락이 재현돼 최종 검증은 build → server
-재기동 → browser E2E → typecheck 순서로 직렬화했다. 이 RCA는 AGENTS와
-CLAUDE의 재사용 지침에도 반영됐다.
+`b97f42f16`과 동일한 dependency tree에서 warning 없는 frozen install,
+`pnpm peers check`, audit 취약점 0건, security-floor 7건, frontend 51파일·437건,
+ESLint, 16-route production build가 terminal 0이었다. 생성물 디렉터리를 제외한
+source·lock·config Trivy HIGH/CRITICAL fixable-only 검사는 취약점·오구성·secret
+각 0건이었다. lock 생성 중 나온 ESLint 지원 종료 경고와 ESLint 10 실험의 peer
+경고는 실패한 조사 출력으로 남기고 검증 근거에서 제외했다. hosted current-head
+Checks와 독립 review는 진행 중이며 이 로컬 결과로 대신하지 않는다.
 
-`/search`의 한국어 정상 상태를 1280×1024에서 직접 열어 관계·노드 선택,
-첫 관계, 확대·맞춤, 상태 안내와 graph canvas를 검사했다. 겹침과 가로 잘림은
-보이지 않았고 signed-session mock을 쓴 focused E2E 1건도 경고 없이 통과했다.
-390×844 검색 화면은 가로 넘침이 없었다. 캡처는 같은 E2E의
-`search-network-graph-desktop.png`, `search-dag-reply-mobile.png` 산출물이다.
-실 backend가 없는 `/mail` 오류 상태도 1280×720에서 직접 확인했으며 내부
-예외 대신 한국어 오류 경계를 표시했다. 이는 실제 고객 DB·인증·provider
-통합 증거가 아니며 loading·empty·permission·8개 locale 육안 검사는 남았다.
+NetworkGraph successor [#1593](https://github.com/ContextualWisdomLab/naruon/pull/1593)은
+현재 `8d18e790ed97ef4caaf028c71e4ea6a77713da3d`, 고객 문구 successor
+[#1603](https://github.com/ContextualWisdomLab/naruon/pull/1603)은
+`49bcf8332cbc5aebcd05f4ff93d76b0ade791734`다. 둘 다 #1623 branch를 base로 둔
+Draft이며 최신 `09cb87a25`를 force push 없이 normal merge했다. 두 branch의
+package·lock tree는 owner와 동일하다. #1593에서는 #1603이 소유할 Playwright
+설정·locator·screenshot 변경을 normal revert commit으로 제거해 NetworkGraph
+source·bounded-options test와 해당 문서만 feature delta로 남겼다. 최신 head의
+focused NetworkGraph 3파일·17건, ESLint, audit 0건, 16-route build는 통과했다.
+이 restack은 runtime source를 바꾸지 않았지만 새 head의 직접 screenshot은
+별도 입증 전까지 미검증이다.
 
-정상 검색 화면에는 `track_reply_and_tasks`, 영문 판단 근거,
-`source=<...> / thread=...` 같은 ontology plumbing이 고객에게 그대로 보인다.
-제품 UI는 출시된 ontology 계약을 소비하되 표시 문구를 고객 행동과 결과로
-변환해야 한다. 원시 식별자는 화면에서 숨기고, 관계 유형·다음 행동·근거는
-UI 번역 DB 원장과 ontology locale label 원장을 섞지 않은 채 각각 표시용
-계약으로 매핑한다. 수용 기준은 정상·loading·empty·error·permission과 8개
-locale에서 원시 key/식별자 노출 0건, screenshot 직접 검사, signed-session
-E2E, source-backed 관계 선택 동작이다. 이 Gap은 #1593 성능 수리에 섞지 않고
-제품 UI owner의 후속 PR에서 RED → fix → GREEN으로 닫는다.
+### 고객 표현 Gap의 실제 수리와 Visual Inspection
+
+#1603은 raw `source/thread`, `sender_context`, machine action뿐 아니라 서버의
+영문 `action_reason`을 그대로 표시하던 공통 경로도 수리했다. bounded
+`next_action`을 제품 소유 행동·판단 근거 문구의 키로 함께 쓰며, 알 수 없는
+action은 중립 문구로 실패 폐쇄한다. 상세 provider/model rationale는 API 계약에
+남더라도 화면에는 직접 내보내지 않는다. 이 원칙은 #1603의 AGENTS와 CLAUDE,
+helper test, signed-session browser assertion에 함께 고정했다.
+
+최신 runtime tree에서 focused 2파일·22건, audit 취약점 0건, 16-route build,
+Playwright 1건이 terminal 0이었다. 실제 한국어 `/search`를 1280×1024와
+390×844에서 열고 정상 검색·발신자 관계·다음 행동·판단 근거·독립 result/detail
+scroll을 직접 검사했다. 영문 rationale와 machine key는 보이지 않았고 가로
+잘림·겹침도 없었다. 모바일 캡처에서 목록이 상세 위에 겹친 듯 보인 첫 판단은
+두 영역의 bounding scroll container와 동작 검사를 대조해 독립 pane scroll로
+수정했다. baseline 갱신으로 결함을 숨기지 않았다. loading·empty·permission,
+실제품 인증·고객 DB, 8개 locale과 DB 번역 원장은 아직 미검증이다.
+
+### 중앙 Graphify·CodeQL와 네트워크 MCP 경계
+
+중앙 [`.github#2052`](https://github.com/ContextualWisdomLab/.github/pull/2052)는
+`f6e87ff21f7427c6bc4338812954ef7a29b6487c`에서 root `opencode.jsonc` 하나와
+hash-pinned Graphify MCP를 소유한다. repository-local `opencode.json` 또는
+`opencode.jsonc` 복제는 만들지 않는다. 직접 webfetch/websearch 제한은 네트워크
+MCP 전체 금지가 아니다. EgressWeave의 released outbound enforcement와 wardnet의
+released observation/blocking contract를 exact version으로 고정하고 실패 폐쇄를
+검증한 MCP는 중앙 allowlist에 추가할 수 있다. 그 전에는 미통제 직접 송신만
+금지한다.
+
+중앙 [`.github#2051`](https://github.com/ContextualWisdomLab/.github/pull/2051)의
+현재 head는 `70e8c1fcf19b2e56578e021e0b4d84a808104b24`다. hosted Agent Review Runtime
+Quality run `34330189849`는 2,998 passed·1 skipped와 100% coverage 뒤
+`test_codeql_coordinator_skips_dispatch_when_exact_run_has_terminal_jobs`에서
+`jq`가 숫자 값에 `.jobs`를 적용해 exit 5로 실패했다. 이를 shell echo나 provider
+오류로 오인하지 않고 중앙 coordination owner에 전달했다. 같은 head rerun이나
+consumer workaround 없이 fixture/API shape와 coordinator iteration의 공통 원인을
+수리해야 한다.
+
+권위 근거: GitHub Advisory Database. (2026, August 6). *JS-YAML: Quadratic CPU
+consumption in !!omap resolution (3.x and 4.x)*
+([GHSA-5p4m-2wfm-xmqj](https://github.com/advisories/GHSA-5p4m-2wfm-xmqj));
+nodeca. (2026, August 26). *maxTotalMergeKeys does not limit CPU use for empty
+merge sources* ([GHSA-2883-xcg3-v3hh](https://github.com/nodeca/js-yaml/security/advisories/GHSA-2883-xcg3-v3hh));
+GitHub Advisory Database. (2026). *Vitest: Path Traversal / Arbitrary File Read
+via @vitest/mocker Redirect Mock*
+([GHSA-82fw-gwwq-j7x9](https://github.com/advisories/GHSA-82fw-gwwq-j7x9)).
 
 ## Current clean-summary regression repair (2026-09-07)
 

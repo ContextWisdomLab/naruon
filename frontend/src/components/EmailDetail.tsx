@@ -806,26 +806,28 @@ export const EmailDetail = memo(function EmailDetail({ emailId, actionCommand = 
                   className="h-10 rounded-xl border-purple-500/20 bg-purple-500/5 text-xs"
                 />
               </div>
-              <span
-                data-unavailable-action="reply-draft"
-                tabIndex={draftUnavailable ? 0 : undefined}
-                aria-describedby={draftUnavailable ? "reply-draft-unavailable-reason" : undefined}
-                title={draftUnavailable ? "답장 초안 지시를 입력해주세요" : undefined}
-                className="inline-flex rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-              >
-                <Button
-                  onClick={handleDraftReply}
-                  disabled={isDrafting || instruction.trim().length === 0}
-                  aria-busy={isDrafting}
-                  variant="outline"
-                  size="sm"
-                  className="h-10 rounded-xl border-purple-500/30 px-4 text-purple-700 hover:bg-purple-500/10"
+              <div className="flex flex-col items-end">
+                <span
+                  data-unavailable-action="reply-draft"
+                  tabIndex={draftUnavailable ? 0 : undefined}
+                  aria-describedby={draftUnavailable ? "reply-draft-unavailable-reason" : undefined}
+                  title={draftUnavailable ? "답장 초안 지시를 입력해주세요" : undefined}
+                  className="inline-flex rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                 >
-                  {isDrafting && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
-                  {isDrafting ? "초안 작성 중" : "답장 초안 생성"}
-                </Button>
-              </span>
-              {draftUnavailable && <span id="reply-draft-unavailable-reason" className="mt-2 text-xs text-muted-foreground">답장 초안 지시를 입력해주세요</span>}
+                  <Button
+                    onClick={handleDraftReply}
+                    disabled={isDrafting || instruction.trim().length === 0}
+                    aria-busy={isDrafting}
+                    variant="outline"
+                    size="sm"
+                    className="h-10 rounded-xl border-purple-500/30 px-4 text-purple-700 hover:bg-purple-500/10"
+                  >
+                    {isDrafting && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
+                    {isDrafting ? "초안 작성 중" : "답장 초안 생성"}
+                  </Button>
+                </span>
+                {draftUnavailable && <span id="reply-draft-unavailable-reason" className="mt-2 text-xs text-muted-foreground">답장 초안 지시를 입력해주세요</span>}
+              </div>
             </div>
 
             {draftError && <p role="alert" className="text-sm text-red-500">{draftError}</p>}

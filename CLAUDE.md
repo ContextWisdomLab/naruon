@@ -174,8 +174,5 @@ Next.js frontend ──> FastAPI backend (control plane) ──> Postgres + pgve
 - Release bumps keep `VERSION`, `CHANGELOG.md`, `frontend/package.json`, and
   FastAPI app metadata synchronized; the backend reads its version from
   `VERSION`.
-- Treat dependency audits as exact-head, time-sensitive evidence. After pnpm
-  lock regeneration, verify a warning-free frozen install and peer check; do
-  not hide unsupported-major peer conflicts to clear a deprecation notice.
 - When a review uncovers a recurring bug pattern, record the anti-pattern in
   `AGENTS.md` and update the affected tests/mocks/docs in the same PR.

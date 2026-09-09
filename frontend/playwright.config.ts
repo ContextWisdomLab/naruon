@@ -2,9 +2,9 @@ import { defineConfig, devices } from '@playwright/test';
 
 const devServerPort = Number.parseInt(process.env.PLAYWRIGHT_PORT ?? '18080', 10);
 const devServerUrl = `http://127.0.0.1:${devServerPort}`;
+delete process.env.NO_COLOR;
+delete process.env.FORCE_COLOR;
 const webServerEnv = { ...process.env };
-delete webServerEnv.NO_COLOR;
-delete webServerEnv.FORCE_COLOR;
 
 export default defineConfig({
   testDir: './tests/e2e',

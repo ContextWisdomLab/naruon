@@ -177,6 +177,39 @@ def test_vitest_security_floor_covers_manifest_and_lock() -> None:
                     ), f"{section_name} contains {package_name} below the reviewed floor"
 
 
+@pytest.mark.parametrize("package_name", ["vitest", "@vitest/coverage-v8"])
+@pytest.mark.parametrize("section_name", ["packages", "snapshots"])
+def test_vitest_security_floor_rejects_missing_lock_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+    package_name: str,
+    section_name: str,
+) -> None:
+    """Reject a regenerated lock section that drops an expected Vitest resolution."""
+
+    package_text = (FRONTEND_ROOT / "package.json").read_text(encoding="utf-8")
+    lock = yaml.safe_load(
+        (FRONTEND_ROOT / "pnpm-lock.yaml").read_text(encoding="utf-8")
+    )
+    lock[section_name] = {
+        key: value
+        for key, value in lock[section_name].items()
+        if not key.startswith(f"{package_name}@")
+    }
+    lock_text = yaml.safe_dump(lock)
+    original_read_text = Path.read_text
+
+    def _read_text(path: Path, *args: Any, **kwargs: Any) -> str:
+        if path == FRONTEND_ROOT / "package.json":
+            return package_text
+        if path == FRONTEND_ROOT / "pnpm-lock.yaml":
+            return lock_text
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", _read_text)
+    with pytest.raises(AssertionError):
+        test_vitest_security_floor_covers_manifest_and_lock()
+
+
 @pytest.mark.parametrize("field", ["specifier", "version"])
 def test_security_floor_rejects_root_importer_drift(field: str) -> None:
     """Reject a partially regenerated lock whose root Next.js importer drifts."""

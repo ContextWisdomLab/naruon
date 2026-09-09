@@ -14,3 +14,9 @@ def test_required_review_has_no_repository_local_opencode_configuration() -> Non
             "central OpenCode configuration must remain owner-controlled: "
             f"{relative_path}"
         )
+
+    agents = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    for guidance in (agents, claude):
+        assert "only `opencode.jsonc`" in guidance
+        assert "Graphify" in guidance

@@ -13,6 +13,7 @@ govern implementation.
 | [ADR-0002](0002-fitted-topic-artifact-consumption.md) | Conditionally consume only a versioned fitted topic artifact through a fail-closed adapter | Proposed | Target `PLANNED`; runtime `BLOCKED-UPSTREAM` |
 | [ADR-0003](0003-separate-topic-measurement-from-agenda-generation.md) | Keep statistical measurement separate from agenda generation | Proposed | Target and future capability `PLANNED`; no implementation authorization |
 | [ADR-0004](0004-status-weighted-calendar-conflicts.md) | Evaluate CalDAV VEVENT overlaps by occupying status; cancelled does not occupy | Accepted | `ACCEPTED-NARUON-POLICY`; advisory evaluate API only |
+| [ADR-0005](0005-whole-release-publication-serialization.md) | Serialize each same-ref Docker release as one image set while retaining component parallelism inside the set | Proposed | PR #1621 `ACTIVE-PR`; no protected-release acceptance yet |
 
 The complete topic-intelligence requirements, architecture, contract, UML,
 conceptual ERD, security, test, and operability graph is indexed at
@@ -22,7 +23,7 @@ is the single cross-document list for the planned adapter profile.
 
 ## Change rule
 
-Create or update an ADR when a Naruon change adopts or declines an external service contract, introduces a new scientific/statistical inference contract, changes persistence or tenant authority, changes model/credential trust boundaries, or replaces a fail-closed product capability with a different production dependency. A Naruon ADR records Naruon's decision only; it cannot assign authority to, or accept a decision for, another service.
+Create or update an ADR when a Naruon change adopts or declines an external service contract, introduces a new scientific/statistical inference contract, changes persistence or tenant authority, changes model/credential trust boundaries, or replaces a fail-closed product capability with a different production dependency. Cross-cutting release, provenance, or deployment ordering decisions that can change the meaning of a published version also require an ADR. A Naruon ADR records Naruon's decision only; it cannot assign authority to, or accept a decision for, another service.
 
 Every implementing PR must keep the corresponding source, tests, doctoring,
 architecture/operability contract, and CHANGELOG maturity truthful. An active PR,

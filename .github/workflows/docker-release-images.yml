@@ -1,38 +1,19 @@
-name: Build and Publish Docker Images
+name: Publish Docker Release Images
 
 on:
-  push:
-    tags:
-      - "v*"
-  pull_request:
-    branches:
-      - develop
-      - master
-      - "release/**"
+  workflow_call:
 
 permissions:
   contents: read
-
-concurrency:
-  # First-attempt PR validations share a generation key so a newer event
-  # supersedes only another first attempt. Manual reruns add their stable
-  # run_id and therefore cannot cancel, or be cancelled by, a newer PR event.
-  # Tag runs remain unique here because release-set serialization is held by
-  # the reusable-workflow caller job for the full publication duration.
-  group: docker-publish-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && github.run_attempt == 1 && 'first-attempt' || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  packages: write
 
 env:
   REGISTRY: ghcr.io
-  # Keep the explicit opt-in as belt-and-suspenders. The real warning removal
-  # comes from the Node24-native action SHAs below because the runner may still
-  # emit a deprecation annotation before the override takes effect.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  pull_request_image_validation:
-    name: validate ${{ matrix.component }} image
-    if: github.event_name == 'pull_request'
+  publish_images:
+    name: publish ${{ matrix.component }} image
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -70,29 +51,26 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Read release version
+        id: version
+        run: |
+          VERSION="$(cat VERSION)"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf 'VERSION %s must be a stable X.Y.Z release before publishing latest\n' "$VERSION" >&2
+            exit 1
+          fi
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$TAG_VERSION" != "$VERSION" ]; then
+            printf 'Tag %s does not match VERSION %s\n' "$GITHUB_REF_NAME" "$VERSION" >&2
+            exit 1
+          fi
+          printf 'version=%s\n' "$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
-
-      - name: Resolve pinned Ollama base manifest
-        if: matrix.component == 'naruon'
-        run: |
-          base_image="$(awk 'toupper($1) == "FROM" { print $2; exit }' Dockerfile.ollama)"
-          if ! printf '%s\n' "$base_image" | grep -Eq '^ollama/ollama@sha256:[0-9a-f]{64}$'; then
-            printf '::error file=Dockerfile.ollama,line=1::Expected an exact ollama/ollama sha256 base pin; found %s\n' "$base_image"
-            exit 1
-          fi
-          printf 'Resolving pinned Ollama base manifest: %s\n' "$base_image"
-          manifest_output="$(docker buildx imagetools inspect "$base_image")"
-          printf '%s\n' "$manifest_output"
-          for platform in linux/amd64 linux/arm64; do
-            if ! printf '%s\n' "$manifest_output" | grep -Eq "^[[:space:]]*Platform:[[:space:]]+${platform}[[:space:]]*$"; then
-              printf '::error file=Dockerfile.ollama,line=1::Pinned Ollama manifest is missing %s\n' "$platform"
-              exit 1
-            fi
-          done
 
       - name: Prepare OCI annotation values
         id: oci
@@ -102,9 +80,10 @@ jobs:
           IMAGE_COMPONENT: ${{ matrix.component }}
           IMAGE_NAME: ${{ matrix.image }}
           REPOSITORY: ${{ github.repository }}
-          REVISION: ${{ github.event.pull_request.head.sha }}
+          REVISION: ${{ github.sha }}
+          VERSION_VALUE: ${{ steps.version.outputs.version }}
         run: |
-          version="$(cat VERSION)"
+          version="${VERSION_VALUE:-$(cat VERSION)}"
           created="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           vendor="${REPOSITORY%%/*}"
           base_reference="$(awk 'toupper($1) == "FROM" { print $2; exit }' "$BASE_DOCKERFILE")"
@@ -149,14 +128,53 @@ jobs:
             printf 'base_name=%s\n' "$base_name"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build PR image without publishing
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}
+          flavor: |
+            latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.created=${{ steps.oci.outputs.created }}
+            org.opencontainers.image.authors=${{ steps.oci.outputs.authors }}
+            org.opencontainers.image.url=${{ steps.oci.outputs.url }}
+            org.opencontainers.image.documentation=${{ steps.oci.outputs.documentation }}
+            org.opencontainers.image.source=${{ steps.oci.outputs.source }}
+            org.opencontainers.image.version=${{ steps.oci.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.oci.outputs.revision }}
+            org.opencontainers.image.vendor=${{ steps.oci.outputs.vendor }}
+            org.opencontainers.image.licenses=${{ steps.oci.outputs.licenses }}
+            org.opencontainers.image.ref.name=${{ steps.oci.outputs.ref_name }}
+            org.opencontainers.image.title=${{ steps.oci.outputs.title }}
+            org.opencontainers.image.description=${{ steps.oci.outputs.description }}
+            org.opencontainers.image.base.digest=${{ steps.oci.outputs.base_digest }}
+            org.opencontainers.image.base.name=${{ steps.oci.outputs.base_name }}
+
+      - name: Build and publish Docker image
         id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
-          push: false
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           build-args: |
             ${{ matrix.build_args }}
             OCI_IMAGE_CREATED=${{ steps.oci.outputs.created }}
@@ -174,59 +192,20 @@ jobs:
             OCI_IMAGE_BASE_DIGEST=${{ steps.oci.outputs.base_digest }}
             OCI_IMAGE_BASE_NAME=${{ steps.oci.outputs.base_name }}
           provenance: true
-          # PR validation only checks that each image still builds. Release
-          # publishing keeps SBOM attestation enabled for distributable images;
-          # avoiding it here prevents unrelated PRs from failing on transient
-          # Docker Hub buildkit-syft-scanner pulls.
-          sbom: false
+          sbom: true
 
-  publish_images:
-    name: publish release image set
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    concurrency:
-      group: Build and Publish Docker Images-publish-set-${{ github.repository }}-${{ github.ref }}
-      queue: max
-      cancel-in-progress: false
-    permissions:
-      contents: read
-      packages: write
-    uses: ./.github/workflows/docker-release-images.yml
-
-  deploy_preflight:
-    name: Detect AKS deploy configuration
-    needs: publish_images
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    outputs:
-      aks_kubeconfig_configured: ${{ steps.aks.outputs.configured }}
-    steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
-        with:
-          egress-policy: audit
-
-      - name: Check AKS kubeconfig secret
-        id: aks
+      - name: Record image digest
         env:
-          AKS_KUBECONFIG_CONTENT: ${{ secrets.AKS_KUBECONFIG }}
+          IMAGE_COMPONENT: ${{ matrix.component }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_NAME: ${{ matrix.image }}
+          IMAGE_REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_VERSION: ${{ steps.version.outputs.version }}
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
-          if [ -n "$AKS_KUBECONFIG_CONTENT" ]; then
-            printf 'configured=true\n' >> "$GITHUB_OUTPUT"
-            printf 'AKS kubeconfig secret is configured; deployment will run.\n'
-          else
-            printf 'configured=false\n' >> "$GITHUB_OUTPUT"
-            printf 'AKS kubeconfig secret is not configured; skipping deploy workflow.\n'
-          fi
-
-  deploy_to_aks:
-    name: Call Deploy to AKS
-    needs:
-      - publish_images
-      - deploy_preflight
-    if: |
-      github.event_name == 'push' &&
-      startsWith(github.ref, 'refs/tags/v') &&
-      needs.deploy_preflight.outputs.aks_kubeconfig_configured == 'true'
-    uses: ./.github/workflows/deploy.yml
-    secrets:
-      AKS_KUBECONFIG: ${{ secrets.AKS_KUBECONFIG }}
+          {
+            printf '### %s image\n' "$IMAGE_COMPONENT"
+            printf -- '- Image: %s/%s/%s\n' "$IMAGE_REGISTRY" "$REPO_OWNER" "$IMAGE_NAME"
+            printf -- '- Version: %s\n' "$IMAGE_VERSION"
+            printf -- '- Digest: %s\n' "$IMAGE_DIGEST"
+          } >> "$GITHUB_STEP_SUMMARY"

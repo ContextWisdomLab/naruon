@@ -105,18 +105,20 @@ def test_release_version_sources_are_synchronized() -> None:
 def test_container_images_cover_all_oci_predefined_image_annotations() -> None:
     root_dockerfile = read_repo_text("Dockerfile")
     frontend_dockerfile = read_repo_text("frontend/Dockerfile")
-    docker_publish_workflow = read_repo_text(".github/workflows/docker-publish.yml")
+    docker_release_workflow = read_repo_text(
+        ".github/workflows/docker-release-images.yml"
+    )
 
     for annotation_key in OCI_PREDEFINED_IMAGE_ANNOTATION_KEYS:
         assert annotation_key in root_dockerfile
         assert annotation_key in frontend_dockerfile
-        assert annotation_key in docker_publish_workflow
+        assert annotation_key in docker_release_workflow
 
     assert (
-        "DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index" in docker_publish_workflow
+        "DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index" in docker_release_workflow
     )
     assert (
-        "annotations: ${{ steps.meta.outputs.annotations }}" in docker_publish_workflow
+        "annotations: ${{ steps.meta.outputs.annotations }}" in docker_release_workflow
     )
     assert_oci_metadata_matches_first_base(root_dockerfile)
     assert_oci_metadata_matches_first_base(frontend_dockerfile)
@@ -385,6 +387,7 @@ def test_stepsecurity_remediation_adds_pinned_audit_hardening() -> None:
         ".github/workflows/app-ci.yml",
         ".github/workflows/bandit.yml",
         ".github/workflows/docker-publish.yml",
+        ".github/workflows/docker-release-images.yml",
         ".github/workflows/pr-governance.yml",
     ]
 
@@ -674,32 +677,35 @@ def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_
     None
 ):
     workflow = read_repo_text(".github/workflows/docker-publish.yml")
+    release_workflow = read_repo_text(".github/workflows/docker-release-images.yml")
+    combined_workflows = f"{workflow}\n{release_workflow}"
 
     assert "pull_request:" in workflow
     assert "push:" in workflow
-    assert "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true" in workflow
+    assert "workflow_call:" in release_workflow
+    assert "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true" in combined_workflows
     assert (
-        workflow.count(
+        combined_workflows.count(
             "docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0"
         )
         == 2
     )
     assert (
-        workflow.count(
+        combined_workflows.count(
             "docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0"
         )
         == 2
     )
     assert (
         "docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0"
-        in workflow
+        in release_workflow
     )
     assert (
         "docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0"
-        in workflow
+        in release_workflow
     )
     assert (
-        workflow.count(
+        combined_workflows.count(
             "docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0"
         )
         == 2
@@ -711,26 +717,27 @@ def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_
     assert "tags:" in push_block
     assert "branches:" not in push_block
     assert "develop" in pull_request_block
-    assert "ai_email_client-backend" in workflow
-    assert "ai_email_client-frontend" in workflow
-    assert workflow.count("image: naruon") == 2
+    assert "ai_email_client-backend" in combined_workflows
+    assert "ai_email_client-frontend" in combined_workflows
+    assert combined_workflows.count("image: naruon") == 2
     assert "push: false" in workflow
-    assert "push: true" in workflow
-    assert workflow.count("base_dockerfile: Dockerfile") == 4
-    assert workflow.count("base_dockerfile: frontend/Dockerfile") == 2
-    assert workflow.count('base_digest="${base_reference##*@}"') == 2
-    assert workflow.count('base_name="docker.io/library/$base_reference"') == 2
+    assert "push: true" in release_workflow
+    assert combined_workflows.count("base_dockerfile: Dockerfile") == 4
+    assert combined_workflows.count("base_dockerfile: frontend/Dockerfile") == 2
+    assert combined_workflows.count('base_digest="${base_reference##*@}"') == 2
+    assert combined_workflows.count('base_name="docker.io/library/$base_reference"') == 2
     assert "Resolve pinned Ollama base manifest" in workflow
     assert "docker buildx imagetools inspect" in workflow
     assert "Platform:[[:space:]]+${platform}[[:space:]]*$" in workflow
     assert "Pinned Ollama manifest is missing %s" in workflow
     assert "linux/amd64 linux/arm64" in workflow
-    assert "sha256:44dd04494ee8f3b538294360e7c4b3acb87c8268e4d0a4828a6500b1eff50061" not in workflow
-    assert "sha256:191ef878ecb351d68b78219593de18bd8942afd59af59f29960dc4b24805a3f1" not in workflow
+    assert "sha256:44dd04494ee8f3b538294360e7c4b3acb87c8268e4d0a4828a6500b1eff50061" not in combined_workflows
+    assert "sha256:191ef878ecb351d68b78219593de18bd8942afd59af59f29960dc4b24805a3f1" not in combined_workflows
     assert "sbom: false" in workflow
-    assert workflow.count("sbom: true") == 1
-    assert "type=semver" in workflow
-    assert "type=ref,event=branch" not in workflow
+    assert release_workflow.count("sbom: true") == 1
+    assert "type=semver" in release_workflow
+    assert "type=ref,event=branch" not in release_workflow
+    assert "uses: ./.github/workflows/docker-release-images.yml" in workflow
     assert "deploy_preflight:" in workflow
     assert "AKS_KUBECONFIG_CONTENT: ${{ secrets.AKS_KUBECONFIG }}" in workflow
     assert "configured=false" in workflow

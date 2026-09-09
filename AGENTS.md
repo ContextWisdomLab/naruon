@@ -130,6 +130,11 @@ in this repo.
   them as source can exhaust model context before security evidence finalizes.
 - Prefer upgrading or removing vulnerable dependencies over downgrading patched
   packages unless compatibility evidence is recorded in the PR.
+- When a feature PR carries dependency drift already fixed by a dedicated
+  dependency PR, merge that owner PR's exact head without force, retarget the
+  feature PR onto the owner branch, and byte-compare manifests and lockfiles.
+  The feature diff must contain no competing dependency policy; keep it Draft
+  until the owner PR is protected-merged.
 - OpenCode Review, Strix Security Scan, and PR Review Merge Scheduler are
   provided by ContextualWisdomLab central required workflows in
   `ContextualWisdomLab/.github`; do not reintroduce repo-local copies of

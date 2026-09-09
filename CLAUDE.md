@@ -160,6 +160,10 @@ Next.js frontend ──> FastAPI backend (control plane) ──> Postgres + pgve
   hard failure; tests must pass without them.
 - TDD is expected: add or update tests before production code changes, and
   keep each PR an atomic, focused change.
+- If a focused PR duplicates dependency changes owned by another open PR,
+  merge the owner's exact head normally, retarget onto that owner branch, and
+  verify the manifests and lockfile are byte-identical. Keep the dependent PR
+  Draft until the owner change is protected-merged.
 - Never expose sequential database ids through APIs or UI — use opaque public
   ids (`task_uid`, `source_uid`, `folder_uid`, `document_id`). New tables and
   columns use at least two-word `snake_case` names (`task_title`, not `title`).

@@ -73,8 +73,10 @@ type CalendarWritebackSource = {
 
 type ProjectFolder = {
   folder_uid: string;
-  project_name?: string;
-  webdav_path?: string;
+  project_name: string;
+  webdav_path: string;
+  owner_user_id: string;
+  organization_id: string | null;
 };
 
 const dashboardQuickActions = [
@@ -119,6 +121,15 @@ function isDashboardCalendarSource(value: unknown): value is CalendarWritebackSo
       && value.capabilities.every((capability: unknown) => typeof capability === 'string')))
     && (value.writeback_enabled === undefined || typeof value.writeback_enabled === 'boolean')
     && (value.etag === undefined || value.etag === null || typeof value.etag === 'string');
+}
+
+function isDashboardProjectFolder(value: unknown): value is ProjectFolder {
+  return isDashboardRecord(value)
+    && typeof value.folder_uid === 'string'
+    && typeof value.project_name === 'string'
+    && typeof value.webdav_path === 'string'
+    && typeof value.owner_user_id === 'string'
+    && (value.organization_id === null || typeof value.organization_id === 'string');
 }
 
 function isWritableCalendarSource(source: CalendarWritebackSource) {
@@ -297,7 +308,7 @@ function useDashboardData() {
     void apiClient.get<ProjectFolder[]>('/api/webdav/folders', { signal: dashboardReadSignal })
       .then((response) => {
         if (isStaleRequest()) return;
-        if (!Array.isArray(response)) throw new Error('Invalid project-folder response');
+        if (!Array.isArray(response) || !response.every(isDashboardProjectFolder)) throw new Error('Invalid project-folder response');
         setProjectFolders(response);
         setSourceStatus('projectFolders', 'ready');
       })

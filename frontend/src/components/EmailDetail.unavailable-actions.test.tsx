@@ -80,6 +80,29 @@ function setInputValue(input: HTMLInputElement, value: string) {
   });
 }
 
+function hiddenReasonUtility(className: string) {
+  return className.split(/\s+/).find((token) => {
+    const utility = token.slice(token.lastIndexOf(":") + 1).replace(/^!/, "");
+    return (
+      utility === "sr-only" ||
+      utility === "hidden" ||
+      utility === "invisible" ||
+      utility === "opacity-0" ||
+      /^opacity-\[0(?:\.0+)?\]$/.test(utility)
+    );
+  });
+}
+
+function expectReasonVisuallyDiscoverable(reason: HTMLElement | null) {
+  expect(reason).not.toBeNull();
+  expect(hiddenReasonUtility(reason?.className ?? "")).toBeUndefined();
+  expect(reason?.hidden).toBe(false);
+  expect(reason?.getAttribute("aria-hidden")).not.toBe("true");
+  expect(reason?.style.display).not.toBe("none");
+  expect(reason?.style.visibility).not.toBe("hidden");
+  expect(reason?.style.opacity).not.toBe("0");
+}
+
 describe("EmailDetail unavailable reply actions", () => {
   let root: Root | null = null;
   let container: HTMLDivElement | null = null;
@@ -90,6 +113,21 @@ describe("EmailDetail unavailable reply actions", () => {
     container?.remove();
     container = null;
     vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ["screen-reader-only utility", (reason: HTMLElement) => reason.classList.add("sr-only")],
+    ["invisible utility", (reason: HTMLElement) => reason.classList.add("invisible")],
+    ["responsive hidden utility", (reason: HTMLElement) => reason.classList.add("max-sm:hidden")],
+    ["important hidden utility", (reason: HTMLElement) => reason.classList.add("md:!hidden")],
+    ["zero-opacity utility", (reason: HTMLElement) => reason.classList.add("opacity-0")],
+    ["inline display none", (reason: HTMLElement) => reason.style.setProperty("display", "none")],
+    ["inline visibility hidden", (reason: HTMLElement) => reason.style.setProperty("visibility", "hidden")],
+    ["inline zero opacity", (reason: HTMLElement) => reason.style.setProperty("opacity", "0")],
+  ])("visibility guard rejects %s", (_label, hideReason) => {
+    const reason = document.createElement("p");
+    hideReason(reason);
+    expect(() => expectReasonVisuallyDiscoverable(reason)).toThrow();
   });
 
   it("keeps unavailable reasons keyboard- and touch-discoverable and rejects whitespace draft commands", async () => {
@@ -145,10 +183,7 @@ describe("EmailDetail unavailable reply actions", () => {
     expect(draftReasonId).toBe("reply-draft-unavailable-reason");
     const draftReason = container.querySelector<HTMLElement>(`#${draftReasonId}`);
     expect(draftReason?.textContent).toBe("답장 초안 지시를 입력해주세요");
-    expect(draftReason?.classList.contains("sr-only")).toBe(false);
-    expect(draftReason?.classList.contains("hidden")).toBe(false);
-    expect(draftReason?.hidden).toBe(false);
-    expect(draftReason?.getAttribute("aria-hidden")).not.toBe("true");
+    expectReasonVisuallyDiscoverable(draftReason);
 
     const sendButton = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(
       (button) => button.textContent?.includes("답장 보내기"),
@@ -160,10 +195,7 @@ describe("EmailDetail unavailable reply actions", () => {
     expect(sendReasonId).toBe("reply-send-unavailable-reason");
     const sendReason = container.querySelector<HTMLElement>(`#${sendReasonId}`);
     expect(sendReason?.textContent).toBe("답장 초안을 먼저 작성해주세요");
-    expect(sendReason?.classList.contains("sr-only")).toBe(false);
-    expect(sendReason?.classList.contains("hidden")).toBe(false);
-    expect(sendReason?.hidden).toBe(false);
-    expect(sendReason?.getAttribute("aria-hidden")).not.toBe("true");
+    expectReasonVisuallyDiscoverable(sendReason);
 
     await act(async () => {
       root?.render(

@@ -176,3 +176,20 @@ Next.js frontend ──> FastAPI backend (control plane) ──> Postgres + pgve
   `VERSION`.
 - When a review uncovers a recurring bug pattern, record the anti-pattern in
   `AGENTS.md` and update the affected tests/mocks/docs in the same PR.
+
+## Loop-goal block discipline and local development authority
+
+- Remote-head stall, running CI, passing head tests, owner-side work in progress,
+  and absence of new reviews are states, not top-level blockers. Do not stop on
+  "no side-effect-free step left"; allowed code edits, environment setup, and
+  experiments are execution targets.
+- Local source/test edits in general development scope, independent
+  branch/worktree creation, isolated installs of reviewed project dev/test
+  dependencies, and non-force pushes of own branches do not wait for repeated
+  user re-designation. Stay inside the current project; never change operations,
+  global environments, secrets, or paid resources. More specific user limits and
+  effective `ask`/`deny` rules take precedence.
+- Do not call `opencode_loop_goal_blocked` for routine wait reports: in a real
+  implementation it can carry top-level stop authority. Candidate
+  `reason`/`needed`/`evidence` strings are not approved stop orders; validate
+  the node, head, policy evidence, and real blocking dependencies first.

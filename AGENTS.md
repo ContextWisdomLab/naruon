@@ -725,3 +725,50 @@ protection, `require_code_owner_review` in rulesets) are disabled across the Con
 org: there is a single maintainer (solo developer), so a code-owner approval gate can never be
 satisfied. This is ON HOLD until the org has multiple maintainers — do NOT re-enable these
 settings or add CODEOWNERS-based merge gates before then.
+
+## Loop-goal block discipline and local development authority
+
+- Remote-head stall, running CI, passing head tests, owner-side work in progress,
+  and absence of new reviews are states, not top-level blockers. Local progress is
+  possible without remote changes. Do not use "no side-effect-free step left" as a
+  stop criterion. Autonomous development is not a read-only job: allowed code
+  edits, environment setup, and experiments are execution targets.
+- Local source/test edits in general development scope, independent
+  branch/worktree creation, isolated installs of reviewed project dev/test
+  dependencies, and non-force pushes of own branches do not wait for repeated
+  user re-designation. Verify declared dependencies, locks, origins, integrity,
+  and licenses; stay inside the current project; do not change operations,
+  global environments, secrets, or paid resources. More specific user limits,
+  read-only scopes, effective `ask`/`deny` tool rules, and server permission
+  denials take precedence. Prove "approval needed" with the directive/policy or
+  the actual request/denial identifier — a model-written `needed` sentence is not
+  evidence. Never trial-run a forbidden action to check permissions.
+- Distinguish "do not touch another writer's branch" from "forbid all local
+  development". Check the protected base and active-writer scopes, then
+  autonomously choose the independent branch/worktree name for non-overlapping
+  work. Do not bypass single-writer or a rejection with a new branch on the same
+  path. Park only nodes that need approval or external results; keep executing
+  other contract/regression verifications and implementation gaps. Preserve
+  reviewed heads and undisclosed deltas under review.
+- Do not call `opencode_loop_goal_blocked` for routine wait reports. If it is a
+  tool that actually flips `goalStatus=blocked`, `enabled=false`, or
+  `paused=true` in a real implementation, it carries top-level CONTINUOUS stop
+  authority. Verify and repair the "state changes on declaration alone" handler
+  against the actually installed build. A model's `reason`/`needed`/`evidence`
+  strings are block candidates, not approved global stop orders.
+- The runner validates the candidate's node/session/goal, head, policy/permission
+  evidence, real blocking dependencies, and currently executable work. Never
+  treat a candidate tool call's success as verification passed, and never approve
+  on model-provided `verified=true` or string specificity. Record partial waits
+  on their node only and execute the next item from the parent's selection step.
+  Route thin evidence to needed lookups; convert genuinely all-paths normal
+  external waits into non-terminal waits with registered, verifiable resume
+  conditions. Follow user interrupts, policies, and real global
+  permission/resource limits immediately through a separate trust path.
+- Do not hide the blocked tool and infinite-poll, nor fake progress to reset the
+  no-progress limit. Logs, Sequential Thinking, and identical polls are not real
+  task progress. Do not claim application from source edits alone: verify the
+  real load path, pinned versions, build artifacts, injected prompts, state
+  transitions, and resume calls. Preserve normal cancels, approval denials, and
+  budget protections; recover an already-blocked session only through the
+  approved resume path after verifying actual permissions and the stop cause.

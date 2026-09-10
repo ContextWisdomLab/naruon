@@ -215,14 +215,7 @@ async def dav_handler(
     logger.info("DAV Request: %s /%s", request.method, safe_path)
 
     if request.method == "OPTIONS":
-        headers = {
-            "DAV": "1, 2, 3, calendar-access, addressbook",
-            "Allow": (
-                "OPTIONS, GET, HEAD, POST, PUT, DELETE, TRACE, COPY, MOVE, MKCOL, "
-                "PROPFIND, PROPPATCH, LOCK, UNLOCK, REPORT"
-            ),
-        }
-        return Response(status_code=200, headers=headers)
+        return Response(status_code=200, headers={"Allow": "OPTIONS, PROPFIND"})
 
     if request.method == "PROPFIND":
         return await _handle_project_propfind(

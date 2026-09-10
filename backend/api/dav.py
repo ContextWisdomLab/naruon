@@ -1,6 +1,7 @@
 import logging
 import re
 from html import escape as escape_xml_text
+from urllib.parse import unquote_to_bytes
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/dav", tags=["dav"])
 
 
 _INVALID_RAW_PERCENT_ESCAPE = re.compile(br"%(?![0-9A-Fa-f]{2})")
-_NESTED_RAW_PERCENT_ESCAPE = re.compile(br"%25(?=[0-9A-Fa-f]{2})")
+_SECOND_PASS_PERCENT_ESCAPE = re.compile(br"%[0-9A-Fa-f]{2}")
 _ENCODED_CONTROL_CHARACTER = re.compile(br"%(?:0[0-9A-Fa-f]|1[0-9A-Fa-f]|7[Ff])")
 
 
@@ -39,7 +40,8 @@ def _validate_dav_raw_request_path(request: Request, decoded_path: str) -> None:
         )
     if _ENCODED_CONTROL_CHARACTER.search(raw_path):
         raise HTTPException(status_code=400, detail="DAV path contains control characters")
-    if _NESTED_RAW_PERCENT_ESCAPE.search(raw_path):
+    first_wire_decode = unquote_to_bytes(raw_path)
+    if _SECOND_PASS_PERCENT_ESCAPE.search(first_wire_decode):
         raise HTTPException(
             status_code=400, detail="DAV path contains nested percent encoding"
         )

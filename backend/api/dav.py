@@ -381,6 +381,11 @@ async def _handle_project_propfind(
         folder_uid=folder_uid,
     )
     if folders:
+        if depth == "1":
+            raise HTTPException(
+                status_code=501,
+                detail="DAV project collection member enumeration is not implemented",
+            )
         return _dav_xml_response(
             [_project_folder_response(path_owner_user_id, folder) for folder in folders]
         )

@@ -46,14 +46,6 @@ def stub_dav_project_folders(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _assert_finite_depth_error(response) -> None:
-    assert response.status_code == 403
-    assert response.headers["content-type"].startswith("application/xml")
-    root = ET.fromstring(response.text)
-    assert root.tag == "{DAV:}error"
-    assert root.find("{DAV:}propfind-finite-depth") is not None
-
-
 def test_propfind_depth_zero_returns_only_addressed_collection(
     dev_auth_dependency_overrides,
     stub_dav_project_folders,
@@ -95,6 +87,52 @@ def test_propfind_depth_one_returns_addressed_collection_and_direct_member(
     assert [
         item.findtext(".//{DAV:}displayname") for item in responses
     ] == ["projects", "demo"]
+
+
+def test_propfind_project_collection_depth_one_rejects_unimplemented_member_enumeration(
+    dev_auth_dependency_overrides,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A project collection must not masquerade as empty when members are unknown."""
+
+    async def selected_project_folder(
+        db: object,
+        user_id: str,
+        organization_id: str | None,
+        folder_uid: str | None = None,
+        max_results: int | None = None,
+    ) -> list[dict[str, str | None]]:
+        assert user_id == "user123"
+        assert organization_id == "org-acme"
+        assert folder_uid == "demo"
+        assert max_results is None
+        return [
+            {
+                "folder_uid": "demo",
+                "project_name": "demo",
+                "webdav_path": "/projects/demo",
+                "owner_user_id": user_id,
+                "organization_id": organization_id,
+            }
+        ]
+
+    monkeypatch.setattr(
+        webdav_service,
+        "get_project_folders_from_db",
+        selected_project_folder,
+    )
+
+    with TestClient(app) as client:
+        response = client.request(
+            "PROPFIND",
+            "/dav/user123/projects/demo/",
+            headers={**AUTH_HEADERS, "Depth": "1"},
+        )
+
+    assert response.status_code == 501
+    assert response.json()["detail"] == (
+        "DAV project collection member enumeration is not implemented"
+    )
 
 
 def test_propfind_depth_one_accepts_exact_product_ceiling(

@@ -21,6 +21,7 @@ _SECOND_PASS_PERCENT_ESCAPE = re.compile(br"%[0-9A-Fa-f]{2}")
 _ENCODED_CONTROL_CHARACTER = re.compile(br"%(?:0[0-9A-Fa-f]|1[0-9A-Fa-f]|7[Ff])")
 _DAV_RAW_PATH_MAX_OCTETS = 8192
 _DAV_DECODED_PATH_MAX_CHARACTERS = 8192
+_DAV_PROJECT_COLLECTION_MEMBER_LIMIT = 256
 
 
 def _validate_dav_raw_request_path(request: Request, decoded_path: str) -> None:
@@ -150,6 +151,18 @@ def _dav_finite_depth_error_response() -> Response:
     )
 
 
+def _dav_project_member_limit_error_response() -> Response:
+    return Response(
+        content=(
+            '<?xml version="1.0" encoding="utf-8" ?>\n'
+            '<D:error xmlns:D="DAV:" xmlns:N="urn:naruon:dav">'
+            '<N:project-member-limit/></D:error>'
+        ),
+        media_type="application/xml",
+        status_code=403,
+    )
+
+
 def _dav_depth(request: Request) -> str:
     depth_header = request.headers.get("Depth")
     if depth_header is None:
@@ -201,14 +214,15 @@ async def _handle_project_propfind(
     if folder_uid is None and depth == "0":
         return _dav_xml_response([addressed_collection_response])
 
-    folders = await webdav_service.get_project_folders_from_db(
-        db,
-        auth_context.user_id,
-        auth_context.organization_id,
-        folder_uid=folder_uid,
-    )
-
     if folder_uid is None:
+        folders = await webdav_service.get_project_folders_from_db(
+            db,
+            auth_context.user_id,
+            auth_context.organization_id,
+            max_results=_DAV_PROJECT_COLLECTION_MEMBER_LIMIT + 1,
+        )
+        if len(folders) > _DAV_PROJECT_COLLECTION_MEMBER_LIMIT:
+            return _dav_project_member_limit_error_response()
         return _dav_xml_response(
             [
                 addressed_collection_response,
@@ -219,6 +233,12 @@ async def _handle_project_propfind(
             ]
         )
 
+    folders = await webdav_service.get_project_folders_from_db(
+        db,
+        auth_context.user_id,
+        auth_context.organization_id,
+        folder_uid=folder_uid,
+    )
     if folders:
         return _dav_xml_response(
             [_project_folder_response(path_owner_user_id, folder) for folder in folders]

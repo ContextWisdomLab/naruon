@@ -89,6 +89,43 @@ def test_allprop_include_is_recognized_but_not_silently_ignored(
     assert response.status_code == 501
 
 
+def test_propfind_root_text_is_rejected(
+    dev_auth_dependency_overrides,
+) -> None:
+    """The element-only propfind grammar must reject non-whitespace root text."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:">unexpected<D:allprop/></D:propfind>'
+    )
+
+    assert response.status_code == 400
+
+
+def test_propfind_child_tail_text_is_rejected(
+    dev_auth_dependency_overrides,
+) -> None:
+    """The element-only propfind grammar must reject non-whitespace child tails."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:"><D:allprop/>unexpected</D:propfind>'
+    )
+
+    assert response.status_code == 400
+
+
+def test_non_empty_propname_is_rejected_as_invalid_grammar(
+    dev_auth_dependency_overrides,
+) -> None:
+    """DAV:propname is EMPTY and must fail before unsupported-mode classification."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:"><D:propname>unexpected</D:propname>'
+        b'</D:propfind>'
+    )
+
+    assert response.status_code == 400
+
+
 def test_malformed_propfind_xml_is_rejected(
     dev_auth_dependency_overrides,
 ) -> None:

@@ -39,6 +39,36 @@ function jsonResponse(body: unknown) {
   });
 }
 
+type DeferredJsonResponse = {
+  responsePromise: Promise<Response>;
+  bodyPromise: Promise<unknown>;
+  resolveResponse: () => void;
+  resolveBody: (body: unknown) => void;
+};
+
+function deferredJsonResponse(): DeferredJsonResponse {
+  let resolveResponsePromise!: (response: Response) => void;
+  let resolveBodyPromise!: (body: unknown) => void;
+  const bodyPromise = new Promise<unknown>((resolve) => {
+    resolveBodyPromise = resolve;
+  });
+  const responsePromise = new Promise<Response>((resolve) => {
+    resolveResponsePromise = resolve;
+  });
+  const response = new Response(null, {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+  vi.spyOn(response, "json").mockImplementation(() => bodyPromise);
+
+  return {
+    responsePromise,
+    bodyPromise,
+    resolveResponse: () => resolveResponsePromise(response),
+    resolveBody: resolveBodyPromise,
+  };
+}
+
 function statusWithText(container: HTMLElement, text: string) {
   return Array.from(container.querySelectorAll<HTMLElement>('[role="status"]')).find(
     (element) => element.textContent?.includes(text),
@@ -57,19 +87,15 @@ describe("SearchLayout empty-result live region", () => {
     vi.unstubAllGlobals();
   });
 
-  it("announces an empty result after the asynchronous search leaves loading", async () => {
-    let resolveSearch!: (response: Response) => void;
-    const searchResponse = new Promise<Response>((resolve) => {
-      resolveSearch = resolve;
-    });
-    const emptyBody = Promise.resolve({ results: [] });
+  it("announces an empty result only after the asynchronous response body leaves loading", async () => {
+    const searchResponse = deferredJsonResponse();
 
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/api/search/answer")) {
         return Promise.resolve(jsonResponse({ answer: null, citations: [], provenance: null }));
       }
-      if (url.endsWith("/api/search")) return searchResponse;
+      if (url.endsWith("/api/search")) return searchResponse.responsePromise;
       throw new Error(`Unexpected fetch: ${url}`);
     }));
 
@@ -85,12 +111,16 @@ describe("SearchLayout empty-result live region", () => {
     expect(statusWithText(container, "맥락 검색 결과가 없습니다.")).toBeNull();
 
     await act(async () => {
-      resolveSearch(new Response(JSON.stringify(await emptyBody), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }));
-      await searchResponse;
-      await emptyBody;
+      searchResponse.resolveResponse();
+      await searchResponse.responsePromise;
+    });
+
+    expect(statusWithText(container, "맥락 검색 결과를 불러오는 중입니다.")).not.toBeNull();
+    expect(statusWithText(container, "맥락 검색 결과가 없습니다.")).toBeNull();
+
+    await act(async () => {
+      searchResponse.resolveBody({ results: [] });
+      await searchResponse.bodyPromise;
     });
 
     const emptyStatus = statusWithText(container, "맥락 검색 결과가 없습니다.");

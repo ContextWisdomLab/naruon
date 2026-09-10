@@ -1,4 +1,4 @@
-"""Timezone-aware datetime default guard for ORM columns (naruon#1041).
+"""Timezone-aware datetime default guard for ORM columns.
 
 Mapped datetime defaults and on-update callables must return timezone-aware
 values. SQLAlchemy normalizes callable column defaults to accept an execution

@@ -3,7 +3,10 @@ import re
 from html import escape as escape_xml_text
 from unicodedata import category as unicode_category
 from urllib.parse import unquote_to_bytes
+from xml.etree.ElementTree import ParseError
 
+from defusedxml import ElementTree as DefusedElementTree
+from defusedxml.common import DefusedXmlException
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +24,7 @@ _SECOND_PASS_PERCENT_ESCAPE = re.compile(br"%[0-9A-Fa-f]{2}")
 _ENCODED_CONTROL_CHARACTER = re.compile(br"%(?:0[0-9A-Fa-f]|1[0-9A-Fa-f]|7[Ff])")
 _DAV_RAW_PATH_MAX_OCTETS = 8192
 _DAV_DECODED_PATH_MAX_CHARACTERS = 8192
+_DAV_PROPFIND_BODY_MAX_OCTETS = 8192
 _DAV_PROJECT_COLLECTION_MEMBER_LIMIT = 256
 
 
@@ -176,6 +180,69 @@ def _dav_depth(request: Request) -> str:
     return depth
 
 
+async def _validate_dav_propfind_body(request: Request) -> None:
+    """Validate the bounded PROPFIND body semantics this discovery slice supports."""
+    request_body = bytearray()
+    async for body_chunk in request.stream():
+        if not body_chunk:
+            continue
+        if len(request_body) + len(body_chunk) > _DAV_PROPFIND_BODY_MAX_OCTETS:
+            raise HTTPException(
+                status_code=413,
+                detail="DAV PROPFIND body exceeds 8192 octets",
+            )
+        request_body.extend(body_chunk)
+
+    if not request_body:
+        return
+
+    try:
+        propfind_element = DefusedElementTree.fromstring(bytes(request_body))
+    except (DefusedXmlException, ParseError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="DAV PROPFIND body must be well-formed XML",
+        ) from exc
+
+    if propfind_element.tag != "{DAV:}propfind":
+        raise HTTPException(
+            status_code=400,
+            detail="DAV PROPFIND body must contain DAV:propfind",
+        )
+
+    directives = list(propfind_element)
+    if len(directives) == 1 and directives[0].tag == "{DAV:}allprop":
+        if list(directives[0]) or (directives[0].text or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail="DAV allprop directive must be empty",
+            )
+        return
+
+    if len(directives) == 2 and [element.tag for element in directives] == [
+        "{DAV:}allprop",
+        "{DAV:}include",
+    ]:
+        raise HTTPException(
+            status_code=501,
+            detail="DAV allprop include semantics are not implemented",
+        )
+
+    if len(directives) == 1 and directives[0].tag in {
+        "{DAV:}prop",
+        "{DAV:}propname",
+    }:
+        raise HTTPException(
+            status_code=501,
+            detail="DAV selected-property PROPFIND semantics are not implemented",
+        )
+
+    raise HTTPException(
+        status_code=400,
+        detail="DAV PROPFIND body has invalid directive structure",
+    )
+
+
 def _project_folder_response(path_owner_user_id: str, folder: dict) -> str:
     folder_uid = str(folder["folder_uid"])
     project_name = str(folder["project_name"])
@@ -274,6 +341,7 @@ async def dav_handler(
         return Response(status_code=200, headers={"Allow": "OPTIONS, PROPFIND"})
 
     if request.method == "PROPFIND":
+        await _validate_dav_propfind_body(request)
         return await _handle_project_propfind(
             request=request,
             path=canonical_path,

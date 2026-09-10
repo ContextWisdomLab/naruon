@@ -3,7 +3,7 @@
 - Status: Proposed
 - Date: 2026-09-10
 - Scope: Naruon runtime credential acquisition
-- Related: ContextualWisdomLab/.github#2063, ContextualWisdomLab/keyverse#129, #151, #153
+- Related: ContextualWisdomLab/.github#2063, ContextualWisdomLab/keyverse#129, ContextualWisdomLab/keyverse#151, ContextualWisdomLab/keyverse#153
 
 ## Context
 
@@ -27,7 +27,7 @@ Naruon introduces `core.credential_resolution` as an application port with these
 
 The port returns a resolved credential only through an implementation of `CredentialResolver`. Until Keyverse publishes and Naruon pins an immutable workload credential-resolution contract, `UnavailableCredentialResolver` is the only integration state introduced by this ADR and fails closed.
 
-This PR does **not** replace current bootstrap settings and does not claim `.env` removal. It creates the seam required for a later shadow-verification and cutover stack. The future Keyverse adapter must authenticate the workload with released identity semantics, bind the request to the reference above, verify TLS/authority, honor version/revocation/lease rules, reject stale or expired material, and provide no environment/dotenv/plaintext-database fallback.
+This PR does **not** replace current bootstrap settings and does not claim `.env` removal. It creates the seam required for a later shadow-verification and cutover stack. The future Keyverse adapter must authenticate the workload with released identity semantics, bind the request to the reference above, verify authenticated HTTPS and authority before attaching workload credentials, disable redirects by default, honor version/revocation/lease rules, reject stale or expired material, and provide no environment/dotenv/plaintext-database fallback. If an owner-released contract later requires redirects, Naruon must re-authorize every destination after redirect resolution and must not forward workload credentials until the redirected HTTPS endpoint and authority have passed the same verification policy.
 
 ## Alternatives considered
 
@@ -58,5 +58,6 @@ Before production cutover:
 3. exercise current and rotated secret versions and revoked/expired denial;
 4. verify Keyverse outage fails closed without `.env`, environment, local-file, or local-vault secret fallback;
 5. verify resolved values are absent from logs, traces, metrics, artifacts, browser bundles, exception rendering, and LLM inputs;
-6. run Naruon's protected-branch backend, security, CodeQL, dependency, image, coverage, and independent-review gates on one exact head;
-7. only then remove the corresponding legacy dotenv/environment discovery paths in a successor change.
+6. verify redirect handling is disabled unless a released contract requires it, and then re-authorize each redirected HTTPS destination before any workload credential is attached;
+7. run Naruon's protected-branch backend, security, CodeQL, dependency, image, coverage, and independent-review gates on one exact head;
+8. only then remove the corresponding legacy dotenv/environment discovery paths in a successor change.

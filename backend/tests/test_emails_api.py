@@ -1932,9 +1932,7 @@ def test_send_email_rate_limit_window_expiry_allows_new_send(monkeypatch):
         )
         for _ in range(emails_api._SEND_EMAIL_RATE_LIMIT_MAX_ATTEMPTS):
             emails_api._enforce_send_email_rate_limit(scope)
-        now["value"] = (
-            2000.0 + emails_api._SEND_EMAIL_RATE_LIMIT_WINDOW_SECONDS + 1.0
-        )
+        now["value"] = 2000.0 + emails_api._SEND_EMAIL_RATE_LIMIT_WINDOW_SECONDS + 1.0
         emails_api._enforce_send_email_rate_limit(scope)
     finally:
         emails_api._email_send_attempts_by_scope.clear()

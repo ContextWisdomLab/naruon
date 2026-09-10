@@ -19,10 +19,15 @@ _NESTED_RAW_PERCENT_ESCAPE = re.compile(br"%25(?=[0-9A-Fa-f]{2})")
 _ENCODED_CONTROL_CHARACTER = re.compile(br"%(?:0[0-9A-Fa-f]|1[0-9A-Fa-f]|7[Ff])")
 
 
-def _validate_dav_raw_request_path(request: Request) -> None:
-    """Validate encoding syntax before the framework-decoded DAV path is trusted."""
+def _validate_dav_raw_request_path(request: Request, decoded_path: str) -> None:
+    """Validate wire encoding before trusting the framework-decoded DAV path."""
     raw_path = request.scope.get("raw_path")
     if raw_path is None:
+        if "%" in decoded_path:
+            raise HTTPException(
+                status_code=400,
+                detail="DAV raw path required for percent-bearing path",
+            )
         return
     if not isinstance(raw_path, bytes):
         raise HTTPException(status_code=400, detail="DAV raw path is unavailable")
@@ -199,7 +204,7 @@ async def dav_handler(
     Provider-backed writeback stays fail-closed until source capability and
     ETag/If-Match enforcement are available through signed writeback intents.
     """
-    _validate_dav_raw_request_path(request)
+    _validate_dav_raw_request_path(request, path)
     _ensure_dav_owner_scope(path, auth_context)
     safe_path = repr(path)[1:-1]
     logger.info("DAV Request: %s /%s", request.method, safe_path)

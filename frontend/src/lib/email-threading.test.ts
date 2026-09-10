@@ -153,6 +153,13 @@ describe("email threading UI helpers", () => {
     expect(buildReplyPayload(reEmail, "Thanks").subject).toBe("Re: Original Subject");
   });
 
+  it("does not duplicate a reply prefix regardless of casing", () => {
+    expect(buildReplyPayload({ ...baseEmail, subject: "RE: Original Subject" }, "Thanks").subject)
+      .toBe("RE: Original Subject");
+    expect(buildReplyPayload({ ...baseEmail, subject: "re: Original Subject" }, "Thanks").subject)
+      .toBe("re: Original Subject");
+  });
+
   it("returns references if messageId is missing", () => {
     const noMsgIdEmail = { ...baseEmail, message_id: undefined, references: "<some-ref@example.com>" };
     expect(buildReplyPayload(noMsgIdEmail, "Thanks").references).toBe("<some-ref@example.com>");

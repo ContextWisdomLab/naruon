@@ -1,5 +1,6 @@
 import datetime
 import json
+import logging
 import re
 from typing import List, Optional
 
@@ -9,12 +10,14 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import AuthContext, get_auth_context
+from core.safe_logging import redacted_exception_info
 from db.models import LLMProvider, PromptTemplate
 from db.session import get_db
 from services.llm_provider_urls import build_llm_provider_http_client
 from services.tenant_config_scope import get_scoped_tenant_config
 
 router = APIRouter(prefix="/api/prompts", tags=["prompts"])
+logger = logging.getLogger(__name__)
 
 PROMPT_TEST_MAX_CONTENT_CHARS = 4000
 PROMPT_TEST_MAX_VARIABLES = 20
@@ -113,14 +116,12 @@ async def execute_prompt_with_llm(
         )
         content = response.choices[0].message.content
         return {"result": content if content else ""}
-    except Exception as e:
-        import logging
-
-        logging.getLogger(__name__).error(f"Prompt execution failed: {e}")
+    except Exception as exc:
+        logger.error("Prompt execution failed", exc_info=redacted_exception_info(exc))
         raise HTTPException(
             status_code=502,
             detail="Failed to execute prompt with AI provider. Check provider status.",
-        )
+        ) from None
     finally:
         await client.close()
 

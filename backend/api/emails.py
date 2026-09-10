@@ -1,3 +1,4 @@
+from core.safe_logging import redacted_exception_info
 from collections import defaultdict
 from threading import Lock
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -773,7 +774,7 @@ async def send_email_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error sending email: {e}", exc_info=True)
+        logger.error("Error sending email", exc_info=redacted_exception_info(e))
         raise HTTPException(
             status_code=500, detail="An internal error occurred while sending the email"
-        )
+        ) from None

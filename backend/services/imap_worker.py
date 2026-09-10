@@ -1,3 +1,4 @@
+from core.safe_logging import redacted_exception_info
 import asyncio
 import datetime
 import logging
@@ -98,6 +99,7 @@ async def process_fetched_email(
         await extract_knowledge_from_self_sent(session, new_email, owner_addresses)
     return new_email
 
+
 logger = logging.getLogger(__name__)
 MAX_IMAP_FETCH_MESSAGES = 10
 
@@ -112,7 +114,11 @@ def flags_indicate_seen(fetch_data) -> bool:
     for item in fetch_data or []:
         parts = item if isinstance(item, (tuple, list)) else (item,)
         for part in parts:
-            raw = part if isinstance(part, bytes) else str(part).encode("utf-8", "replace")
+            raw = (
+                part
+                if isinstance(part, bytes)
+                else str(part).encode("utf-8", "replace")
+            )
             upper = raw.upper()
             if b"FLAGS" in upper and b"\\SEEN" in upper:
                 return True
@@ -163,7 +169,9 @@ class ImapSyncWorker:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Error in ImapSyncWorker loop: {e}", exc_info=True)
+                logger.error(
+                    "Error in ImapSyncWorker loop", exc_info=redacted_exception_info(e)
+                )
 
             # Sleep for 1 minute before the next sync
             if self._is_running:
@@ -217,7 +225,7 @@ class ImapSyncWorker:
                 config.user_id,
             )
             return 0
-        
+
         logger.info(
             "Connecting to IMAP server %s:%s for user %s",
             imap_server,
@@ -252,6 +260,7 @@ class ImapSyncWorker:
         if imap_server is None or imap_port is None:
             imap_server, imap_port = self._validated_destination(config)
         import ssl
+
         ssl_context = ssl.create_default_context()
         imap_client = aioimaplib.IMAP4_SSL(
             imap_server, imap_port, ssl_context=ssl_context
@@ -388,6 +397,4 @@ class ImapSyncWorker:
         header_block = value.split(b"\r\n\r\n", maxsplit=1)[0]
         if header_block == value:
             header_block = value.split(b"\n\n", maxsplit=1)[0]
-        return b":" in header_block and (
-            b"\r\n\r\n" in value or b"\n\n" in value
-        )
+        return b":" in header_block and (b"\r\n\r\n" in value or b"\n\n" in value)

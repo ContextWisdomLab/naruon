@@ -3,6 +3,7 @@ import base64
 import pytest
 
 from services.attachment_parser import (
+    _safe_filename,
     MAX_ATTACHMENT_PARSE_SOURCE_BYTES,
     MAX_ATTACHMENT_PARSE_SOURCE_CHARS,
     decode_deferred_attachment_payload,
@@ -255,3 +256,28 @@ def test_deferred_pdf_decoder_rejects_non_pdf_and_oversized_payloads(monkeypatch
     oversized = base64.b64encode(b"%PDF-1.7").decode("ascii")
     with pytest.raises(ValueError, match="size limit"):
         decode_deferred_attachment_payload(oversized)
+
+
+def test_safe_filename_handles_windows_path_traversal():
+    assert _safe_filename("..\\..\\upload.txt") == "upload.txt"
+    assert _safe_filename("C:\\mail\\report.pdf") == "report.pdf"
+    assert _safe_filename("%5c%2e%2e%5csecret.txt") == "secret.txt"
+    assert _safe_filename("%252e%252e%252fsecret.txt") == "secret.txt"
+    assert _safe_filename("%252525252e%252525252e%252525252fsecret.txt") == "attachment"
+
+
+def test_safe_filename_fails_closed_after_entity_decoding():
+    """Entity-encoded percent escapes must trip the residual guard post-decode."""
+    assert _safe_filename("&#37;2e&#37;2e&#37;2fsecret.txt") == "attachment"
+
+
+def test_safe_filename_plain_percent_encoded_traversal_still_decodes_to_basename():
+    """Single percent-encoded traversal still decodes in-round to its basename."""
+    assert _safe_filename("%2e%2e%2fsecret.txt") == "secret.txt"
+
+
+def test_safe_filename_benign_name_survives_unchanged():
+    assert _safe_filename("annual-report-2026.pdf") == "annual-report-2026.pdf"
+    assert _safe_filename("quarterly report & notes.pdf") == (
+        "quarterly report & notes.pdf"
+    )

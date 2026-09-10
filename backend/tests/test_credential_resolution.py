@@ -49,6 +49,33 @@ def test_credential_reference_rejects_blank_identity_fields() -> None:
             CredentialReference(**values)
 
 
+@pytest.mark.parametrize(
+    "invalid_value",
+    [
+        pytest.param(None, id="none"),
+        pytest.param(1, id="integer"),
+        pytest.param(b"bytes", id="bytes"),
+        pytest.param([], id="list"),
+    ],
+)
+def test_credential_reference_rejects_non_string_identity_fields(
+    invalid_value: object,
+) -> None:
+    """Runtime construction must reject non-string identity dimensions uniformly."""
+    values: dict[str, object] = {
+        "authority": invalid_value,
+        "tenant_id": "workspace-123",
+        "environment_name": "production",
+        "secret_namespace": "naruon/runtime",
+        "secret_key": "auth_session_hmac_secret",
+        "secret_version": "v1",
+        "purpose_name": "session-signing",
+    }
+
+    with pytest.raises(ValueError, match="authority"):
+        CredentialReference(**values)
+
+
 def test_credential_reference_repr_contains_no_secret_value() -> None:
     """Value-free references are safe to log and review."""
     rendered = repr(_credential_reference())

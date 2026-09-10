@@ -1,5 +1,16 @@
 # AGENTS.md
 
+<!-- CWL-ENTRY -->
+> **Agents: read the master context FIRST.** Before any work, read:
+>
+> - [`docs/architecture/naruon-product-spec.md`](docs/architecture/naruon-product-spec.md) for product vision, architecture, RBAC/ABAC, core features, AI agent ontology, branding/UX, observability, and governance;
+> - the live [GitHub Project #1](https://github.com/orgs/ContextualWisdomLab/projects/1), the work and roadmap source of truth;
+> - [`docs/product-technical-gap-baseline.md`](docs/product-technical-gap-baseline.md), the live gap snapshot but not merge authorization, and canonical completion issue [#1428](https://github.com/ContextualWisdomLab/naruon/issues/1428);
+> - `ContextualWisdomLab/.github`'s [`docs/agent-github-project-protocol.md`](https://github.com/ContextualWisdomLab/.github/blob/main/docs/agent-github-project-protocol.md) for Project operation; and
+> - `ContextualWisdomLab/.github`'s [`docs/product-goal-directive.md`](https://github.com/ContextualWisdomLab/.github/blob/main/docs/product-goal-directive.md) before running or configuring the continuous PR review→fix→merge→develop loop. A length-capped `/goal` pointer does not replace the full directive.
+>
+> This repository's Figma file ID is not yet canonical on `develop`: ADR-0013 and file ID `68b5XB58w8nwT2LYOOnikK` remain Proposed in open PR [#1436](https://github.com/ContextualWisdomLab/naruon/pull/1436). The repository and Project, not private agent memory, are authoritative.
+
 <!-- BEGIN cwl-agent-guidance -->
 ## Agent guidance (CWL governance)
 
@@ -136,35 +147,23 @@ in this repo.
   `.github/workflows/opencode-review.yml`, `.github/workflows/strix.yml`,
   `.github/workflows/strix-selftest.yml`, or
   `.github/workflows/pr-review-merge-scheduler.yml`.
-- The central Strix Security Scan uses GitHub Models by default through
-  `STRIX_GITHUB_MODELS_TOKEN`, `STRIX_LLM=openai/gpt-5`, and
-  `LLM_API_BASE_FILE` pointing at a trusted file containing
-  `https://models.github.ai/inference`; GitHub Models scans must try the
-  configured GPT-5-or-newer model first and may fall back to the explicit
-  workflow fallback list, currently
-  `github_models/deepseek/deepseek-r1-0528` and
-  `github_models/deepseek/deepseek-v3-0324`, when GitHub Models provider
-  capacity or model availability blocks the primary run. The Strix gate must
-  route these fallback names through the GitHub Models endpoint with
-  OpenAI-compatible child model names such as
-  `openai/deepseek/deepseek-r1-0528`, not the public DeepSeek API. Do not use
-  GPT-4.1 or weaker GitHub Models fallbacks for Strix or OpenCode PR review
-  evidence. Keep the GitHub Models endpoint in a trusted input file and pass
-  the token only through
-  the provider-scoped Strix child-process key path. Legacy `STRIX_LLM` secrets
-  must not override PR, push, or scheduled Strix defaults. Vertex remains
-  available only for manual
-  `workflow_dispatch` evidence when the `strix_llm` input
-  explicitly selects `vertex_ai/gemini-3.1-pro-preview-customtools` or
-  `vertex_ai/gemini-2.5-flash` with `GCP_SA_KEY`; expose Google/Vertex
-  credentials only for Vertex provider mode. Direct OpenAI GPT-5.4-or-newer
-  scans remain supported only for manual `strix_llm` selections with
-  `STRIX_OPENAI_API_KEY`. Do not silently fall back between providers, and
-  do not treat timeout-class provider infrastructure failures as clean PR
-  evidence even when Strix printed zero vulnerabilities before failing. Disable
-  silent Vertex fallback models in the workflow unless a future PR proves a new
-  exact fallback contract with no Timeout/Fatal/Warn/Denied output. Record
-  provider evidence in the PR. Known third-party Strix/Pydantic
+- Central model-backed Actions are owned by `ContextualWisdomLab/.github` and
+  request only the logical `orchestrator/free` pool with a gateway token. Thin
+  callers in this repository must not select or forward provider names, model
+  names, provider groups, endpoints, or paid fallback credentials.
+- `ContextualWisdomLab/contextual-orchestrator` owns provider discovery,
+  capability-based routing, free-pool membership, and fallback. Naruon owns
+  product/domain truth, authorization, tools, and context assembly. Production
+  use requires an immutable released owner API/client/schema; verify protected
+  release evidence before adoption and fail closed when that contract or a
+  required capability is unavailable. Do not copy owner source, query owner
+  storage, or treat an open PR or unreleased branch as a consumable contract.
+- Do not impose a shared application/agent/gateway wall-clock timeout on model
+  work. A configured administrator limit, explicit user cancellation, or the
+  upstream provider's terminal result may end it; reasoning, streaming, and
+  tool calls are not failed merely because elapsed time is long.
+- A failed model-backed check remains failed evidence even when an intermediate
+  report printed zero findings. Known third-party Strix/Pydantic
   serializer warnings must be filtered narrowly inside the Strix gate child
   process, not as a visible workflow env entry, so Warn-class logs are not
   accepted as clean evidence and warning-filter variable names do not pollute
@@ -273,6 +272,19 @@ in this repo.
   or review blocker.
 
 ## Workspace and task tracking defaults
+
+- Browser smoke must check collected console and page errors after interaction,
+  accessibility, screenshot capture, and page cleanup, not only after navigation.
+  Keep the early check for fast failure and a final check before returning success.
+  Regression tests must inject late errors into the actual route-smoke execution;
+  a successful screenshot or a passing render assertion does not prove clean interactions.
+  If screenshot retries are exhausted, throw the capture failure; do not create
+  diagnostic text files in the temporary capture directory or count them as screenshots.
+  Close the page in a finally block, including navigation and capture failures.
+- Browser-smoke API mocks must reject unregistered requests with a non-success
+  response and record a harness failure even when the UI suppresses the error.
+  Cover requests emitted during cleanup; never return a default `{ ok: true }`.
+  Keep request URLs, query values, and payloads out of failure diagnostics.
 
 - First-run frontend sessions should open the Today execution dashboard while
   preserving explicit Dashboard, Email, and Calendar startup choices.
@@ -457,10 +469,10 @@ in this repo.
   update both backend header tests and frontend link tests. Global backend
   responses must include `Referrer-Policy`, and `target="_blank"` links must
   use explicit `rel="noopener noreferrer"`.
-- When robot review cites an obsolete Strix provider policy, update the docs and
-  tests to the current GitHub Models default contract before accepting a
-  rollback suggestion; do not reintroduce generic `LLM_API_KEY` or
-  cross-provider credential forwarding while trying to satisfy old comments.
+- When robot review cites obsolete provider-specific Strix policy, compare it
+  with the released `.github` and `contextual-orchestrator` contracts before
+  accepting a rollback suggestion. Do not reintroduce direct-provider routing,
+  generic provider credentials, or cross-provider credential forwarding.
 - When reviews find inert navigation/dead-space controls, either wire them to an
   implemented workspace route/API or remove the control; do not leave
   high-traffic drawer/sidebar entries as permanent `준비 중` copy.
@@ -568,6 +580,10 @@ in this repo.
   browser-submitted relationship classifications. Route layers should derive the
   thread provenance server-side, persist only scoped ontology metadata, and keep
   provider writes out of relationship capture.
+- Relationship UI must derive customer wording from the bounded `next_action`
+  contract and must not render raw `action_reason`, provider rationale, source
+  keys, or machine action names. Unknown actions use a neutral next-step message;
+  browser coverage must assert both the customer text and absence of raw fields.
 - Unique email and forwarded-import dedupe must use strong scoped signals:
   normalized Message-ID, References/In-Reply-To, persisted duplicate provenance,
   or exact body/attachment fingerprints. Do not merge threads from subject-only
@@ -649,12 +665,39 @@ in this repo.
 
 ## Development environment and tooling defaults
 
+- Read the applicable repository skill before changing its contract:
+  [fix-development-mistakes](.agents/skills/fix-development-mistakes/SKILL.md)
+  for failures and security findings,
+  [github-actions-privileged-pr-scan](.agents/skills/github-actions-privileged-pr-scan/SKILL.md)
+  for privileged PR scanners, and
+  [github-robot-review-gate](.agents/skills/github-robot-review-gate/SKILL.md)
+  for check/review diagnosis. Record the failing reproduction, smallest causal
+  repair, exact verification command, and remaining gates in the existing PR.
+- Visual Inspection requires opening the actual rendered pages or captured
+  images, not merely counting PNG files. Record app/build SHA separately from
+  runner SHA, viewport, routes, and observed defects. Mocked browser evidence
+  does not prove live provider behavior, all locales, or deployment readiness.
+  Inspect the changed AGENTS.md rendering on the pushed revision as well.
+- A server-ready timeout before browser navigation is failed startup evidence,
+  not a completed visual inspection. Record the exact source and execution result;
+  host load alone does not prove the cause or justify increasing test timeouts.
+- Preserve concurrent commits with ordinary history integration, then verify
+  the combined tree before pushing. Update these instructions with reusable
+  failure-prevention lessons; keep dated findings in the gap baseline/PR.
+- Package registry credentials alone do not authorize or configure a cluster
+  deployment. Use the existing release workflow only after its protected-source,
+  checks, target credentials, and destination prerequisites are verified; report
+  package publication and live deployment as separate outcomes.
+- Before relocating guidance out of a PR, verify its complete successor delta
+  and record the destination PR, commit, and path; a named owner alone is not succession.
 - If CodeGraph is not initialized for this repository, agents may run
   `codegraph init -i` autonomously without asking first; keep generated
   `.codegraph/` and `.cursor/rules/codegraph.mdc` artifacts local unless a
   future repository policy explicitly says to commit them. OpenCode PR review
-  uses the project `opencode.jsonc` MCP servers for CodeGraph, DeepWiki,
-  Context7, and web search. It must initialize CodeGraph before review so
+  receives the only `opencode.jsonc` from the central required workflow; do not
+  add repository-local `opencode.json` or `opencode.jsonc`. The central owner
+  registers review MCP servers, including Graphify. It must initialize
+  CodeGraph before review so
   structural findings cite graph-backed evidence instead of relying only on grep
   or raw file reads; use Context7 for current library docs, DeepWiki for
   repository documentation, and web search only for bounded external lookups.

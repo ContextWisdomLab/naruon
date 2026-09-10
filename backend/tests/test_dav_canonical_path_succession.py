@@ -55,7 +55,7 @@ def test_propfind_propagates_framework_decoded_backslashes_to_project_routing(
         response = client.request(
             "PROPFIND",
             "/dav/user123%5Cprojects%5Cdemo",
-            headers=AUTH_HEADERS,
+            headers={**AUTH_HEADERS, "Depth": "1"},
         )
 
     assert response.status_code == 207

@@ -1,7 +1,10 @@
 import defusedxml.ElementTree as ET
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
+
+from api.dav import _normalize_dav_authorization_path
 
 from main import app
 from services.webdav_service import webdav_service
@@ -201,3 +204,21 @@ def test_dav_log_injection_prevention(dev_auth_dependency_overrides, caplog):
             found_in_logs = True
 
     assert found_in_logs, "DAV Request log was not found"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/%252e%252e/bob",
+        "/%25252e%25252e/bob",
+        "/alice%255c..%255c..%255cbob",
+    ],
+)
+def test_normalize_dav_authorization_path_rejects_nested_encoding(path: str) -> None:
+    with pytest.raises(HTTPException):
+        _normalize_dav_authorization_path(path)
+
+
+def test_normalize_dav_authorization_path_single_decode_round_trip() -> None:
+    assert _normalize_dav_authorization_path("/alice/docs") == "/alice/docs"
+    assert _normalize_dav_authorization_path("/%2e%2e/bob") == "/../bob"

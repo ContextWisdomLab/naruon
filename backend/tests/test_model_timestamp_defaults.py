@@ -14,6 +14,19 @@ from sqlalchemy import DateTime
 from db.models import Base
 
 
+class _NullOffsetTimezone(datetime.tzinfo):
+    """tzinfo stub that is still naive under Python's datetime contract."""
+
+    def utcoffset(self, _value):
+        return None
+
+    def dst(self, _value):
+        return None
+
+    def tzname(self, _value):
+        return "null-offset"
+
+
 def _datetime_default_callables():
     for mapper in Base.registry.mappers:
         for column in mapper.columns:
@@ -34,11 +47,15 @@ def _evaluate_mapped_default(default_callable):
     return default_callable(None)
 
 
+def _is_datetime_timezone_aware(value: datetime.datetime) -> bool:
+    return value.tzinfo is not None
+
+
 def test_datetime_column_defaults_are_timezone_aware():
     naive_defaults: list[str] = []
     for table, column, kind, default_callable in _datetime_default_callables():
         value = _evaluate_mapped_default(default_callable)
-        if isinstance(value, datetime.datetime) and value.tzinfo is None:
+        if isinstance(value, datetime.datetime) and not _is_datetime_timezone_aware(value):
             naive_defaults.append(f"{table}.{column} ({kind})")
 
     assert not naive_defaults, (
@@ -68,3 +85,9 @@ def test_datetime_default_guard_excludes_non_datetime_callable_defaults():
     }
 
     assert ("security_audit_events", "event_uid", "default") not in guarded_columns
+
+
+def test_timezone_awareness_rejects_tzinfo_with_null_offset():
+    value = datetime.datetime(2026, 9, 11, tzinfo=_NullOffsetTimezone())
+
+    assert not _is_datetime_timezone_aware(value)

@@ -26,7 +26,7 @@ class CredentialReference:
         """Reject references that cannot be authorized unambiguously."""
         for reference_field in fields(self):
             field_value = getattr(self, reference_field.name)
-            if not field_value.strip():
+            if not isinstance(field_value, str) or not field_value.strip():
                 raise ValueError(
                     f"{reference_field.name} must be a non-blank credential reference field"
                 )
@@ -53,7 +53,7 @@ class CredentialResolver(Protocol):
 
     def resolve_credential(self, reference: CredentialReference) -> ResolvedCredential:
         """Resolve one credential or fail closed without local fallback."""
-        ...
+        pass
 
 
 @dataclass(frozen=True)

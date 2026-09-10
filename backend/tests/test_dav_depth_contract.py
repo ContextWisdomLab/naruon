@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app
-from services.webdav_service import webdav_service
+from services.webdav_service import WebDavService, webdav_service
 
 AUTH_HEADERS = {
     "X-User-Id": "user123",
@@ -143,6 +143,44 @@ def test_propfind_depth_one_rejects_member_set_above_product_ceiling(
     root = ET.fromstring(response.text)
     assert root.tag == "{DAV:}error"
     assert root.find("{urn:naruon:dav}project-member-limit") is not None
+
+
+@pytest.mark.asyncio
+async def test_project_folder_reader_applies_requested_sql_limit() -> None:
+    """The database read itself must stop at the caller's bounded probe size."""
+
+    statements: list[object] = []
+
+    class EmptyScalars:
+        def all(self) -> list[object]:
+            return []
+
+    class EmptyResult:
+        def scalars(self) -> EmptyScalars:
+            return EmptyScalars()
+
+    class RecordingSession:
+        async def execute(self, statement: object) -> EmptyResult:
+            statements.append(statement)
+            return EmptyResult()
+
+    service = WebDavService()
+    await service.get_project_folders_from_db(
+        RecordingSession(),
+        "user123",
+        "org-acme",
+        max_results=257,
+    )
+    await service.get_project_folders_from_db(
+        RecordingSession(),
+        "user123",
+        "org-acme",
+    )
+
+    limited_sql = str(statements[0].compile(compile_kwargs={"literal_binds": True}))
+    unbounded_sql = str(statements[1].compile(compile_kwargs={"literal_binds": True}))
+    assert "LIMIT 257" in limited_sql
+    assert "LIMIT" not in unbounded_sql
 
 
 def test_propfind_without_depth_fails_closed_as_infinite_depth(

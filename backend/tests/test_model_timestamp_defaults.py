@@ -9,12 +9,16 @@ values.
 
 import datetime
 
+from sqlalchemy import DateTime
+
 from db.models import Base
 
 
 def _datetime_default_callables():
     for mapper in Base.registry.mappers:
         for column in mapper.columns:
+            if not isinstance(column.type, DateTime):
+                continue
             for kind in ("default", "onupdate"):
                 column_default = getattr(column, kind, None)
                 if column_default is None:

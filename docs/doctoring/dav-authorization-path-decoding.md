@@ -46,11 +46,13 @@ The old `0bdaf4fedc001fe43326fa67390f05f83a718238` checks were admitted while #1
 - If `raw_path` is unavailable, a residual `%` in the decoded path fails closed because its wire provenance cannot be established. Percent-free decoded paths remain supported and must not be rejected solely because an ASGI server omits `raw_path`.
 - The normalization and raw-validation path is linear in input length; there is no recursive or fixed-round decode loop.
 - `Allow` advertises only methods operationally supported by the current target resource. A handler that intentionally returns 501 is not advertised as supported.
-- The partial DAV gateway does not emit a `DAV` compliance header until the resource actually satisfies the corresponding WebDAV/extension requirements. In particular, current discovery support is not represented as class 1/2/3, CalDAV, or CardDAV compliance.
+- The partial DAV gateway does not emit a `DAV` compliance header until the resource actually satisfies the corresponding WebDAV/extension requirements. In particular, current discovery support is not represented as class 1/2/3, CalDAV `calendar-access`, or CardDAV `addressbook` compliance.
 
 ## Capability-discovery decision
 
 HTTP Semantics defines `Allow` as the methods advertised as supported by the target resource. It is not a roadmap or a list of methods that the router can syntactically receive. RFC 4918 likewise defines the `DAV` response header as a compliance advertisement: class 1 requires all WebDAV MUST requirements; class 2 adds locking requirements; class 3 is also a conformance claim. RFC 4918 requires capabilities such as PROPPATCH, COPY and MOVE for DAV-compliant resources. Naruon's current partial discovery gateway does not implement those contracts and explicitly returns 501 for provider-backed write operations. Advertising them would cause standards-aware clients to select behaviors the resource cannot honor.
+
+The extension tokens are equally normative, not descriptive labels. RFC 4791 §5.1 states that advertising `calendar-access` in `DAV` indicates support for all MUST-level CalDAV requirements. RFC 6352 §6.1 states that `addressbook` indicates support for all MUST-level requirements and REQUIRED CardDAV features. Naruon does not yet implement those complete contracts, so neither token may be emitted merely because calendar/address data is a future or partial product concern.
 
 The current decision is therefore fail-closed capability discovery: return HTTP 200 to authenticated `OPTIONS`, advertise `Allow: OPTIONS, PROPFIND`, and omit `DAV`. When full WebDAV/CalDAV/CardDAV behavior is implemented, each compliance token and method must be introduced together with its normative contract, authorization, conditional/write semantics, interoperability fixtures and executable acceptance. Route registration may remain broader to produce explicit 501 responses, but registration alone does not qualify a method for `Allow`.
 
@@ -65,6 +67,10 @@ Issue #1344 stays open until current-base exact-head hosted checks, current-head
 ASGI Team. (n.d.). *HTTP & WebSocket ASGI message format*. ASGI 3.0 documentation. Retrieved September 10, 2026, from https://asgi.readthedocs.io/en/latest/specs/www.html
 
 Berners-Lee, T., Fielding, R., & Masinter, L. (2005). *Uniform Resource Identifier (URI): Generic Syntax* (RFC 3986). Internet Engineering Task Force. https://doi.org/10.17487/RFC3986
+
+Daboo, C. (2011). *CardDAV: vCard extensions to Web Distributed Authoring and Versioning (WebDAV)* (RFC 6352). Internet Engineering Task Force. https://doi.org/10.17487/RFC6352
+
+Daboo, C., Desruisseaux, B., & Dusseault, L. (2007). *Calendaring extensions to WebDAV (CalDAV)* (RFC 4791). Internet Engineering Task Force. https://doi.org/10.17487/RFC4791
 
 Dusseault, L. (2007). *HTTP extensions for Web Distributed Authoring and Versioning (WebDAV)* (RFC 4918). Internet Engineering Task Force. https://doi.org/10.17487/RFC4918
 

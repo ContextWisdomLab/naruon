@@ -23,10 +23,12 @@ def stub_dav_project_folders(monkeypatch: pytest.MonkeyPatch) -> None:
         user_id: str,
         organization_id: str | None,
         folder_uid: str | None = None,
+        max_results: int | None = None,
     ) -> list[dict[str, str | None]]:
         assert user_id == "user123"
         assert organization_id == "org-acme"
         assert folder_uid is None
+        assert max_results == 257
         return [
             {
                 "folder_uid": "demo",
@@ -93,6 +95,54 @@ def test_propfind_depth_one_returns_addressed_collection_and_direct_member(
     assert [
         item.findtext(".//{DAV:}displayname") for item in responses
     ] == ["projects", "demo"]
+
+
+def test_propfind_depth_one_rejects_member_set_above_product_ceiling(
+    dev_auth_dependency_overrides,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Depth one must refuse an oversized collection instead of materializing it."""
+
+    async def too_many_project_folders(
+        db: object,
+        user_id: str,
+        organization_id: str | None,
+        folder_uid: str | None = None,
+        max_results: int | None = None,
+    ) -> list[dict[str, str | None]]:
+        assert user_id == "user123"
+        assert organization_id == "org-acme"
+        assert folder_uid is None
+        assert max_results == 257
+        return [
+            {
+                "folder_uid": f"folder-{index}",
+                "project_name": f"Folder {index}",
+                "webdav_path": f"/projects/folder-{index}",
+                "owner_user_id": user_id,
+                "organization_id": organization_id,
+            }
+            for index in range(257)
+        ]
+
+    monkeypatch.setattr(
+        webdav_service,
+        "get_project_folders_from_db",
+        too_many_project_folders,
+    )
+
+    with TestClient(app) as client:
+        response = client.request(
+            "PROPFIND",
+            "/dav/user123/projects/",
+            headers={**AUTH_HEADERS, "Depth": "1"},
+        )
+
+    assert response.status_code == 403
+    assert response.headers["content-type"].startswith("application/xml")
+    root = ET.fromstring(response.text)
+    assert root.tag == "{DAV:}error"
+    assert root.find("{urn:naruon:dav}project-member-limit") is not None
 
 
 def test_propfind_without_depth_fails_closed_as_infinite_depth(

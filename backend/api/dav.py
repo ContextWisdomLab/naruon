@@ -230,6 +230,11 @@ async def _validate_dav_propfind_body(request: Request) -> None:
         "{DAV:}allprop",
         "{DAV:}include",
     ]:
+        if list(directives[0]) or (directives[0].text or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail="DAV allprop directive must be empty",
+            )
         raise HTTPException(
             status_code=501,
             detail="DAV allprop include semantics are not implemented",

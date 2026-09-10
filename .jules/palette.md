@@ -80,3 +80,7 @@
 ## 2025-05-19 - Dynamic ARIA labels and robust disabled states for sidebar actions
 **Learning:** Hardcoded ARIA labels in mockups (like "출시 회의 일정 삭제") are often left intact during implementation, leading to incorrect screen reader announcements when different items are selected. In addition, action buttons that depend on selection state often lack correct visual and functional disabled states.
 **Action:** When implementing detail views or sidebars, always replace hardcoded mockup ARIA labels with dynamic data (e.g. `${event.title} 삭제`), and ensure action buttons are explicitly disabled (both functionally via `disabled` and visually via `opacity-50 cursor-not-allowed`) when their prerequisites (like a selected item or specific properties like location) are unmet.
+
+## 2026-06-25 - Accessible Dynamic Empty States in Dashboards
+**Learning:** For dynamic, client-side rendered UI components (like dashboard panels), rendering an empty state message (like "대기 작업이 없습니다.") in a standard `div` will not be announced by screen readers when the state suddenly transitions from loading to empty.
+**Action:** When modifying dynamic empty states that update asynchronously, ensure their container has `role="status"` and `aria-live="polite"` so screen readers are actively notified of the content change without aggressive interruption.

@@ -1,5 +1,7 @@
 """Regression tests for Naruon's bounded content-checksum tool."""
 
+import hashlib
+
 import pytest
 
 from api.content_checksum_tool import (
@@ -72,6 +74,30 @@ async def test_content_checksum_generator_matches_published_vectors(
         "encoding_code": "utf-8",
         "security_note": SECURITY_NOTE,
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("algorithm", ["sha256", "sha3_256", "blake2b_256"])
+async def test_content_checksum_generator_matches_incremental_utf8_chunk_reference(
+    algorithm: str,
+) -> None:
+    """One-shot tool output must equal incremental hashing of the same UTF-8 bytes."""
+    chunks = ["Naruon ", "이메일 증거", "🙂\n", "second chunk"]
+    text = "".join(chunks)
+    if algorithm == "blake2b_256":
+        reference = hashlib.blake2b(digest_size=32)
+    else:
+        reference = hashlib.new(algorithm)
+    for chunk in chunks:
+        reference.update(chunk.encode("utf-8"))
+
+    result = await registry.invoke_tool(
+        "content_checksum_generator",
+        {"text": text, "algorithm": algorithm},
+    )
+
+    assert result["digest_hex"] == reference.hexdigest()
+    assert result["byte_length"] == len(text.encode("utf-8"))
 
 
 @pytest.mark.asyncio

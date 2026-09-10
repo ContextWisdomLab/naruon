@@ -264,3 +264,42 @@ def test_propfind_body_work_is_bounded(
     response = _propfind_request(b"x" * 8193)
 
     assert response.status_code == 413
+
+
+def test_unrecognized_propfind_extension_element_is_ignored(
+    dev_auth_dependency_overrides,
+) -> None:
+    """Unexpected command extensions must be processed as if they were absent."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:" xmlns:X="urn:example:dav-ext">'
+        b'<X:trace><X:nested/></X:trace><D:allprop/></D:propfind>'
+    )
+
+    assert response.status_code == 207
+
+
+def test_allprop_extension_child_is_ignored(
+    dev_auth_dependency_overrides,
+) -> None:
+    """RFC extension children do not make DAV:allprop non-empty for processing."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:" xmlns:X="urn:example:dav-ext">'
+        b'<D:allprop><X:trace><X:nested/></X:trace></D:allprop></D:propfind>'
+    )
+
+    assert response.status_code == 207
+
+
+def test_allprop_include_order_is_not_semantic(
+    dev_auth_dependency_overrides,
+) -> None:
+    """Element order does not change recognition of allprop/include semantics."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:"><D:include><D:getetag/></D:include>'
+        b'<D:allprop/></D:propfind>'
+    )
+
+    assert response.status_code == 501

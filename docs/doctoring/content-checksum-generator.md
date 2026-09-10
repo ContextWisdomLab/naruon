@@ -16,9 +16,9 @@ MD5 and SHA-1 are intentionally absent from the normal surface. NIST states that
 
 A returned digest is an equality/integrity fingerprint for the exact supplied bytes. It does not authenticate a sender, prove provenance, or replace a keyed MAC or digital signature. Customer-facing output carries that warning with every result so the next action is explicit: compare the digest with an independently obtained expected digest when checking content equality; use an authenticated construction when sender or origin authenticity matters.
 
-## Standards status reviewed 2026-08-15
+## Standards status reviewed 2026-09-10
 
-The official NIST publication page still lists FIPS 180-4 (2015) as the final Secure Hash Standard. NIST's March 7, 2023 Crypto Publication Review Board decision says FIPS 180-4 will be revised, including removal of the SHA-1 specification, but that decision is a revision plan rather than a replacement final standard. The official NIST publication page still lists FIPS 202 (2015) as the final SHA-3 standard. NIST's March 12, 2025 decision says FIPS 202 will be updated and SP 800-185 revised, with the normal draft/public-comment process to follow. No successor final publication was identified in the official status pages reviewed on 2026-08-15, so Naruon continues to cite the existing final standards while separately recording the announced updates. RFC 7693 remains the RFC Editor publication describing BLAKE2.
+The official NIST publication page still lists FIPS 180-4 (2015) as the final Secure Hash Standard. NIST's March 7, 2023 Crypto Publication Review Board decision says FIPS 180-4 will be revised, including removal of the SHA-1 specification, but that decision is a revision plan rather than a replacement final standard. The official NIST/CSRC publication page still lists FIPS 202 (2015) as the final SHA-3 standard and carries a planning note that NIST decided to update it. NIST's March 12, 2025 decision says FIPS 202 will be updated and SP 800-185 revised through the normal draft/public-comment process. A fresh primary-source review on 2026-09-10 found no successor final publication, so Naruon continues to cite the existing final standards while separately recording the announced revisions. RFC 7693 remains the RFC Editor publication describing BLAKE2.
 
 The implementation uses Python's standard-library `hashlib` bindings only; this slice adds no external cryptographic dependency and no model-mediated decision path. Deterministic checksum behavior therefore remains independent of LLM judgment and credentials.
 
@@ -33,7 +33,7 @@ No paper PDF is committed in this slice because redistribution permission for th
 
 ## Acceptance evidence
 
-The regression contract covers published/stable `abc` digest vectors for all three algorithms, exact-byte distinction between canonically equivalent Unicode strings, rejection of SHA-1/MD5 and ambiguous aliases, the one-MiB UTF-8 boundary, and idempotent application registration. Protected-branch integration still requires exact-current-head CI, security, **100% owned production statement/branch coverage where exposed as required by [ADR-0007](../adr/0007-bounded-content-checksum-surface.md)**, and independent review gates before the capability may be described as shipped.
+The regression contract covers published/stable `abc` digest vectors for all three algorithms, exact-byte distinction between canonically equivalent Unicode strings, rejection of SHA-1/MD5 and ambiguous aliases, rejection of text that cannot be represented as valid UTF-8 Unicode scalar values, the one-MiB UTF-8 boundary, and idempotent application registration. Protected-branch integration still requires exact-current-head CI, security, **100% owned production statement/branch coverage where exposed as required by [ADR-0007](../adr/0007-bounded-content-checksum-surface.md)**, and independent review gates before the capability may be described as shipped.
 
 ## References (APA 7th)
 

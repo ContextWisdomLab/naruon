@@ -316,6 +316,44 @@ def test_dav_route_rejects_single_decode_traversal(
     assert response.json()["detail"] == "DAV path must include an owner user"
 
 
+def test_dav_missing_raw_path_fails_closed_for_residual_percent(
+    dev_auth_dependency_overrides,
+) -> None:
+    import asyncio
+
+    from fastapi import Request
+
+    from api.auth import AuthContext
+    from api.dav import dav_handler
+
+    scope = {
+        "type": "http",
+        "method": "OPTIONS",
+        "headers": [],
+        "path": "/dav/user123/projects/report%",
+    }
+    request = Request(scope)
+    auth_context = AuthContext(
+        user_id="user123",
+        organization_id="org1",
+        role="user",
+        group_ids=[],
+        workspace_id="ws1",
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            dav_handler(
+                request=request,
+                path="user123/projects/report%",
+                auth_context=auth_context,
+            )
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "DAV raw path required for percent-bearing path"
+
+
 def test_normalize_dav_authorization_path_treats_route_path_as_already_decoded() -> None:
     assert _normalize_dav_authorization_path("/alice/docs") == "/alice/docs"
     assert _normalize_dav_authorization_path("/%2e%2e/bob") == "/%2e%2e/bob"

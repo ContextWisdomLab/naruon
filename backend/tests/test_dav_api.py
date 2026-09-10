@@ -127,7 +127,7 @@ def test_dav_propfind_escapes_path_values(
         response = client.request(
             "PROPFIND",
             "/dav/user123/projects/x%26y%3Cz%3E",
-            headers={**AUTH_HEADERS, "Depth": "1"},
+            headers={**AUTH_HEADERS, "Depth": "0"},
         )
         assert response.status_code == 207
         assert "x&amp;y&lt;z&gt;" in response.text

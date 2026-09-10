@@ -1,0 +1,4 @@
+experiment	commit	metric	status	description
+0	042b0c70	>300s	baseline	default Vitest pool; full frontend suite exceeded 300s and named DataPage test measured 15.93s wall-clock
+1	1c3c30c1	32.27s	discard	removed DataLayout quality-surface setTimeout(0); named DataPage test passed but regressed wall-clock from 15.93s
+2	a7c2d341	54.32s	keep	configured Vitest pool=forks; full suite 51 files and 437 tests passed within 300s

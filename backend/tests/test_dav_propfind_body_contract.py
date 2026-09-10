@@ -89,6 +89,19 @@ def test_allprop_include_is_recognized_but_not_silently_ignored(
     assert response.status_code == 501
 
 
+def test_non_empty_allprop_with_include_is_invalid_before_mode_refusal(
+    dev_auth_dependency_overrides,
+) -> None:
+    """DAV:allprop stays EMPTY when paired with a valid include directive."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:"><D:allprop>unexpected</D:allprop>'
+        b'<D:include><D:getetag/></D:include></D:propfind>'
+    )
+
+    assert response.status_code == 400
+
+
 def test_propfind_root_text_is_rejected(
     dev_auth_dependency_overrides,
 ) -> None:

@@ -127,3 +127,23 @@ def test_content_checksum_api_maps_invalid_algorithm_to_execute_failure() -> Non
     assert payload["result"] is None
     assert payload["error_code"] == "unsupported_checksum_algorithm"
     assert "Unsupported checksum algorithm" in payload["message"]
+
+
+def test_content_checksum_api_maps_invalid_utf8_to_execute_failure() -> None:
+    """Escaped lone surrogates must reach the handler and fail with a stable code."""
+    raw_body = b'{"parameters":{"text":"\\ud800","algorithm":"sha256"}}'
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/content_checksum_generator/execute",
+            headers={
+                "Authorization": f"Bearer {_signed_session_token()}",
+                "Content-Type": "application/json",
+            },
+            content=raw_body,
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "failed"
+    assert payload["result"] is None
+    assert payload["error_code"] == "content_checksum_invalid_utf8"

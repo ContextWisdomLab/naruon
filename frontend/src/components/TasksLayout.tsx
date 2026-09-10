@@ -240,8 +240,10 @@ export function TasksLayout() {
         { overdue_hours: 48 },
       );
       setTicketTasks((currentTasks) => {
-        const mergedTasks = new Map(currentTasks.map((task) => [task.id, task]));
-        result.tasks.forEach((task) => mergedTasks.set(task.id, task));
+        const mergedTasks = new Map<string, TicketTask>();
+        [...currentTasks, ...result.tasks].forEach((task) => {
+          if (!mergedTasks.has(task.id)) mergedTasks.set(task.id, task);
+        });
         return Array.from(mergedTasks.values());
       });
       if (result.tasks.length > 0) {

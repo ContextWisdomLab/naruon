@@ -52,12 +52,12 @@ def _is_datetime_timezone_aware(value: datetime.datetime) -> bool:
 
 
 def _invalid_datetime_default_entries(entries):
-    """Return mapped DateTime defaults that violate the timezone contract."""
+    """Return mapped DateTime defaults that violate the timestamp contract."""
 
     invalid_defaults: list[str] = []
     for table, column, kind, default_callable in entries:
         value = _evaluate_mapped_default(default_callable)
-        if isinstance(value, datetime.datetime) and not _is_datetime_timezone_aware(value):
+        if not isinstance(value, datetime.datetime) or not _is_datetime_timezone_aware(value):
             invalid_defaults.append(f"{table}.{column} ({kind})")
     return invalid_defaults
 
@@ -94,14 +94,15 @@ def test_datetime_default_guard_excludes_non_datetime_callable_defaults():
 
 
 def test_datetime_default_guard_rejects_non_datetime_results():
-    def invalid_default(_context):
-        return "2026-09-11T00:00:00+00:00"
+    for invalid_value in ("2026-09-11T00:00:00+00:00", 1757548800, None):
+        def invalid_default(_context, value=invalid_value):
+            return value
 
-    invalid_defaults = _invalid_datetime_default_entries(
-        [("example_table", "updated_at", "default", invalid_default)]
-    )
+        invalid_defaults = _invalid_datetime_default_entries(
+            [("example_table", "updated_at", "default", invalid_default)]
+        )
 
-    assert invalid_defaults == ["example_table.updated_at (default)"]
+        assert invalid_defaults == ["example_table.updated_at (default)"]
 
 
 def test_timezone_awareness_rejects_tzinfo_with_null_offset():

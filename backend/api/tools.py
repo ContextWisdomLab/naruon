@@ -770,6 +770,90 @@ registry.register(
 
 
 
+
+async def url_encoder_handler(params: Dict[str, Any]) -> Dict[str, str]:
+    text = params.get("text", "")
+    if len(text) > ANALYSIS_TEXT_MAX_CHARS:
+        raise ValueError(f"Input text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters")
+    return {"result": urllib.parse.quote(text, safe="")}
+
+registry.register(
+    ToolInfo(
+        code="url_encoder",
+        name="URL 인코딩 (URL Encoder)",
+        description="주어진 텍스트를 URL 인코딩(Percent-encoding)합니다.",
+        category="유틸리티",
+        parameters={
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "인코딩할 원본 텍스트",
+                }
+            },
+            "required": ["text"],
+        },
+    ),
+    url_encoder_handler,
+)
+
+async def url_decoder_handler(params: Dict[str, Any]) -> Dict[str, str]:
+    text = params.get("text", "")
+    if len(text) > ANALYSIS_TEXT_MAX_CHARS:
+        raise ValueError(f"Input text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters")
+    return {"result": urllib.parse.unquote(text)}
+
+registry.register(
+    ToolInfo(
+        code="url_decoder",
+        name="URL 디코딩 (URL Decoder)",
+        description="URL 인코딩된 텍스트를 디코딩하여 원본 텍스트로 복원합니다.",
+        category="유틸리티",
+        parameters={
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "디코딩할 URL 인코딩 텍스트",
+                }
+            },
+            "required": ["text"],
+        },
+    ),
+    url_decoder_handler,
+)
+
+async def json_validator_handler(params: Dict[str, Any]) -> Dict[str, Any]:
+    text = params.get("text", "")
+    if len(text) > ANALYSIS_TEXT_MAX_CHARS:
+        raise ValueError(f"Input text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters")
+
+    try:
+        json.loads(text)
+        return {"is_valid": True, "error": None}
+    except json.JSONDecodeError as e:
+        return {"is_valid": False, "error": str(e)}
+
+registry.register(
+    ToolInfo(
+        code="json_validator",
+        name="JSON 유효성 검사기 (JSON Validator)",
+        description="주어진 텍스트가 유효한 JSON 형식인지 검사합니다.",
+        category="개발",
+        parameters={
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "검사할 JSON 형식의 문자열",
+                }
+            },
+            "required": ["text"],
+        },
+    ),
+    json_validator_handler,
+)
+
 @router.get("/tools", response_model=list[ToolInfo])
 def get_tools() -> list[ToolInfo]:
     """

@@ -1,4 +1,7 @@
 ## [Unreleased]
+
+- **신규 기능**: URL 인코딩(`url_encoder`), URL 디코딩(`url_decoder`), JSON 유효성 검사(`json_validator`)를 수행할 수 있는 3개의 유틸리티 도구를 추가했습니다. 각각의 도구는 최대 텍스트 길이(`ANALYSIS_TEXT_MAX_CHARS`) 제한을 준수하도록 설계되었습니다.
+
 - 긴 이메일·첨부 본문을 의미 단위 청크로 임베딩한 뒤 기존 email/attachment 벡터 계약으로 평균화하고, 청크 요청·벡터 누적을 제한된 창으로 처리합니다. OpenAI `text-embedding-3-*`에는 저장 차원(`1536`)을 직접 요청하도록 보강했습니다. 합성 메일 fixture 5건(70청크)과 provider 요청 계약으로 1,536차원 벡터 경로를 검증했으며, 실행 시 선택한 임베딩 제공자에 본문·파싱된 첨부 텍스트를 전송할 수 있습니다. 회사 기밀 데이터는 fixture·commit·PR·log에 포함하지 않습니다.
 - EmailDetail 테스트가 지원하지 않는 스레드 병합/분리 버튼을 `textContent`뿐 아니라 `aria-label`과 `title` 접근 가능 이름으로도 검출하도록 바꿔, 아이콘 전용 버튼 회귀를 놓치지 않습니다.
 

@@ -1211,3 +1211,66 @@ def test_execute_analysis_tool_rejects_oversized_text():
             f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"
         ),
     }
+
+@pytest.mark.asyncio
+async def test_url_encoder():
+    from api.tools import url_encoder_handler, ANALYSIS_TEXT_MAX_CHARS
+
+    # 1. 정상 작동 테스트 (기본 알파벳, 숫자)
+    res = await url_encoder_handler({"text": "Hello World 123!"})
+    assert res["result"] == "Hello%20World%20123%21"
+
+    # 2. 한글 및 특수문자 인코딩 테스트
+    res2 = await url_encoder_handler({"text": "안녕/세상?"})
+    assert res2["result"] == "%EC%95%88%EB%85%95%2F%EC%84%B8%EC%83%81%3F"
+
+    # 3. 빈 문자열
+    res3 = await url_encoder_handler({"text": ""})
+    assert res3["result"] == ""
+
+    # 4. 제한 길이 초과 테스트
+    with pytest.raises(ValueError, match="Input text must not exceed"):
+        await url_encoder_handler({"text": "a" * (ANALYSIS_TEXT_MAX_CHARS + 1)})
+
+@pytest.mark.asyncio
+async def test_url_decoder():
+    from api.tools import url_decoder_handler, ANALYSIS_TEXT_MAX_CHARS
+
+    # 1. 정상 작동 테스트
+    res = await url_decoder_handler({"text": "Hello%20World%20123%21"})
+    assert res["result"] == "Hello World 123!"
+
+    # 2. 한글 및 특수문자 디코딩 테스트
+    res2 = await url_decoder_handler({"text": "%EC%95%88%EB%85%95%2F%EC%84%B8%EC%83%81%3F"})
+    assert res2["result"] == "안녕/세상?"
+
+    # 3. 빈 문자열
+    res3 = await url_decoder_handler({"text": ""})
+    assert res3["result"] == ""
+
+    # 4. 제한 길이 초과 테스트
+    with pytest.raises(ValueError, match="Input text must not exceed"):
+        await url_decoder_handler({"text": "a" * (ANALYSIS_TEXT_MAX_CHARS + 1)})
+
+@pytest.mark.asyncio
+async def test_json_validator():
+    from api.tools import json_validator_handler, ANALYSIS_TEXT_MAX_CHARS
+
+    # 1. 정상 작동 테스트 (유효한 JSON)
+    res = await json_validator_handler({"text": '{"key": "value", "number": 123}'})
+    assert res["is_valid"] is True
+    assert res["error"] is None
+
+    # 2. 정상 작동 테스트 (유효하지 않은 JSON)
+    res2 = await json_validator_handler({"text": '{"key": "value", "number": }'})
+    assert res2["is_valid"] is False
+    assert res2["error"] is not None
+
+    # 3. 빈 문자열 (유효하지 않은 JSON)
+    res3 = await json_validator_handler({"text": ""})
+    assert res3["is_valid"] is False
+    assert res3["error"] is not None
+
+    # 4. 제한 길이 초과 테스트
+    with pytest.raises(ValueError, match="Input text must not exceed"):
+        await json_validator_handler({"text": "a" * (ANALYSIS_TEXT_MAX_CHARS + 1)})

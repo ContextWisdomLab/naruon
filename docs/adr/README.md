@@ -12,7 +12,7 @@ govern implementation.
 | [ADR-0001](0001-topic-measurement-authority.md) | Naruon-local policy for consuming structural topic measurement, never a keyword/label heuristic | Accepted | `ACCEPTED-NARUON-POLICY`; no runtime promotion |
 | [ADR-0002](0002-fitted-topic-artifact-consumption.md) | Conditionally consume only a versioned fitted topic artifact through a fail-closed adapter | Proposed | Target `PLANNED`; runtime `BLOCKED-UPSTREAM` |
 | [ADR-0003](0003-separate-topic-measurement-from-agenda-generation.md) | Keep statistical measurement separate from agenda generation | Proposed | Target and future capability `PLANNED`; no implementation authorization |
-| [ADR-0007](0007-bounded-content-checksum-surface.md) | Bound the customer checksum surface to modern allowlisted algorithms and exact UTF-8 evidence | Accepted | Deterministic tool contract; runtime remains protected-integration gated |
+| [ADR-0007](0007-bounded-content-checksum-surface.md) | Bound the customer checksum surface to modern allowlisted algorithms and exact UTF-8 evidence | Proposed | Deterministic tool contract pending protected integration and verification |
 | [ADR-0004](0004-status-weighted-calendar-conflicts.md) | Evaluate CalDAV VEVENT overlaps by occupying status; cancelled does not occupy | Accepted | `ACCEPTED-NARUON-POLICY`; advisory evaluate API only |
 
 The complete topic-intelligence requirements, architecture, contract, UML,

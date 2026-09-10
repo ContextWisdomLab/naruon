@@ -52,6 +52,27 @@ def _assert_finite_depth_error(response) -> None:
     assert root.find("{DAV:}propfind-finite-depth") is not None
 
 
+def test_propfind_depth_zero_returns_only_addressed_collection(
+    dev_auth_dependency_overrides,
+    stub_dav_project_folders,
+) -> None:
+    """Depth zero must not enumerate the addressed collection's members."""
+
+    with TestClient(app) as client:
+        response = client.request(
+            "PROPFIND",
+            "/dav/user123/projects/",
+            headers={**AUTH_HEADERS, "Depth": "0"},
+        )
+
+    assert response.status_code == 207
+    root = ET.fromstring(response.text)
+    responses = root.findall("{DAV:}response")
+    assert len(responses) == 1
+    assert root.findtext(".//{DAV:}displayname") == "projects"
+    assert "demo" not in response.text
+
+
 def test_propfind_without_depth_fails_closed_as_infinite_depth(
     dev_auth_dependency_overrides,
     stub_dav_project_folders,

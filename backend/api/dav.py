@@ -1,6 +1,7 @@
 import logging
 import re
 from html import escape as escape_xml_text
+from unicodedata import category as unicode_category
 from urllib.parse import unquote_to_bytes
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -54,6 +55,8 @@ def _normalize_dav_authorization_path(path: str) -> str:
         0xD800 <= ord(character) <= 0xDFFF for character in normalized_path
     ):
         raise HTTPException(status_code=400, detail="DAV path contains invalid Unicode")
+    if any(unicode_category(character) == "Cc" for character in normalized_path):
+        raise HTTPException(status_code=400, detail="DAV path contains control characters")
     return normalized_path
 
 

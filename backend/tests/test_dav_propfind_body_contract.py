@@ -76,6 +76,19 @@ def test_named_prop_is_not_silently_coerced_to_allprop(
     assert response.status_code == 501
 
 
+def test_allprop_include_is_recognized_but_not_silently_ignored(
+    dev_auth_dependency_overrides,
+) -> None:
+    """A valid allprop/include request must fail until include semantics exist."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:"><D:allprop/><D:include>'
+        b'<D:getetag/></D:include></D:propfind>'
+    )
+
+    assert response.status_code == 501
+
+
 def test_malformed_propfind_xml_is_rejected(
     dev_auth_dependency_overrides,
 ) -> None:
@@ -88,6 +101,29 @@ def test_malformed_propfind_xml_is_rejected(
     assert response.status_code == 400
 
 
+def test_non_propfind_root_is_rejected(
+    dev_auth_dependency_overrides,
+) -> None:
+    """A well-formed XML body with the wrong root is not a PROPFIND request body."""
+
+    response = _propfind_request(b'<D:allprop xmlns:D="DAV:"/>')
+
+    assert response.status_code == 400
+
+
+def test_non_empty_allprop_directive_is_rejected(
+    dev_auth_dependency_overrides,
+) -> None:
+    """The allprop directive is an empty element in the RFC grammar."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:"><D:allprop><D:displayname/>'
+        b'</D:allprop></D:propfind>'
+    )
+
+    assert response.status_code == 400
+
+
 def test_conflicting_propfind_directives_are_rejected(
     dev_auth_dependency_overrides,
 ) -> None:
@@ -95,6 +131,20 @@ def test_conflicting_propfind_directives_are_rejected(
 
     response = _propfind_request(
         b'<D:propfind xmlns:D="DAV:"><D:allprop/><D:propname/></D:propfind>'
+    )
+
+    assert response.status_code == 400
+
+
+def test_propfind_external_entity_is_rejected(
+    dev_auth_dependency_overrides,
+) -> None:
+    """PROPFIND XML parsing must not resolve attacker-controlled external entities."""
+
+    response = _propfind_request(
+        b'<!DOCTYPE propfind [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>'
+        b'<D:propfind xmlns:D="DAV:"><D:prop><D:displayname>&xxe;'
+        b'</D:displayname></D:prop></D:propfind>'
     )
 
     assert response.status_code == 400

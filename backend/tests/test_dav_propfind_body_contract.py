@@ -131,7 +131,7 @@ def test_include_mixed_text_is_invalid_before_mode_refusal(
 def test_non_empty_allprop_with_include_is_invalid_before_mode_refusal(
     dev_auth_dependency_overrides,
 ) -> None:
-    """DAV:allprop stays EMPTY when paired with a valid include directive."""
+    """DAV:allprop stays element-only when paired with a valid include directive."""
 
     response = _propfind_request(
         b'<D:propfind xmlns:D="DAV:"><D:allprop>unexpected</D:allprop>'
@@ -185,7 +185,7 @@ def test_propfind_child_tail_text_is_rejected(
 def test_non_empty_propname_is_rejected_as_invalid_grammar(
     dev_auth_dependency_overrides,
 ) -> None:
-    """DAV:propname is EMPTY and must fail before unsupported-mode classification."""
+    """DAV:propname is element-only and must fail before unsupported-mode classification."""
 
     response = _propfind_request(
         b'<D:propfind xmlns:D="DAV:"><D:propname>unexpected</D:propname>'
@@ -217,14 +217,13 @@ def test_non_propfind_root_is_rejected(
     assert response.status_code == 400
 
 
-def test_non_empty_allprop_directive_is_rejected(
+def test_allprop_character_content_is_rejected(
     dev_auth_dependency_overrides,
 ) -> None:
-    """The allprop directive is an empty element in the RFC grammar."""
+    """DAV:allprop may carry extensions, but direct character content is invalid."""
 
     response = _propfind_request(
-        b'<D:propfind xmlns:D="DAV:"><D:allprop><D:displayname/>'
-        b'</D:allprop></D:propfind>'
+        b'<D:propfind xmlns:D="DAV:"><D:allprop>unexpected</D:allprop></D:propfind>'
     )
 
     assert response.status_code == 400
@@ -282,7 +281,7 @@ def test_unrecognized_propfind_extension_element_is_ignored(
 def test_allprop_extension_child_is_ignored(
     dev_auth_dependency_overrides,
 ) -> None:
-    """RFC extension children do not make DAV:allprop non-empty for processing."""
+    """RFC extension children do not make DAV:allprop invalid for processing."""
 
     response = _propfind_request(
         b'<D:propfind xmlns:D="DAV:" xmlns:X="urn:example:dav-ext">'

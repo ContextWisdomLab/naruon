@@ -157,7 +157,9 @@ function describeEdge(edge: Edge, nodeMap: Map<string | number, string>) {
 
 import { apiClient } from '@/lib/api-client';
 
-export default function NetworkGraph() {
+import React from "react";
+
+const NetworkGraph = React.memo(function NetworkGraph() {
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
   const unavailableRelationshipDescriptionId = useId();
@@ -286,35 +288,19 @@ export default function NetworkGraph() {
 
   const firstEdge = edges[0] ?? null;
   const relationshipOptions = useMemo(() => {
-    // ⚡ Bolt Optimization: Replace O(N) Array.from(map).slice() with bounded for...of loop
-    // to avoid intermediate array allocations and achieve O(min(N, limit)) performance for large maps.
-    const options = [];
-    let index = 0;
-    for (const edge of edgeMap.values()) {
-      if (options.length >= 5) break;
-      options.push({
-        edge,
-        id: String(edge.id),
-        label: `관계 ${index + 1}: ${describeEdge(edge, nodeMap)}`,
-      });
-      index++;
-    }
-    return options;
+    return Array.from(edgeMap.values()).slice(0, 5).map((edge, index) => ({
+      edge,
+      id: String(edge.id),
+      label: `관계 ${index + 1}: ${describeEdge(edge, nodeMap)}`,
+    }));
   }, [edgeMap, nodeMap]);
 
   const nodeOptions = useMemo(() => {
-    // ⚡ Bolt Optimization: Replace O(N) Array.from(map).slice() with bounded for...of loop
-    // to avoid full Map iteration and intermediate allocations on every render pass.
-    const options = [];
-    for (const node of nodeInstanceMap.values()) {
-      if (options.length >= 8) break;
-      options.push({
-        id: String(node.id),
-        label: `노드: ${String(node.label ?? node.id)}`,
-        node,
-      });
-    }
-    return options;
+    return Array.from(nodeInstanceMap.values()).slice(0, 8).map((node) => ({
+      id: String(node.id),
+      label: `노드: ${String(node.label ?? node.id)}`,
+      node,
+    }));
   }, [nodeInstanceMap]);
 
   const selectRelationship = (edge: Edge, status: string) => {
@@ -494,4 +480,5 @@ export default function NetworkGraph() {
       />
     </div>
   );
-}
+});
+export default NetworkGraph;

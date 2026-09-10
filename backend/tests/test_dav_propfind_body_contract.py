@@ -1,0 +1,110 @@
+"""Executable contract for bounded PROPFIND request-body semantics."""
+
+import defusedxml.ElementTree as ET
+from fastapi.testclient import TestClient
+
+from main import app
+
+AUTH_HEADERS = {
+    "X-User-Id": "user123",
+    "X-User-Role": "organization_admin",
+    "X-Organization-Id": "org-acme",
+    "Depth": "0",
+    "Content-Type": "application/xml; charset=utf-8",
+}
+
+
+def _propfind_request(body: bytes):
+    with TestClient(app) as client:
+        return client.request(
+            "PROPFIND",
+            "/dav/user123/projects/",
+            headers=AUTH_HEADERS,
+            content=body,
+        )
+
+
+def test_empty_propfind_body_keeps_supported_discovery_profile(
+    dev_auth_dependency_overrides,
+) -> None:
+    """An empty body remains equivalent to the supported allprop profile."""
+
+    response = _propfind_request(b"")
+
+    assert response.status_code == 207
+    root = ET.fromstring(response.text)
+    assert root.findtext(".//{DAV:}displayname") == "projects"
+    assert root.find(".//{DAV:}resourcetype/{DAV:}collection") is not None
+
+
+def test_explicit_allprop_keeps_supported_discovery_profile(
+    dev_auth_dependency_overrides,
+) -> None:
+    """Explicit allprop uses the same bounded property profile as an empty body."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:"><D:allprop/></D:propfind>'
+    )
+
+    assert response.status_code == 207
+    root = ET.fromstring(response.text)
+    assert root.findtext(".//{DAV:}displayname") == "projects"
+    assert root.find(".//{DAV:}resourcetype/{DAV:}collection") is not None
+
+
+def test_propname_is_not_silently_coerced_to_allprop(
+    dev_auth_dependency_overrides,
+) -> None:
+    """Unsupported propname semantics must fail instead of returning property values."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:"><D:propname/></D:propfind>'
+    )
+
+    assert response.status_code == 501
+
+
+def test_named_prop_is_not_silently_coerced_to_allprop(
+    dev_auth_dependency_overrides,
+) -> None:
+    """Unsupported named-property selection must not return the allprop profile."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:"><D:prop><D:displayname/></D:prop></D:propfind>'
+    )
+
+    assert response.status_code == 501
+
+
+def test_malformed_propfind_xml_is_rejected(
+    dev_auth_dependency_overrides,
+) -> None:
+    """Malformed XML must not be ignored and converted into a successful discovery."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:"><D:allprop></D:propfind>'
+    )
+
+    assert response.status_code == 400
+
+
+def test_conflicting_propfind_directives_are_rejected(
+    dev_auth_dependency_overrides,
+) -> None:
+    """A body cannot ask for both allprop and propname semantics."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:"><D:allprop/><D:propname/></D:propfind>'
+    )
+
+    assert response.status_code == 400
+
+
+def test_propfind_body_work_is_bounded(
+    dev_auth_dependency_overrides,
+) -> None:
+    """A request body above the Naruon discovery ceiling must fail before XML parsing."""
+
+    response = _propfind_request(b"x" * 8193)
+
+    assert response.status_code == 413

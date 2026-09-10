@@ -249,7 +249,7 @@ def test_dav_route_preserves_encoded_percent_as_data(
         response = client.request(
             "PROPFIND",
             request_path,
-            headers={**AUTH_HEADERS, "Depth": "1"},
+            headers={**AUTH_HEADERS, "Depth": "0"},
         )
 
     assert response.status_code == 207

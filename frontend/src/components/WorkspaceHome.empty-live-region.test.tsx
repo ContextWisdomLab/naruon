@@ -42,29 +42,27 @@ import { WorkspaceHome } from "./WorkspaceHome";
 
 type DeferredResponse = {
   promise: Promise<{ ok: true; json: () => Promise<unknown> }>;
+  bodyPromise: Promise<unknown>;
   resolve: (body: unknown) => void;
 };
 
 function deferredResponse(): DeferredResponse {
-  let resolvePromise!: (response: { ok: true; json: () => Promise<unknown> }) => void;
+  let resolveResponse!: (response: { ok: true; json: () => Promise<unknown> }) => void;
+  let resolveBody!: (body: unknown) => void;
+  const bodyPromise = new Promise<unknown>((resolve) => {
+    resolveBody = resolve;
+  });
   const promise = new Promise<{ ok: true; json: () => Promise<unknown> }>((resolve) => {
-    resolvePromise = resolve;
+    resolveResponse = resolve;
   });
   return {
     promise,
-    resolve: (body: unknown) => resolvePromise({ ok: true, json: async () => body }),
+    bodyPromise,
+    resolve: (body: unknown) => {
+      resolveResponse({ ok: true, json: () => bodyPromise });
+      resolveBody(body);
+    },
   };
-}
-
-async function waitForCondition(condition: () => boolean) {
-  for (let index = 0; index < 20; index += 1) {
-    if (condition()) return;
-    await act(async () => {
-      await Promise.resolve();
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-  }
-  throw new Error("waitForCondition timed out after 20 attempts");
 }
 
 function statusWithText(container: HTMLElement, text: string) {
@@ -128,8 +126,15 @@ describe("WorkspaceHome empty-state live regions", () => {
       emailsResponse.resolve({ emails: [] });
       pendingRepliesResponse.resolve({ emails: [] });
       tasksResponse.resolve([]);
+      await Promise.all([
+        emailsResponse.promise,
+        pendingRepliesResponse.promise,
+        tasksResponse.promise,
+        emailsResponse.bodyPromise,
+        pendingRepliesResponse.bodyPromise,
+        tasksResponse.bodyPromise,
+      ]);
     });
-    await waitForCondition(() => container?.textContent?.includes("수신된 메일이 없습니다.") ?? false);
 
     for (const copy of [
       "답변 대기 중인 보낸 메일이 없습니다.",

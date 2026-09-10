@@ -1,4 +1,5 @@
 import logging
+import re
 from html import escape as escape_xml_text
 from urllib.parse import unquote
 
@@ -14,14 +15,30 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dav", tags=["dav"])
 
 
+_INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
+_NESTED_PERCENT_ESCAPE = re.compile(r"%(?=[0-9A-Fa-f]{2})")
+
+
 def _normalize_dav_authorization_path(path: str) -> str:
+    # RFC 3986 §2.4: never decode the same string more than once. Decode
+    # exactly once, then reject ambiguous nested encodings instead of
+    # collapsing them with a recursive-unquote loop (CWE-174).
     normalized_path = path.replace("\\", "/")
-    for _ in range(100):
-        decoded_path = unquote(normalized_path).replace("\\", "/")
-        if decoded_path == normalized_path:
-            return normalized_path
-        normalized_path = decoded_path
-    raise HTTPException(status_code=400, detail="DAV path decoding limit exceeded")
+    try:
+        decoded_path = unquote(normalized_path, errors="strict").replace("\\", "/")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=400, detail="DAV path contains invalid percent encoding"
+        ) from exc
+    if _INVALID_PERCENT_ESCAPE.search(decoded_path):
+        raise HTTPException(
+            status_code=400, detail="DAV path contains invalid percent encoding"
+        )
+    if decoded_path != normalized_path and _NESTED_PERCENT_ESCAPE.search(decoded_path):
+        raise HTTPException(
+            status_code=400, detail="DAV path contains nested percent encoding"
+        )
+    return decoded_path
 
 
 def _dav_path_owner_user_id(path: str) -> str | None:

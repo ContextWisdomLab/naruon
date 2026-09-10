@@ -97,6 +97,55 @@ def test_propfind_depth_one_returns_addressed_collection_and_direct_member(
     ] == ["projects", "demo"]
 
 
+def test_propfind_depth_one_accepts_exact_product_ceiling(
+    dev_auth_dependency_overrides,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exactly 256 members remains a complete successful depth-one response."""
+
+    async def maximum_project_folders(
+        db: object,
+        user_id: str,
+        organization_id: str | None,
+        folder_uid: str | None = None,
+        max_results: int | None = None,
+    ) -> list[dict[str, str | None]]:
+        assert user_id == "user123"
+        assert organization_id == "org-acme"
+        assert folder_uid is None
+        assert max_results == 257
+        return [
+            {
+                "folder_uid": f"folder-{index}",
+                "project_name": f"Folder {index}",
+                "webdav_path": f"/projects/folder-{index}",
+                "owner_user_id": user_id,
+                "organization_id": organization_id,
+            }
+            for index in range(256)
+        ]
+
+    monkeypatch.setattr(
+        webdav_service,
+        "get_project_folders_from_db",
+        maximum_project_folders,
+    )
+
+    with TestClient(app) as client:
+        response = client.request(
+            "PROPFIND",
+            "/dav/user123/projects/",
+            headers={**AUTH_HEADERS, "Depth": "1"},
+        )
+
+    assert response.status_code == 207
+    root = ET.fromstring(response.text)
+    responses = root.findall("{DAV:}response")
+    assert len(responses) == 257
+    assert responses[0].findtext(".//{DAV:}displayname") == "projects"
+    assert responses[-1].findtext(".//{DAV:}displayname") == "Folder 255"
+
+
 def test_propfind_depth_one_rejects_member_set_above_product_ceiling(
     dev_auth_dependency_overrides,
     monkeypatch: pytest.MonkeyPatch,

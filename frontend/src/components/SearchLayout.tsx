@@ -654,7 +654,7 @@ export function SearchLayout() {
           {error}
         </div>
       ) : filteredResults.length === 0 ? (
-        <div className="p-5 text-sm font-semibold text-muted-foreground">
+        <div role="status" aria-live="polite" className="p-5 text-sm font-semibold text-muted-foreground">
           맥락 검색 결과가 없습니다.
         </div>
       ) : (

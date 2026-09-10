@@ -32,8 +32,10 @@ Returning the addressed collection alone with 207 was rejected because it can ma
 - Minimal causal fix: `dbcad849194153e1dc19bb570424cca5670339ac` preserves the existing DB existence lookup and returns 501 only after the selected project collection is found.
 - Regression alignment: `cf08479d7645c027680600a9758849845d384a79` and `8c794f15a19dcba394d6d691bd0c76271c7fa90f` move existing XML-escaping and encoded-percent property-read probes to `Depth: 0`; those tests never established provider child enumeration and must not encode that unsupported assumption.
 - Harness repair and positive acceptance: `f574524f089a3e37b0df35526855c46a0f8bed57` restores the pre-existing finite-depth assertion helper accidentally omitted while introducing the RED test and adds an explicit successful direct-project `Depth: 0` regression. The intermediate omission affected test code only and is not used as acceptance evidence.
+- Hosted regression finding: Application CI `34543857634` on `3a89ec5d90dca0c073039ea476ff2f0409409483` completed frontend and backend lint successfully, but the PostgreSQL-backed backend suite ended `1 failed, 1953 passed, 2 skipped`. The sole failure was `test_propfind_propagates_framework_decoded_backslashes_to_project_routing`, whose canonical-path purpose still encoded the now-unsupported direct-project `Depth: 1` behavior and expected 207 rather than the truthful 501 boundary.
+- Causal test repair: `dd6ac12f4fb077153ea944d4a741e816064d8a51` changes only that canonical-path regression to `Depth: 0`. This keeps the test focused on framework-decoded backslash normalization and project routing while no longer asserting provider child enumeration that Naruon does not implement.
 
-The production change is confined to `backend/api/dav.py`. The new depth contract is in `backend/tests/test_dav_depth_contract.py`; existing path-safety probes remain in `backend/tests/test_dav_api.py`.
+The production change is confined to `backend/api/dav.py`. The new depth contract is in `backend/tests/test_dav_depth_contract.py`; existing path-safety probes remain in `backend/tests/test_dav_api.py` and `backend/tests/test_dav_canonical_path_succession.py`.
 
 ## Remaining boundary
 

@@ -164,6 +164,49 @@ test('renders Today dashboard pending reply lane with signed API headers', async
   await page.screenshot({ path: testInfo.outputPath('today-pending-replies-mobile-scroll.png'), fullPage: false });
 });
 
+test('submits edited utility-console parameters', async ({ page }) => {
+  let executedParameters: unknown;
+  await page.route('**/api/tools**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/tools' && route.request().method() === 'GET') {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            code: 'url_encoder',
+            name: 'URL 인코더',
+            description: '텍스트를 URL 인코딩합니다.',
+            category: '유틸리티',
+            parameters: { text: 'string' },
+          },
+        ]),
+      });
+      return;
+    }
+    if (
+      url.pathname === '/api/tools/url_encoder/execute' &&
+      route.request().method() === 'POST'
+    ) {
+      executedParameters = route.request().postDataJSON().parameters;
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'success', result: { encoded_url: '사용자 입력' } }),
+      });
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.goto('/tools');
+  const textInput = page.locator('[data-tool-parameter="url_encoder.text"]');
+  await expect(textInput).toBeVisible();
+  await textInput.fill('사용자가 입력한 내용');
+  await page.locator('[data-tool-execute="url_encoder"]').click();
+
+  await expect.poll(() => executedParameters).toEqual({ text: '사용자가 입력한 내용' });
+  await expect(page.getByText('성공')).toBeVisible();
+});
+
 test('keeps the short mobile AI quick action menu inside the viewport with scrollable actions', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 640 });
   await mockDashboardApi(page);

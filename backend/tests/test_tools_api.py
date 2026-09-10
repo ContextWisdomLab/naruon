@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("AUTH_SESSION_HMAC_SECRET", secrets.token_urlsafe(48))
 
 from api.tools import (
+    MAX_TOOL_INPUT_CHARS,
     MAX_TOOL_FAILURE_MESSAGE_CHARS,
     ExecuteRequest,
     ToolInfo,
@@ -112,9 +113,7 @@ def test_get_tool_not_found():
     assert response.json() == {"detail": "Tool not found"}
 
 
-@pytest.mark.parametrize(
-    "tool_code", ["email_categorizer", "meeting_agenda_generator"]
-)
+@pytest.mark.parametrize("tool_code", ["email_categorizer", "meeting_agenda_generator"])
 def test_registry_omits_lexical_pseudo_topic_tools(tool_code):
     assert registry.get(tool_code) is None
 
@@ -273,6 +272,39 @@ def test_execute_tool_rejects_missing_required_parameter():
     data = response.json()
     assert data["status"] == "failed"
     assert "Missing required tool parameter" in data["message"]
+
+
+def test_execute_tool_accepts_omitted_optional_parameter():
+    try:
+        registry.register(
+            ToolInfo(
+                code="optional_tool",
+                name="Optional Tool",
+                description="Test tool",
+                category="Test",
+                parameters={
+                    "required_value": "string",
+                    "optional_value": {"type": "string", "required": False},
+                },
+            ),
+            lambda params: params,
+        )
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/tools/optional_tool/execute",
+                headers={"Authorization": f"Bearer {_signed_session_token()}"},
+                json={"parameters": {"required_value": "kept"}},
+            )
+    finally:
+        registry.unregister("optional_tool")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "success",
+        "result": {"required_value": "kept"},
+        "message": "Execution successful",
+        "error_code": None,
+    }
 
 
 def test_execute_tool_no_parameters_accepted():
@@ -500,6 +532,124 @@ def test_parameter_type_name_dict():
     assert _parameter_type_name({"type": "integer"}) == "integer"
     assert _parameter_type_name({"other": "thing"}) == "string"
     assert _parameter_type_name(123) == "string"
+
+
+def test_execute_json_formatter_preserves_number_lexemes():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/json_formatter/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={
+                "parameters": {
+                    "json_str": (
+                        '{"precise":0.12345678901234567890123456789,'
+                        '"large":1e+1000,"nested":[900719925474099312345]}'
+                    )
+                }
+            },
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["result"]["formatted_json"] == (
+        "{\n"
+        '  "precise": 0.12345678901234567890123456789,\n'
+        '  "large": 1e+1000,\n'
+        '  "nested": [\n'
+        "    900719925474099312345\n"
+        "  ]\n"
+        "}"
+    )
+
+
+def test_execute_json_formatter_rejects_duplicate_keys():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/json_formatter/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"json_str": '{"item": 1, "item": 2}'}},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "failed"
+    assert "Duplicate JSON object key" in data["message"]
+    assert data["error_code"] == "invalid_json"
+
+
+def test_execute_json_formatter_serializes_unicode_and_lone_surrogates():
+    source = r'{"한글":"값","\ud800":"\udfff"}'
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/json_formatter/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"json_str": source}},
+        )
+
+    assert response.status_code == 200
+    formatted = response.json()["result"]["formatted_json"]
+    assert formatted.encode("utf-8")
+    assert json.loads(formatted) == json.loads(source)
+    assert "\\ud55c\\uae00" in formatted
+    assert "\\ud800" in formatted
+    assert "\\udfff" in formatted
+
+
+def test_execute_url_decoder_rejects_invalid_utf8_escape():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/url_decoder/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"encoded_url": "%FF"}},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "failed"
+    assert "Invalid URL-encoded string" in data["message"]
+    assert data["error_code"] == "invalid_url_encoding"
+
+
+@pytest.mark.parametrize("encoded_url", ["%", "%2", "%ZZ", "value%4G"])
+def test_execute_url_decoder_rejects_malformed_percent_escape(encoded_url):
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/url_decoder/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"encoded_url": encoded_url}},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "failed"
+    assert data["error_code"] == "invalid_url_encoding"
+
+
+@pytest.mark.parametrize(
+    ("tool_code", "parameter_name"),
+    [
+        ("url_encoder", "text"),
+        ("url_decoder", "encoded_url"),
+        ("json_formatter", "json_str"),
+        ("html_escape", "text"),
+        ("html_unescape", "escaped_html"),
+    ],
+)
+def test_utility_tools_reject_oversized_input(tool_code, parameter_name):
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/tools/{tool_code}/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {parameter_name: "x" * (MAX_TOOL_INPUT_CHARS + 1)}},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "failed"
+    assert "maximum length" in data["message"]
+    assert data["error_code"] == "tool_parameter_too_long"
 
 
 @pytest.mark.asyncio
@@ -1210,67 +1360,105 @@ def test_execute_analysis_tool_rejects_oversized_text():
         "message": (
             f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"
         ),
+        "error_code": "tool_execution_failed",
     }
 
-@pytest.mark.asyncio
-async def test_url_encoder():
-    from api.tools import url_encoder_handler, ANALYSIS_TEXT_MAX_CHARS
 
-    # 1. 정상 작동 테스트 (기본 알파벳, 숫자)
-    res = await url_encoder_handler({"text": "Hello World 123!"})
-    assert res["result"] == "Hello%20World%20123%21"
+def test_url_encoder_tool_success() -> None:
+    with TestClient(app) as client:
+        request_data = {"parameters": {"text": "hello world/&?"}}
+        response = client.post(
+            "/api/tools/url_encoder/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json=request_data,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["result"]["encoded_url"] == "hello%20world%2F%26%3F"
 
-    # 2. 한글 및 특수문자 인코딩 테스트
-    res2 = await url_encoder_handler({"text": "안녕/세상?"})
-    assert res2["result"] == "%EC%95%88%EB%85%95%2F%EC%84%B8%EC%83%81%3F"
 
-    # 3. 빈 문자열
-    res3 = await url_encoder_handler({"text": ""})
-    assert res3["result"] == ""
+def test_url_decoder_tool_success() -> None:
+    with TestClient(app) as client:
+        request_data = {"parameters": {"encoded_url": "hello%20world%2F%26%3F"}}
+        response = client.post(
+            "/api/tools/url_decoder/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json=request_data,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["result"]["decoded_url"] == "hello world/&?"
 
-    # 4. 제한 길이 초과 테스트
-    with pytest.raises(ValueError, match="Input text must not exceed"):
-        await url_encoder_handler({"text": "a" * (ANALYSIS_TEXT_MAX_CHARS + 1)})
 
-@pytest.mark.asyncio
-async def test_url_decoder():
-    from api.tools import url_decoder_handler, ANALYSIS_TEXT_MAX_CHARS
+def test_json_formatter_tool_success() -> None:
+    with TestClient(app) as client:
+        request_data = {"parameters": {"json_str": '{"key":"value"}'}}
+        response = client.post(
+            "/api/tools/json_formatter/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json=request_data,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["result"]["formatted_json"] == '{\n  "key": "value"\n}'
 
-    # 1. 정상 작동 테스트
-    res = await url_decoder_handler({"text": "Hello%20World%20123%21"})
-    assert res["result"] == "Hello World 123!"
 
-    # 2. 한글 및 특수문자 디코딩 테스트
-    res2 = await url_decoder_handler({"text": "%EC%95%88%EB%85%95%2F%EC%84%B8%EC%83%81%3F"})
-    assert res2["result"] == "안녕/세상?"
+def test_json_formatter_tool_invalid() -> None:
+    with TestClient(app) as client:
+        request_data = {"parameters": {"json_str": "invalid json"}}
+        response = client.post(
+            "/api/tools/json_formatter/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json=request_data,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "failed"
+        assert "Invalid JSON string" in data["message"]
 
-    # 3. 빈 문자열
-    res3 = await url_decoder_handler({"text": ""})
-    assert res3["result"] == ""
 
-    # 4. 제한 길이 초과 테스트
-    with pytest.raises(ValueError, match="Input text must not exceed"):
-        await url_decoder_handler({"text": "a" * (ANALYSIS_TEXT_MAX_CHARS + 1)})
+@pytest.mark.parametrize("json_str", ["NaN", "Infinity", "-Infinity"])
+def test_json_formatter_tool_rejects_non_standard_numbers(json_str: str) -> None:
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/json_formatter/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"json_str": json_str}},
+        )
 
-@pytest.mark.asyncio
-async def test_json_validator():
-    from api.tools import json_validator_handler, ANALYSIS_TEXT_MAX_CHARS
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "failed"
+    assert "Invalid JSON string" in data["message"]
+    assert data["error_code"] == "invalid_json"
 
-    # 1. 정상 작동 테스트 (유효한 JSON)
-    res = await json_validator_handler({"text": '{"key": "value", "number": 123}'})
-    assert res["is_valid"] is True
-    assert res["error"] is None
 
-    # 2. 정상 작동 테스트 (유효하지 않은 JSON)
-    res2 = await json_validator_handler({"text": '{"key": "value", "number": }'})
-    assert res2["is_valid"] is False
-    assert res2["error"] is not None
+def test_html_escape_tool_success() -> None:
+    with TestClient(app) as client:
+        request_data = {"parameters": {"text": "<div>&</div>"}}
+        response = client.post(
+            "/api/tools/html_escape/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json=request_data,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["result"]["escaped_html"] == "&lt;div&gt;&amp;&lt;/div&gt;"
 
-    # 3. 빈 문자열 (유효하지 않은 JSON)
-    res3 = await json_validator_handler({"text": ""})
-    assert res3["is_valid"] is False
-    assert res3["error"] is not None
 
-    # 4. 제한 길이 초과 테스트
-    with pytest.raises(ValueError, match="Input text must not exceed"):
-        await json_validator_handler({"text": "a" * (ANALYSIS_TEXT_MAX_CHARS + 1)})
+def test_html_unescape_tool_success() -> None:
+    with TestClient(app) as client:
+        request_data = {"parameters": {"escaped_html": "&lt;div&gt;&amp;&lt;/div&gt;"}}
+        response = client.post(
+            "/api/tools/html_unescape/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json=request_data,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["result"]["unescaped_html"] == "<div>&</div>"

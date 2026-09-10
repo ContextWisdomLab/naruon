@@ -12,6 +12,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   AlertCircle,
@@ -37,14 +39,23 @@ interface ExecuteResponse {
   status: string;
   result: unknown;
   message?: string;
+  error_code?: string;
+}
+
+function parameterIsOptional(descriptor: unknown) {
+  return Boolean(
+    descriptor &&
+    typeof descriptor === "object" &&
+    "required" in descriptor &&
+    (descriptor as { required?: unknown }).required === false
+  );
 }
 
 function buildDefaultParameters(tool: ToolInfo) {
   return Object.fromEntries(
-    Object.entries(tool.parameters ?? {}).map(([key, descriptor]) => [
-      key,
-      defaultParameterValue(descriptor),
-    ]),
+    Object.entries(tool.parameters ?? {})
+      .filter(([, descriptor]) => !parameterIsOptional(descriptor))
+      .map(([key, descriptor]) => [key, defaultParameterValue(descriptor)]),
   );
 }
 
@@ -66,7 +77,36 @@ function defaultParameterValue(descriptor: unknown) {
     case "object":
       return {};
     default:
-      return "test_value";
+      return "";
+  }
+}
+
+function parameterInputValue(value: unknown, type: string) {
+  if (type === "array" || type === "object") {
+    return typeof value === "string" ? value : JSON.stringify(value);
+  }
+  if (type === "boolean") return Boolean(value);
+  return String(value ?? "");
+}
+
+function parameterValueFromInput(value: string, type: string) {
+  switch (type) {
+    case "number":
+      return value === "" ? "" : Number(value);
+    case "integer":
+      if (value === "") return "";
+      return Number.isInteger(Number(value)) ? Number(value) : value;
+    case "boolean":
+      return value === "true";
+    case "array":
+    case "object":
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value;
+      }
+    default:
+      return value;
   }
 }
 
@@ -76,6 +116,52 @@ function parameterTypeLabel(descriptor: unknown) {
     return String((descriptor as { type?: unknown }).type ?? "string");
   }
   return "string";
+}
+
+function parameterType(descriptor: unknown) {
+  return parameterTypeLabel(descriptor).toLowerCase();
+}
+
+function parameterMaxLength(descriptor: unknown) {
+  if (!descriptor || typeof descriptor !== "object" || !("max_length" in descriptor)) {
+    return undefined;
+  }
+  const maxLength = (descriptor as { max_length?: unknown }).max_length;
+  return typeof maxLength === "number" && Number.isInteger(maxLength) && maxLength >= 0
+    ? maxLength
+    : undefined;
+}
+
+function parameterValueMatchesType(value: unknown, descriptor: unknown) {
+  switch (parameterType(descriptor)) {
+    case "string":
+      return typeof value === "string";
+    case "number":
+      return typeof value === "number" && Number.isFinite(value);
+    case "integer":
+      return typeof value === "number" && Number.isInteger(value);
+    case "boolean":
+      return typeof value === "boolean";
+    case "array":
+      return Array.isArray(value);
+    case "object":
+      return value !== null && typeof value === "object" && !Array.isArray(value);
+    default:
+      return true;
+  }
+}
+
+function buildParameterValues(
+  tool: ToolInfo,
+  currentValues: Record<string, unknown> = {},
+) {
+  const parameters = tool.parameters ?? {};
+  const retainedValues = Object.fromEntries(
+    Object.entries(currentValues).filter(([key, value]) => (
+      key in parameters && parameterValueMatchesType(value, parameters[key])
+    )),
+  );
+  return { ...buildDefaultParameters(tool), ...retainedValues };
 }
 
 function resultTone(status: string) {
@@ -88,8 +174,32 @@ function resultLabel(status: string) {
   return status === "success" ? "성공" : "실패";
 }
 
+function failureAction(errorCode?: string) {
+  switch (errorCode) {
+    case "tool_parameter_too_long":
+      return "입력 길이를 줄인 뒤 다시 실행하세요.";
+    case "invalid_json":
+      return "JSON 형식을 확인한 뒤 다시 실행하세요.";
+    case "invalid_url_encoding":
+      return "URL 인코딩을 확인한 뒤 다시 실행하세요.";
+    case "missing_tool_parameter":
+    case "invalid_tool_parameter_type":
+    case "unexpected_tool_parameters":
+      return "입력 항목과 형식을 확인한 뒤 다시 실행하세요.";
+    default:
+      return errorCode ? "잠시 후 다시 실행하세요." : "";
+  }
+}
+
 function resultMessage(response: ExecuteResponse) {
-  return response.message || JSON.stringify(response.result);
+  if (response.status === "success") {
+    return typeof response.result === "string"
+      ? response.result
+      : JSON.stringify(response.result) ?? "실행 결과가 없습니다.";
+  }
+  const message = response.message || JSON.stringify(response.result) || "실행 결과가 없습니다.";
+  const action = failureAction(response.error_code);
+  return action ? `${message} ${action}` : message;
 }
 
 export default function ToolsPage() {
@@ -99,6 +209,7 @@ export default function ToolsPage() {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [executing, setExecuting] = useState<Record<string, boolean>>({});
   const [results, setResults] = useState<Record<string, ExecuteResponse>>({});
+  const [parameterValues, setParameterValues] = useState<Record<string, Record<string, unknown>>>({});
 
   useEffect(() => {
     let isMounted = true;
@@ -106,6 +217,14 @@ export default function ToolsPage() {
       .then((data) => {
         if (isMounted) {
           setTools(data);
+          setParameterValues((currentValues) =>
+            Object.fromEntries(
+              data.map((tool) => [
+                tool.code,
+                buildParameterValues(tool, currentValues[tool.code]),
+              ]),
+            ),
+          );
           setLoadError(false);
           setLoading(false);
         }
@@ -141,7 +260,7 @@ export default function ToolsPage() {
     setExecuting(prev => ({ ...prev, [code]: true }));
     try {
       const tool = tools.find((item) => item.code === code);
-      const params = tool ? buildDefaultParameters(tool) : {};
+      const params = parameterValues[code] ?? (tool ? buildDefaultParameters(tool) : {});
       const response = await apiClient.post<ExecuteResponse>(`/api/tools/${code}/execute`, { parameters: params });
       setResults(prev => ({ ...prev, [code]: response }));
     } catch (error: unknown) {
@@ -153,6 +272,21 @@ export default function ToolsPage() {
     } finally {
       setExecuting(prev => ({ ...prev, [code]: false }));
     }
+  };
+
+  const toolParametersAreValid = (tool: ToolInfo) => {
+    const values = parameterValues[tool.code] ?? buildDefaultParameters(tool);
+    return Object.entries(tool.parameters ?? {}).every(([key, descriptor]) => {
+      const isOptional = parameterIsOptional(descriptor);
+      return (!(key in values) && isOptional) || parameterValueMatchesType(values[key], descriptor);
+    });
+  };
+
+  const updateParameter = (toolCode: string, key: string, value: unknown) => {
+    setParameterValues((currentValues) => ({
+      ...currentValues,
+      [toolCode]: { ...currentValues[toolCode], [key]: value },
+    }));
   };
 
   return (
@@ -265,14 +399,68 @@ export default function ToolsPage() {
                       <p className="mt-2 text-sm font-semibold text-muted-foreground">필요한 입력 없음</p>
                     ) : (
                       <dl className="mt-3 grid gap-2">
-                        {Object.entries(tool.parameters ?? {}).map(([key, descriptor]) => (
-                          <div key={key} className="flex items-center justify-between gap-3 text-sm">
-                            <dt className="min-w-0 truncate font-bold">{key}</dt>
-                            <dd className="shrink-0 rounded-lg bg-secondary px-2 py-1 text-xs font-black text-muted-foreground">
-                              {parameterTypeLabel(descriptor)}
-                            </dd>
-                          </div>
-                        ))}
+                        {Object.entries(tool.parameters ?? {}).map(([key, descriptor]) => {
+                          const type = parameterType(descriptor);
+                          const inputId = `tool-${tool.code}-${key}`;
+                          const inputHelpId = `${inputId}-help`;
+                          const value = parameterValues[tool.code]?.[key] ?? defaultParameterValue(descriptor);
+                          const inputValue = parameterInputValue(value, type);
+                          const isValid = parameterValueMatchesType(value, descriptor);
+                          const maxLength = type === "string" ? parameterMaxLength(descriptor) : undefined;
+                          return (
+                            <div key={key} className="grid gap-2 text-sm">
+                              <div className="flex items-center justify-between gap-3">
+                                <dt className="min-w-0 truncate font-bold">
+                                  <label htmlFor={inputId}>{key}</label>
+                                </dt>
+                                <dd className="shrink-0 rounded-lg bg-secondary px-2 py-1 text-xs font-black text-muted-foreground">
+                                  {parameterTypeLabel(descriptor)}
+                                </dd>
+                              </div>
+                              {type === "boolean" ? (
+                                <input
+                                  id={inputId}
+                                  type="checkbox"
+                                  checked={Boolean(inputValue)}
+                                  onChange={(event) => updateParameter(tool.code, key, event.target.checked)}
+                                  data-tool-parameter={`${tool.code}.${key}`}
+                                  className="size-4 accent-primary"
+                                />
+                              ) : type === "string" ? (
+                                <Textarea
+                                  id={inputId}
+                                  value={String(inputValue)}
+                                  maxLength={maxLength}
+                                  onChange={(event) => updateParameter(tool.code, key, event.target.value)}
+                                  data-tool-parameter={`${tool.code}.${key}`}
+                                  aria-label={key}
+                                  aria-describedby={maxLength === undefined ? undefined : inputHelpId}
+                                  rows={3}
+                                />
+                              ) : (
+                                <Input
+                                  id={inputId}
+                                  type={type === "number" || type === "integer" ? "number" : "text"}
+                                  value={String(inputValue)}
+                                  step={type === "integer" ? 1 : undefined}
+                                  onChange={(event) => updateParameter(
+                                    tool.code,
+                                    key,
+                                    parameterValueFromInput(event.target.value, type),
+                                  )}
+                                  data-tool-parameter={`${tool.code}.${key}`}
+                                  aria-label={key}
+                                  aria-invalid={!isValid}
+                                />
+                              )}
+                              {maxLength !== undefined && (
+                                <p id={inputHelpId} className="text-xs font-semibold text-muted-foreground">
+                                  최대 {maxLength.toLocaleString()}자
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
                       </dl>
                     )}
                   </div>
@@ -298,7 +486,11 @@ export default function ToolsPage() {
                   <Button
                     type="button"
                     onClick={() => handleExecute(tool.code)}
-                    disabled={executing[tool.code] || tool.is_active === false}
+                    disabled={
+                      executing[tool.code] ||
+                      tool.is_active === false ||
+                      !toolParametersAreValid(tool)
+                    }
                     data-tool-execute={tool.code}
                     className="w-full font-black"
                   >

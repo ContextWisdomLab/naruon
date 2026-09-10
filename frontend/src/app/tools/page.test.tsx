@@ -135,7 +135,7 @@ describe("ToolsPage", () => {
               name: "테스트 도구",
               description: "설명",
               category: "카테고리",
-              parameters: { thread_id: "string", limit: "number" },
+              parameters: { thread_id: "string", limit: "integer" },
             },
           ]);
         }
@@ -163,6 +163,30 @@ describe("ToolsPage", () => {
 
     const button = container.querySelector('button[data-tool-execute="test_tool"]');
     expect(button).not.toBeNull();
+    const threadInput = container.querySelector(
+      'textarea[data-tool-parameter="test_tool.thread_id"]',
+    ) as HTMLTextAreaElement | null;
+    const limitInput = container.querySelector(
+      'input[data-tool-parameter="test_tool.limit"]',
+    ) as HTMLInputElement | null;
+    expect(threadInput).not.toBeNull();
+    expect(limitInput).not.toBeNull();
+
+    act(() => {
+      if (!threadInput) throw new Error("Thread input was not rendered.");
+      const setNativeValue = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+      setNativeValue?.call(threadInput, "user-provided content");
+      threadInput.dispatchEvent(new Event("input", { bubbles: true }));
+      const setNativeNumberValue = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      setNativeNumberValue?.call(limitInput, "2");
+      limitInput?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
 
     act(() => {
       button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -170,9 +194,115 @@ describe("ToolsPage", () => {
     await flushAsyncWork();
 
     expect(executeCalled).toBe(true);
-    expect(executeBody).toEqual({ parameters: { thread_id: "test_value", limit: 0 } });
+    expect(executeBody).toEqual({ parameters: { thread_id: "user-provided content", limit: 2 } });
     expect(container.textContent).toContain("성공");
-    expect(container.textContent).toContain("Success message");
+    expect(container.textContent).toContain("Execution OK");
+    expect(container.textContent).not.toContain("Success message");
+  });
+
+  it("preserves structured drafts and rejects fractional integer input", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url) => {
+        if (url.includes("/api/tools") && !url.includes("execute")) {
+          return jsonResponse([
+            {
+              code: "structured_tool",
+              name: "구조화 도구",
+              description: "설명",
+              category: "카테고리",
+              parameters: { payload: "object", count: "integer" },
+            },
+          ]);
+        }
+        return jsonResponse({ status: "success", result: "ok" });
+      }),
+    );
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => root?.render(<ToolsPage />));
+    await flushAsyncWork();
+
+    const payload = container.querySelector(
+      'input[data-tool-parameter="structured_tool.payload"]',
+    ) as HTMLInputElement;
+    const count = container.querySelector(
+      'input[data-tool-parameter="structured_tool.count"]',
+    ) as HTMLInputElement;
+    const execute = container.querySelector(
+      'button[data-tool-execute="structured_tool"]',
+    ) as HTMLButtonElement;
+
+    act(() => {
+      const inputSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      inputSetter?.call(payload, "{");
+      payload.dispatchEvent(new Event("input", { bubbles: true }));
+      inputSetter?.call(count, "1.5");
+      count.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(payload.value).toBe("{");
+    expect(payload.getAttribute("aria-invalid")).toBe("true");
+    expect(count.getAttribute("aria-invalid")).toBe("true");
+    expect(execute.disabled).toBe(true);
+  });
+
+  it("rebuilds parameter values when the tool schema is refreshed", async () => {
+    let catalogRequestCount = 0;
+    let executeBody: unknown;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url, init) => {
+        if (url.includes("/api/tools") && !url.includes("execute")) {
+          catalogRequestCount += 1;
+          return jsonResponse([
+            {
+              code: "test_tool",
+              name: "테스트 도구",
+              description: "설명",
+              category: "카테고리",
+              parameters:
+                catalogRequestCount === 1
+                  ? { removed: "string", changed: "string" }
+                  : { changed: { type: "number" }, fresh: "string" },
+            },
+          ]);
+        }
+        if (url.includes("/api/tools/test_tool/execute")) {
+          executeBody = JSON.parse(String(init?.body));
+          return jsonResponse({ status: "success", result: "Execution OK" });
+        }
+        return jsonResponse({});
+      }),
+    );
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(<ToolsPage />);
+    });
+    await flushAsyncWork();
+
+    const refreshButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("새로고침"),
+    );
+    expect(refreshButton).not.toBeUndefined();
+    act(() => {
+      refreshButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flushAsyncWork();
+
+    const executeButton = container.querySelector('button[data-tool-execute="test_tool"]');
+    act(() => {
+      executeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flushAsyncWork();
+
+    expect(executeBody).toEqual({ parameters: { changed: 0, fresh: "" } });
   });
 
   it("shows error when tool execution fails", async () => {
@@ -209,6 +339,65 @@ describe("ToolsPage", () => {
 
     expect(container.textContent).toContain("실패");
     expect(container.textContent).toContain("API request failed");
+  });
+
+  it("submits optional schemas and shows bounded stable failures", async () => {
+    let executeBody: unknown;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url, init) => {
+        if (url.includes("/api/tools") && !url.includes("execute")) {
+          return jsonResponse([
+            {
+              code: "bounded_tool",
+              name: "제한 도구",
+              description: "설명",
+              category: "카테고리",
+              parameters: {
+                required_text: { type: "string", max_length: 12 },
+                optional_text: { type: "string", required: false },
+              },
+            },
+          ]);
+        }
+        if (url.includes("/api/tools/bounded_tool/execute")) {
+          executeBody = JSON.parse(String(init?.body));
+          return jsonResponse({
+            status: "failed",
+            result: null,
+            message: "입력값을 확인하세요.",
+            error_code: "tool_parameter_too_long",
+          });
+        }
+        return jsonResponse({});
+      }),
+    );
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => root?.render(<ToolsPage />));
+    await flushAsyncWork();
+
+    const requiredInput = container.querySelector(
+      'textarea[data-tool-parameter="bounded_tool.required_text"]',
+    ) as HTMLTextAreaElement;
+    const executeButton = container.querySelector(
+      'button[data-tool-execute="bounded_tool"]',
+    );
+    expect(requiredInput.maxLength).toBe(12);
+    expect(requiredInput.getAttribute("aria-describedby")).toBe(
+      "tool-bounded_tool-required_text-help",
+    );
+    expect(container.textContent).toContain("최대 12자");
+
+    act(() => executeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flushAsyncWork();
+
+    expect(executeBody).toEqual({ parameters: { required_text: "" } });
+    expect(container.textContent).toContain("입력값을 확인하세요.");
+    expect(container.textContent).toContain("입력 길이를 줄인 뒤 다시 실행하세요.");
+    expect(container.textContent).not.toContain("tool_parameter_too_long");
   });
 
   it("distinguishes a load failure from an empty tool list", async () => {

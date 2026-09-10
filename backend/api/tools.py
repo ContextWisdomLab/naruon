@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import html
 import inspect
 import json
 import logging
@@ -26,6 +27,16 @@ router = APIRouter(prefix="/api", tags=["tools"])
 logger = logging.getLogger(__name__)
 ToolHandler = Callable[[Dict[str, Any]], Any]
 MAX_TOOL_FAILURE_MESSAGE_CHARS = 500
+MAX_TOOL_INPUT_CHARS = 100_000
+MALFORMED_PERCENT_ESCAPE_RE = re.compile(r"%(?![0-9A-Fa-f]{2})")
+
+
+class ToolExecutionError(ValueError):
+    """A public tool failure with a stable machine-readable code."""
+
+    def __init__(self, error_code: str, message: str):
+        super().__init__(message)
+        self.error_code = error_code
 
 
 def _tool_code_fingerprint(code: str) -> str:
@@ -128,6 +139,7 @@ class ExecuteResponse(BaseModel):
     status: str = Field(..., description="실행 상태 (예: success, failed)")
     result: Any = Field(..., description="실행 결과 데이터")
     message: Optional[str] = Field(default=None, description="결과 메시지")
+    error_code: Optional[str] = Field(default=None, description="안정적인 실패 코드")
 
 
 class ToolRegistry:
@@ -160,27 +172,49 @@ class ToolRegistry:
 
     def _validate_parameters(self, code: str, params: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(params, dict):
-            raise ValueError("Tool parameters must be an object")
+            raise ToolExecutionError(
+                "invalid_tool_parameters", "Tool parameters must be an object"
+            )
 
         tool_info = self._tools.get(code)
         schema = tool_info.parameters if tool_info else None
         if not schema:
             if params:
-                raise ValueError("Tool does not accept parameters")
+                raise ToolExecutionError(
+                    "unexpected_tool_parameters", "Tool does not accept parameters"
+                )
             return {}
 
         unexpected_keys = set(params) - set(schema)
         if unexpected_keys:
-            raise ValueError("Unexpected tool parameter")
+            raise ToolExecutionError(
+                "unexpected_tool_parameters", "Unexpected tool parameter"
+            )
 
         validated: Dict[str, Any] = {}
         for key, descriptor in schema.items():
             if key not in params:
-                raise ValueError("Missing required tool parameter")
+                if isinstance(descriptor, dict) and descriptor.get("required") is False:
+                    continue
+                raise ToolExecutionError(
+                    "missing_tool_parameter", "Missing required tool parameter"
+                )
             value = params[key]
             expected_type = _parameter_type_name(descriptor)
             if not _parameter_matches_type(value, expected_type):
-                raise ValueError("Invalid tool parameter type")
+                raise ToolExecutionError(
+                    "invalid_tool_parameter_type", "Invalid tool parameter type"
+                )
+            max_length = _parameter_max_length(descriptor)
+            if (
+                expected_type == "string"
+                and max_length is not None
+                and len(value) > max_length
+            ):
+                raise ToolExecutionError(
+                    "tool_parameter_too_long",
+                    f"Tool parameter exceeds maximum length of {max_length} characters",
+                )
             validated[key] = value
         return validated
 
@@ -480,6 +514,19 @@ def _parameter_type_name(descriptor: Any) -> str:
     return "string"
 
 
+def _parameter_max_length(descriptor: Any) -> int | None:
+    if not isinstance(descriptor, dict):
+        return None
+    max_length = descriptor.get("max_length")
+    if (
+        isinstance(max_length, int)
+        and not isinstance(max_length, bool)
+        and max_length >= 0
+    ):
+        return max_length
+    return None
+
+
 def _parameter_matches_type(value: Any, expected_type: str) -> bool:
     validators = {
         "string": lambda candidate: isinstance(candidate, str),
@@ -706,6 +753,8 @@ _KEYWORD_STOPWORDS = frozenset(
         "합니다",
     }
 )
+
+
 def _normalize_analysis_text(value: str) -> str:
     """Normalize user text for deterministic, multilingual rule matching."""
     if len(value) > ANALYSIS_TEXT_MAX_CHARS:
@@ -769,90 +818,165 @@ registry.register(
 )
 
 
-
-
 async def url_encoder_handler(params: Dict[str, Any]) -> Dict[str, str]:
-    text = params.get("text", "")
-    if len(text) > ANALYSIS_TEXT_MAX_CHARS:
-        raise ValueError(f"Input text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters")
-    return {"result": urllib.parse.quote(text, safe="")}
+    text = params.get("text") or ""
+    return {"encoded_url": urllib.parse.quote(text, safe="")}
+
 
 registry.register(
     ToolInfo(
         code="url_encoder",
-        name="URL 인코딩 (URL Encoder)",
-        description="주어진 텍스트를 URL 인코딩(Percent-encoding)합니다.",
+        name="URL 인코더 (URL Encoder)",
+        description="일반 텍스트를 URL 인코딩합니다.",
         category="유틸리티",
-        parameters={
-            "type": "object",
-            "properties": {
-                "text": {
-                    "type": "string",
-                    "description": "인코딩할 원본 텍스트",
-                }
-            },
-            "required": ["text"],
-        },
+        parameters={"text": {"type": "string", "max_length": MAX_TOOL_INPUT_CHARS}},
     ),
     url_encoder_handler,
 )
 
+
 async def url_decoder_handler(params: Dict[str, Any]) -> Dict[str, str]:
-    text = params.get("text", "")
-    if len(text) > ANALYSIS_TEXT_MAX_CHARS:
-        raise ValueError(f"Input text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters")
-    return {"result": urllib.parse.unquote(text)}
+    """Decode only complete percent escapes containing valid UTF-8 bytes."""
+    encoded_url = params.get("encoded_url") or ""
+    if MALFORMED_PERCENT_ESCAPE_RE.search(encoded_url):
+        raise ToolExecutionError(
+            "invalid_url_encoding", "Invalid URL-encoded string"
+        )
+    try:
+        decoded_url = urllib.parse.unquote(encoded_url, errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ToolExecutionError(
+            "invalid_url_encoding", "Invalid URL-encoded string"
+        ) from exc
+    return {"decoded_url": decoded_url}
+
 
 registry.register(
     ToolInfo(
         code="url_decoder",
-        name="URL 디코딩 (URL Decoder)",
-        description="URL 인코딩된 텍스트를 디코딩하여 원본 텍스트로 복원합니다.",
+        name="URL 디코더 (URL Decoder)",
+        description="URL 인코딩된 문자열을 디코딩합니다.",
         category="유틸리티",
         parameters={
-            "type": "object",
-            "properties": {
-                "text": {
-                    "type": "string",
-                    "description": "디코딩할 URL 인코딩 텍스트",
-                }
-            },
-            "required": ["text"],
+            "encoded_url": {"type": "string", "max_length": MAX_TOOL_INPUT_CHARS}
         },
     ),
     url_decoder_handler,
 )
 
-async def json_validator_handler(params: Dict[str, Any]) -> Dict[str, Any]:
-    text = params.get("text", "")
-    if len(text) > ANALYSIS_TEXT_MAX_CHARS:
-        raise ValueError(f"Input text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters")
 
+class _RawJSONNumber:
+    """Hold a validated JSON number's original lexical representation."""
+
+    __slots__ = ("text",)
+
+    def __init__(self, text: str):
+        self.text = text
+
+
+def _reject_non_standard_json_number(value: str) -> None:
+    """Reject JavaScript numeric extensions that are not valid JSON."""
+    raise ValueError(f"Non-standard JSON number: {value}")
+
+
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject duplicate object keys instead of silently discarding data."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON object key: {key}")
+        result[key] = value
+    return result
+
+
+def _format_json_value(value: Any, level: int = 0) -> str:
+    """Pretty-print parsed JSON while preserving raw number tokens."""
+    indent = "  "
+    if isinstance(value, _RawJSONNumber):
+        return value.text
+    if isinstance(value, dict):
+        if not value:
+            return "{}"
+        entries = [
+            f"{indent * (level + 1)}{json.dumps(key, ensure_ascii=True)}: "
+            f"{_format_json_value(item, level + 1)}"
+            for key, item in value.items()
+        ]
+        return "{\n" + ",\n".join(entries) + f"\n{indent * level}}}"
+    if isinstance(value, list):
+        if not value:
+            return "[]"
+        entries = [
+            f"{indent * (level + 1)}{_format_json_value(item, level + 1)}"
+            for item in value
+        ]
+        return "[\n" + ",\n".join(entries) + f"\n{indent * level}]"
+    return json.dumps(value, ensure_ascii=True, allow_nan=False)
+
+
+async def json_formatter_handler(params: Dict[str, Any]) -> Dict[str, str]:
+    """Format JSON, preserving numbers and rejecting duplicate keys."""
+    json_str = params.get("json_str") or ""
     try:
-        json.loads(text)
-        return {"is_valid": True, "error": None}
-    except json.JSONDecodeError as e:
-        return {"is_valid": False, "error": str(e)}
+        parsed = json.loads(
+            json_str,
+            parse_constant=_reject_non_standard_json_number,
+            parse_int=_RawJSONNumber,
+            parse_float=_RawJSONNumber,
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+        return {"formatted_json": _format_json_value(parsed)}
+    except (RecursionError, TypeError, ValueError) as e:
+        raise ToolExecutionError("invalid_json", f"Invalid JSON string: {e}") from e
+
 
 registry.register(
     ToolInfo(
-        code="json_validator",
-        name="JSON 유효성 검사기 (JSON Validator)",
-        description="주어진 텍스트가 유효한 JSON 형식인지 검사합니다.",
-        category="개발",
+        code="json_formatter",
+        name="JSON 포매터 (JSON Formatter)",
+        description="JSON 문자열을 보기 좋게 포매팅하고 중복 키와 비표준 숫자를 거부합니다.",
+        category="유틸리티",
+        parameters={"json_str": {"type": "string", "max_length": MAX_TOOL_INPUT_CHARS}},
+    ),
+    json_formatter_handler,
+)
+
+
+async def html_escape_handler(params: Dict[str, Any]) -> Dict[str, str]:
+    text = params.get("text") or ""
+    return {"escaped_html": html.escape(text)}
+
+
+registry.register(
+    ToolInfo(
+        code="html_escape",
+        name="HTML 이스케이프 (HTML Escape)",
+        description="텍스트 내 특수 문자를 HTML 안전 문자열로 변환합니다.",
+        category="유틸리티",
+        parameters={"text": {"type": "string", "max_length": MAX_TOOL_INPUT_CHARS}},
+    ),
+    html_escape_handler,
+)
+
+
+async def html_unescape_handler(params: Dict[str, Any]) -> Dict[str, str]:
+    escaped_html = params.get("escaped_html") or ""
+    return {"unescaped_html": html.unescape(escaped_html)}
+
+
+registry.register(
+    ToolInfo(
+        code="html_unescape",
+        name="HTML 언이스케이프 (HTML Unescape)",
+        description="HTML 이스케이프된 문자열을 복원합니다.",
+        category="유틸리티",
         parameters={
-            "type": "object",
-            "properties": {
-                "text": {
-                    "type": "string",
-                    "description": "검사할 JSON 형식의 문자열",
-                }
-            },
-            "required": ["text"],
+            "escaped_html": {"type": "string", "max_length": MAX_TOOL_INPUT_CHARS}
         },
     ),
-    json_validator_handler,
+    html_unescape_handler,
 )
+
 
 @router.get("/tools", response_model=list[ToolInfo])
 def get_tools() -> list[ToolInfo]:
@@ -944,7 +1068,10 @@ def delete_tool(code: str) -> None:
     registry.unregister(code)
 
 
-@router.post("/tools/{code}/execute", response_model=ExecuteResponse)
+@router.post(
+    "/tools/{code}/execute",
+    response_model=ExecuteResponse,
+)
 async def execute_tool(code: str, request: ExecuteRequest) -> ExecuteResponse:
     """
     특정 도구를 실행합니다.
@@ -973,4 +1100,9 @@ async def execute_tool(code: str, request: ExecuteRequest) -> ExecuteResponse:
             status="failed",
             result=None,
             message=_safe_tool_failure_message(e),
+            error_code=(
+                e.error_code
+                if isinstance(e, ToolExecutionError)
+                else "tool_execution_failed"
+            ),
         )

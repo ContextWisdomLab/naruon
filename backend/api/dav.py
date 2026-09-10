@@ -139,11 +139,28 @@ def _dav_xml_response(responses: list[str]) -> Response:
     )
 
 
+def _dav_finite_depth_error_response() -> Response:
+    return Response(
+        content=(
+            '<?xml version="1.0" encoding="utf-8" ?>\n'
+            '<D:error xmlns:D="DAV:"><D:propfind-finite-depth/></D:error>'
+        ),
+        media_type="application/xml",
+        status_code=403,
+    )
+
+
 def _dav_depth(request: Request) -> str:
-    depth = request.headers.get("Depth", "1").strip().lower()
-    if depth == "0":
-        return "0"
-    return "1"
+    depth_header = request.headers.get("Depth")
+    if depth_header is None:
+        return "infinity"
+    depth = depth_header.strip().lower()
+    if depth not in {"0", "1", "infinity"}:
+        raise HTTPException(
+            status_code=400,
+            detail="DAV Depth must be 0, 1, or infinity",
+        )
+    return depth
 
 
 def _project_folder_response(path_owner_user_id: str, folder: dict) -> str:
@@ -169,6 +186,9 @@ async def _handle_project_propfind(
 
     path_owner_user_id = segments[0]
     depth = _dav_depth(request)
+    if depth == "infinity":
+        return _dav_finite_depth_error_response()
+
     folder_uid = segments[2] if len(segments) == 3 else None
     if len(segments) > 3:
         raise HTTPException(status_code=404, detail="DAV project folder not found")

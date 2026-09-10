@@ -33,6 +33,20 @@ PROVIDER_WRITEBACK_RETRY_SUMMARY_KEYS = (
 ProviderWritebackDispatch = Callable[..., Awaitable[dict[str, Any]]]
 
 
+def _due_retry_query(current_time: datetime.datetime, batch_limit: int):
+    """Build the row-locking query used to claim provider retry work."""
+    return (
+        select(ProviderWritebackRetryItem)
+        .where(
+            ProviderWritebackRetryItem.retry_state == "pending",
+            ProviderWritebackRetryItem.next_retry_at <= current_time,
+        )
+        .order_by(ProviderWritebackRetryItem.next_retry_at.asc())
+        .with_for_update(skip_locked=True)
+        .limit(batch_limit)
+    )
+
+
 class ProviderWritebackRetryWorker:
     def __init__(
         self,
@@ -176,15 +190,7 @@ async def process_due_provider_writeback_retries(
     max_attempts: int = 3,
 ) -> dict[str, int]:
     current_time = now or datetime.datetime.now(datetime.timezone.utc)
-    result = await db.execute(
-        select(ProviderWritebackRetryItem)
-        .where(
-            ProviderWritebackRetryItem.retry_state == "pending",
-            ProviderWritebackRetryItem.next_retry_at <= current_time,
-        )
-        .order_by(ProviderWritebackRetryItem.next_retry_at.asc())
-        .limit(batch_limit)
-    )
+    result = await db.execute(_due_retry_query(current_time, batch_limit))
     retry_items = list(result.scalars().all())
     summary = {key: 0 for key in PROVIDER_WRITEBACK_RETRY_SUMMARY_KEYS}
     if not retry_items:

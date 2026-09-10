@@ -76,6 +76,19 @@ def test_named_prop_is_not_silently_coerced_to_allprop(
     assert response.status_code == 501
 
 
+def test_named_prop_value_is_invalid_before_mode_refusal(
+    dev_auth_dependency_overrides,
+) -> None:
+    """A prop selector may name properties but must not carry property values."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:"><D:prop><D:displayname>unexpected'
+        b'</D:displayname></D:prop></D:propfind>'
+    )
+
+    assert response.status_code == 400
+
+
 def test_allprop_include_is_recognized_but_not_silently_ignored(
     dev_auth_dependency_overrides,
 ) -> None:
@@ -87,6 +100,32 @@ def test_allprop_include_is_recognized_but_not_silently_ignored(
     )
 
     assert response.status_code == 501
+
+
+def test_include_property_value_is_invalid_before_mode_refusal(
+    dev_auth_dependency_overrides,
+) -> None:
+    """An include selector names properties; nested property values are invalid."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:"><D:allprop/><D:include>'
+        b'<D:getetag>unexpected</D:getetag></D:include></D:propfind>'
+    )
+
+    assert response.status_code == 400
+
+
+def test_include_mixed_text_is_invalid_before_mode_refusal(
+    dev_auth_dependency_overrides,
+) -> None:
+    """DAV:include cannot contain text or mixed content."""
+
+    response = _propfind_request(
+        b'<D:propfind xmlns:D="DAV:"><D:allprop/><D:include>unexpected'
+        b'<D:getetag/></D:include></D:propfind>'
+    )
+
+    assert response.status_code == 400
 
 
 def test_non_empty_allprop_with_include_is_invalid_before_mode_refusal(

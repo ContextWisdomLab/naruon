@@ -39,17 +39,6 @@ function jsonResponse(body: unknown) {
   });
 }
 
-async function waitForCondition(condition: () => boolean) {
-  for (let index = 0; index < 20; index += 1) {
-    if (condition()) return;
-    await act(async () => {
-      await Promise.resolve();
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-  }
-  throw new Error("waitForCondition timed out after 20 attempts");
-}
-
 function statusWithText(container: HTMLElement, text: string) {
   return Array.from(container.querySelectorAll<HTMLElement>('[role="status"]')).find(
     (element) => element.textContent?.includes(text),
@@ -73,6 +62,7 @@ describe("SearchLayout empty-result live region", () => {
     const searchResponse = new Promise<Response>((resolve) => {
       resolveSearch = resolve;
     });
+    const emptyBody = Promise.resolve({ results: [] });
 
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
@@ -95,9 +85,13 @@ describe("SearchLayout empty-result live region", () => {
     expect(statusWithText(container, "맥락 검색 결과가 없습니다.")).toBeNull();
 
     await act(async () => {
-      resolveSearch(jsonResponse({ results: [] }));
+      resolveSearch(new Response(JSON.stringify(await emptyBody), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+      await searchResponse;
+      await emptyBody;
     });
-    await waitForCondition(() => statusWithText(container as HTMLElement, "맥락 검색 결과가 없습니다.") !== null);
 
     const emptyStatus = statusWithText(container, "맥락 검색 결과가 없습니다.");
     expect(emptyStatus).not.toBeNull();

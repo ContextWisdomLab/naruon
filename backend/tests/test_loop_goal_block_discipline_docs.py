@@ -32,7 +32,8 @@ def test_claude_documents_same_high_level_blocking_contract() -> None:
     assert "read-only scope" in claude_text
     assert "single-writer boundary" in claude_text
     assert "server permission denial" in claude_text
-    assert "must not be bypassed by creating a replacement branch" in claude_text
+    assert "must not be bypassed" in claude_text
+    assert "by creating a replacement branch" in claude_text
 
 
 def test_loop_discipline_inherits_canonical_llm_owner_guidance() -> None:

@@ -105,7 +105,9 @@ def test_dav_rejects_ownerless_options_before_capability_discovery(
 def test_dav_propfind(dev_auth_dependency_overrides, stub_dav_project_folders):
     with TestClient(app) as client:
         response = client.request(
-            "PROPFIND", "/dav/user123/projects/", headers=AUTH_HEADERS
+            "PROPFIND",
+            "/dav/user123/projects/",
+            headers={**AUTH_HEADERS, "Depth": "1"},
         )
         assert response.status_code == 207
         assert "<D:multistatus" in response.text
@@ -119,7 +121,9 @@ def test_dav_propfind_escapes_path_values(
 ):
     with TestClient(app) as client:
         response = client.request(
-            "PROPFIND", "/dav/user123/projects/x%26y%3Cz%3E", headers=AUTH_HEADERS
+            "PROPFIND",
+            "/dav/user123/projects/x%26y%3Cz%3E",
+            headers={**AUTH_HEADERS, "Depth": "1"},
         )
         assert response.status_code == 207
         assert "x&amp;y&lt;z&gt;" in response.text
@@ -238,7 +242,11 @@ def test_dav_route_preserves_encoded_percent_as_data(
     request_path: str,
 ) -> None:
     with TestClient(app) as client:
-        response = client.request("PROPFIND", request_path, headers=AUTH_HEADERS)
+        response = client.request(
+            "PROPFIND",
+            request_path,
+            headers={**AUTH_HEADERS, "Depth": "1"},
+        )
 
     assert response.status_code == 207
     assert "%" in response.text

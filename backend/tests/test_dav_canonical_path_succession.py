@@ -1,7 +1,5 @@
 """Regression coverage for DAV canonical-path succession and request bounds."""
 
-import asyncio
-
 import pytest
 from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient

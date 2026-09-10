@@ -180,7 +180,7 @@ function getCalendarCapabilityLabel(capability: string) {
 }
 
 function getCalendarConflictLabel(source: CalendarWritebackSource) {
-  return source.etag ? '충돌 토큰 있음' : '충돌 토큰 대기';
+  return source.etag ? '원본 변경 비교 가능' : '변경 전 원본 확인 필요';
 }
 
 function buildCompletionRate(tasks: TaskItem[]) {
@@ -406,7 +406,7 @@ function StartupDashboard({ onOpenView }: { onOpenView: (view: WorkspaceStartupV
     { title: '받은 메일', value: emailUnavailable ? '오류' : emailLoading ? '-' : emails.length.toString(), diff: emailUnavailable ? '확인 필요' : unreadCount > 0 ? `+${unreadCount}` : '-', diffText: '안 읽음', icon: Inbox, color: emailUnavailable ? 'text-red-500' : 'text-primary' },
     { title: '답변 대기', value: pendingReplyUnavailable ? '오류' : pendingReplyLoading ? '-' : pendingReplyCount.toString(), diff: pendingReplyUnavailable ? '확인 필요' : pendingReplyCount > 0 ? `${pendingReplyCount}건` : '-', diffText: '보낸 메일', icon: Send, color: pendingReplyUnavailable ? 'text-red-500' : 'text-rose-500' },
     { title: '일정 원본', value: calendarSourceError ? '오류' : calendarSourceLoading ? '-' : calendarSources.length.toString(), diff: calendarSourceError ? '확인 필요' : calendarSourceLoading ? '-' : `${writableCalendarSourceCount}개`, diffText: calendarSourceError ? '원본 확인' : '반영 가능', icon: CalendarDays, color: calendarSourceError ? 'text-red-500' : 'text-blue-500' },
-    { title: '대기 작업', value: taskUnavailable ? '오류' : taskLoading ? '-' : pendingTasks.length.toString(), diff: taskUnavailable ? '확인 필요' : '-', diffText: 'source-linked', icon: CheckCircle2, color: taskUnavailable ? 'text-red-500' : 'text-green-500' },
+    { title: '대기 작업', value: taskUnavailable ? '오류' : taskLoading ? '-' : pendingTasks.length.toString(), diff: taskUnavailable ? '확인 필요' : '-', diffText: '미완료', icon: CheckCircle2, color: taskUnavailable ? 'text-red-500' : 'text-green-500' },
     { title: '프로젝트 원본', value: projectFolderError ? '오류' : projectFolderLoading ? '-' : projectFolders.length.toString(), diff: projectFolderError ? '확인 필요' : projectFolderLoading ? '-' : `${projectFolders.length}개`, diffText: 'WebDAV 폴더', icon: Network, color: projectFolderError ? 'text-red-500' : 'text-purple-500' },
     { title: '작업 완료율', value: taskUnavailable ? '오류' : taskLoading ? '-' : `${taskCompletionRate}%`, diff: taskUnavailable ? '확인 필요' : taskLoading ? '-' : `${completedTaskCount}/${tasks.length}`, diffText: '완료', icon: CheckCircle2, color: taskUnavailable ? 'text-red-500' : 'text-emerald-500' },
   ]), [

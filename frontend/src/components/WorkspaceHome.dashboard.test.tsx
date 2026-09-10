@@ -664,7 +664,10 @@ describe("WorkspaceHome Today dashboard", () => {
     ));
   });
 
-  it("backs Today dashboard operating metrics with source evidence instead of fixed fixture numbers", async () => {
+  it.each([
+    ["etag-home-1", "원본 변경 비교 가능"],
+    [null, "변경 전 원본 확인 필요"],
+  ])("backs Today dashboard metrics with source evidence (comparison: %s)", async (sourceEtag, comparisonLabel) => {
     vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
       matches: false,
       media: query,
@@ -739,7 +742,7 @@ describe("WorkspaceHome Today dashboard", () => {
               protocol: "caldav",
               capabilities: ["read", "write"],
               writeback_enabled: true,
-              etag: "etag-home-1",
+              etag: sourceEtag,
             },
             {
               source_id: "calendar-readonly",
@@ -794,7 +797,10 @@ describe("WorkspaceHome Today dashboard", () => {
     expect(container.textContent).toContain("2");
     expect(container.textContent).toContain("1개 일정 반영 가능");
     expect(container.textContent).toContain("일정 원본 1");
-    expect(container.textContent).toContain("충돌 토큰 있음");
+    expect(container.textContent).toContain(comparisonLabel);
+    expect(container.textContent).not.toContain("충돌 토큰");
+    expect(container.textContent).not.toContain("source-linked");
+    expect(container.querySelector('article[aria-label="대기 작업"]')?.textContent).toContain("미완료");
     expect(container.textContent).toContain("프로젝트 원본");
     expect(container.textContent).toContain("1개 WebDAV 폴더");
     expect(container.textContent).toContain("작업 완료율");

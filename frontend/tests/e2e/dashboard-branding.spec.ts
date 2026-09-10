@@ -164,6 +164,35 @@ test('renders Today dashboard pending reply lane with signed API headers', async
   await page.screenshot({ path: testInfo.outputPath('today-pending-replies-mobile-scroll.png'), fullPage: false });
 });
 
+for (const comparisonState of [
+  { stateName: 'present', sourceEtag: 'calendar-comparison-baseline', label: '원본 변경 비교 가능' },
+  { stateName: 'absent', sourceEtag: null, label: '변경 전 원본 확인 필요' },
+]) {
+  test(`shows customer calendar comparison copy with ${comparisonState.stateName} baseline`, async ({ page }, testInfo) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', (pageError) => pageErrors.push(pageError.message));
+    await mockDashboardApi(page);
+    await page.route('**/api/calendar/writeback-sources', (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        source_id: 'calendar-copy-source', provider: 'Calendar', protocol: 'caldav',
+        capabilities: ['read', 'write'], writeback_enabled: true, etag: comparisonState.sourceEtag,
+      }]),
+    }));
+    await page.goto('/');
+    const dashboard = page.locator('section[aria-label="홈 개요"]:visible').first();
+    const comparisonLabel = dashboard.getByText(`일정 원본 1 · ${comparisonState.label}`, { exact: true });
+    await expect(comparisonLabel).toBeVisible();
+    await comparisonLabel.scrollIntoViewIfNeeded();
+    await expect(comparisonLabel).toBeInViewport();
+    await expect(dashboard).not.toContainText('충돌 토큰');
+    await expect(dashboard).not.toContainText('source-linked');
+    await page.screenshot({ path: testInfo.outputPath('calendar-comparison-focused.png') });
+    expect(pageErrors).toEqual([]);
+  });
+}
+
 for (const failureResponse of [
   { name: 'source request fails', status: 503, body: '{"error_code":"source_unavailable"}' },
   { name: 'source returns malformed members', status: 200, body: '{"emails":[null]}' },
@@ -196,6 +225,10 @@ test(`recovers the Today dashboard after a ${failureResponse.name}`, async ({ pa
   const recoveryAlert = dashboard.getByRole('alert');
   await expect(recoveryAlert).toContainText('업무 현황을 모두 불러오지 못했습니다.');
   await expect(dashboard.getByRole('article', { name: '받은 메일' })).toContainText('오류');
+  await expect(dashboard.getByRole('article', { name: '대기 작업' })).toContainText('미완료');
+  await expect(dashboard).toContainText('원본 변경 비교 가능');
+  await expect(dashboard).not.toContainText('source-linked');
+  await expect(dashboard).not.toContainText('충돌 토큰');
   await page.screenshot({ path: testInfo.outputPath('dashboard-source-unavailable.png') });
 
   inboxAvailable = true;

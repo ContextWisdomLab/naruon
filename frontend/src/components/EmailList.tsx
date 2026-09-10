@@ -254,10 +254,29 @@ export function EmailList({
           ) : error ? (
             <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">{error}</div>
           ) : emails.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border bg-background/70 p-5 text-sm text-muted-foreground">
-              <p className="font-bold text-foreground">{folderCopy.emptyTitle}</p>
-              <p className="mt-1 text-xs leading-5">{folderCopy.emptyBody}</p>
-            </div>
+            searchQuery.trim() !== "" ? (
+              <div className="rounded-2xl border border-dashed border-border bg-background/70 p-5 text-sm text-muted-foreground flex flex-col items-center justify-center text-center">
+                 <p className="font-bold text-foreground">검색 결과가 없습니다</p>
+                 <p className="mt-1 text-xs leading-5">&quot;{searchQuery}&quot;에 해당하는 메일을 찾을 수 없습니다.<br/>다른 키워드로 검색해보세요.</p>
+                 <Button
+                   variant="outline"
+                   size="sm"
+                   className="mt-4"
+                   onClick={() => {
+                     setSearchQuery("");
+                     void fetchEmails("");
+                     searchInputRef.current?.focus();
+                   }}
+                 >
+                   검색어 지우기
+                 </Button>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-border bg-background/70 p-5 text-sm text-muted-foreground">
+                <p className="font-bold text-foreground">{folderCopy.emptyTitle}</p>
+                <p className="mt-1 text-xs leading-5">{folderCopy.emptyBody}</p>
+              </div>
+            )
           ) : (
             emails.map((email: EmailItem) => (
               <EmailListItemComponent

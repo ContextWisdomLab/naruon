@@ -210,6 +210,14 @@ async def _validate_dav_propfind_body(request: Request) -> None:
         )
 
     directives = list(propfind_element)
+    if (propfind_element.text or "").strip() or any(
+        (directive.tail or "").strip() for directive in directives
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="DAV PROPFIND body must use element-only directive content",
+        )
+
     if len(directives) == 1 and directives[0].tag == "{DAV:}allprop":
         if list(directives[0]) or (directives[0].text or "").strip():
             raise HTTPException(
@@ -227,10 +235,18 @@ async def _validate_dav_propfind_body(request: Request) -> None:
             detail="DAV allprop include semantics are not implemented",
         )
 
-    if len(directives) == 1 and directives[0].tag in {
-        "{DAV:}prop",
-        "{DAV:}propname",
-    }:
+    if len(directives) == 1 and directives[0].tag == "{DAV:}propname":
+        if list(directives[0]) or (directives[0].text or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail="DAV propname directive must be empty",
+            )
+        raise HTTPException(
+            status_code=501,
+            detail="DAV propname PROPFIND semantics are not implemented",
+        )
+
+    if len(directives) == 1 and directives[0].tag == "{DAV:}prop":
         raise HTTPException(
             status_code=501,
             detail="DAV selected-property PROPFIND semantics are not implemented",

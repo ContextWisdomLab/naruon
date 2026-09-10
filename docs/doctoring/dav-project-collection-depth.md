@@ -31,6 +31,7 @@ Returning the addressed collection alone with 207 was rejected because it can ma
 - Reality RED: `3c1ba9207b46243712f229ac1f75b76a6eebf867` adds a route-level contract requiring direct project `Depth: 1` to fail closed instead of reporting a false empty collection.
 - Minimal causal fix: `dbcad849194153e1dc19bb570424cca5670339ac` preserves the existing DB existence lookup and returns 501 only after the selected project collection is found.
 - Regression alignment: `cf08479d7645c027680600a9758849845d384a79` and `8c794f15a19dcba394d6d691bd0c76271c7fa90f` move existing XML-escaping and encoded-percent property-read probes to `Depth: 0`; those tests never established provider child enumeration and must not encode that unsupported assumption.
+- Harness repair and positive acceptance: `f574524f089a3e37b0df35526855c46a0f8bed57` restores the pre-existing finite-depth assertion helper accidentally omitted while introducing the RED test and adds an explicit successful direct-project `Depth: 0` regression. The intermediate omission affected test code only and is not used as acceptance evidence.
 
 The production change is confined to `backend/api/dav.py`. The new depth contract is in `backend/tests/test_dav_depth_contract.py`; existing path-safety probes remain in `backend/tests/test_dav_api.py`.
 

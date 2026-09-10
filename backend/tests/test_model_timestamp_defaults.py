@@ -57,7 +57,8 @@ def _invalid_datetime_default_entries(entries):
     invalid_defaults: list[str] = []
     for table, column, kind, default_callable in entries:
         value = _evaluate_mapped_default(default_callable)
-        if not isinstance(value, datetime.datetime) or not _is_datetime_timezone_aware(value):
+        invalid_value = not isinstance(value, datetime.datetime)
+        if invalid_value or not _is_datetime_timezone_aware(value):
             invalid_defaults.append(f"{table}.{column} ({kind})")
     return invalid_defaults
 

@@ -210,6 +210,10 @@ proposed evidence.
   user re-designation. Stay inside the current project; never change operations,
   global environments, secrets, or paid resources. More specific user limits and
   effective `ask`/`deny` rules take precedence.
+- A read-only scope, another writer's single-writer boundary, an explicit server
+  permission denial, or a prior rejection remains binding. It must not be bypassed
+  by creating a replacement branch or worktree for the same protected path; park
+  only that blocked lane and continue other authorized work.
 - Do not call `opencode_loop_goal_blocked` for routine wait reports: in a real
   implementation it can carry top-level stop authority. Candidate
   `reason`/`needed`/`evidence` strings are not approved stop orders; validate

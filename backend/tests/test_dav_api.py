@@ -215,6 +215,8 @@ def test_dav_log_injection_prevention(dev_auth_dependency_overrides, caplog):
         "/dav/user123/projects/%25252e%25252e",
         "/dav/user123/projects/alice%255c..%255cbob",
         "/dav/user123/projects/%2525",
+        "/dav/user123/projects/%25%32%65",
+        "/dav/user123/projects/alice%25%35%63..%25%35%63bob",
     ],
 )
 def test_dav_route_rejects_ambiguous_nested_encoding(

@@ -18,10 +18,13 @@ AUTH_HEADERS = {
 
 @pytest.fixture
 def stub_dav_project_folders(monkeypatch):
-    async def fake_project_folders(db, user_id, organization_id, folder_uid=None):
+    async def fake_project_folders(
+        db, user_id, organization_id, folder_uid=None, max_results=None
+    ):
         assert user_id == "user123"
         assert organization_id == "org-acme"
         if folder_uid is None:
+            assert max_results == 257
             return [
                 {
                     "folder_uid": "demo",
@@ -31,6 +34,7 @@ def stub_dav_project_folders(monkeypatch):
                     "organization_id": organization_id,
                 }
             ]
+        assert max_results is None
         return [
             {
                 "folder_uid": folder_uid,

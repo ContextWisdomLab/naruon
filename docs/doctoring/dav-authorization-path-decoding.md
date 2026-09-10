@@ -25,8 +25,11 @@ The current repair is intentionally narrower:
 4. `42b5af38f21231aa4cad5f2e0ce0768f81fc1ee4` makes that fallback fail closed while permitting percent-free decoded paths on ASGI servers that omit `raw_path`.
 5. `9a294e3bf3f7330f1ab51a7c6878864481f40d9f` adds RED cases for split nested encodings such as `%25%32%65`. A raw-prefix regex that only recognized `%25` followed by literal hex characters could miss these encodings even though one wire decode produces `%2e` or `%5c`.
 6. `1df3aa46bce2e7fa28b6301e9e9cc846fd5cef7f` replaces that raw-prefix heuristic with one `unquote_to_bytes(raw_path)` used only for ambiguity classification, then rejects the request if the resulting bytes still contain a valid `%HH` escape. Authorization itself continues to consume the framework-decoded `path` without another decode.
+7. CodeRabbit review on predecessor head `55068845c22c195c68e15429072cdb689245021a` identified a still-valid decoded-control gap: UTF-8 percent encodings such as `%C2%80` become C1 control characters in ASGI `path`, while the raw-byte C0/DEL check cannot classify them.
+8. `f5fd8a467e6d17b71288ed09ed38a4dc0f1a2157` adds route-level RED cases for `%C2%80` and `%C2%9F`; `9d0d3af2fc9c193fde1c0b3cc635fc6daa9fed3d` rejects every decoded Unicode General Category `Cc` character before authorization or logging.
+9. `dcdd606b7d6f426fc1e4e7c3f004c9d829932351` tightens the direct-handler regression so ESC, LF and CR are required to fail before any `DAV Request` log record is emitted, replacing the weaker predecessor assertion that only required escaped logging.
 
-The old `0bdaf4fedc001fe43326fa67390f05f83a718238` checks were admitted while #1645 targeted `develop`; they are historical after the PR was retargeted to canonical parent #1417 and do not certify the current `(PR, base ref/SHA, head SHA)` identity.
+The old `0bdaf4fedc001fe43326fa67390f05f83a718238` checks were admitted while #1645 targeted `develop`; they are historical after the PR was retargeted to canonical parent #1417 and do not certify the current `(PR, base ref/SHA, head SHA)` identity. The CodeRabbit `CHANGES_REQUESTED` review on `55068845...` is also predecessor evidence after the C1 RED/fix/test sequence; its finding is retained as repair lineage, not as an unresolved current-head defect.
 
 ## Invariants
 
@@ -35,6 +38,7 @@ The old `0bdaf4fedc001fe43326fa67390f05f83a718238` checks were admitted while #1
 - A raw `%25` that decodes to a literal percent is allowed when the first wire decode does not leave a valid `%HH` escape.
 - Any raw representation whose first wire decode leaves a valid percent triplet, including contiguous `%252e` and split `%25%32%65`, is rejected as ambiguous before authorization.
 - Percent-encoded C0/DEL control characters fail before owner or DAV operation handling.
+- Framework-decoded Unicode control characters in General Category `Cc`, including C1 controls produced from UTF-8 percent encodings, fail before authorization or request logging.
 - Invalid UTF-8 replacement/surrogate values in the framework-decoded path fail before authorization.
 - `.` and `..` segments, including those produced by the framework's single decode and Windows-separator normalization, remain unauthorized.
 - If `raw_path` is unavailable, a residual `%` in the decoded path fails closed because its wire provenance cannot be established. Percent-free decoded paths remain supported.
@@ -42,7 +46,7 @@ The old `0bdaf4fedc001fe43326fa67390f05f83a718238` checks were admitted while #1
 
 ## Reproducible acceptance
 
-The owned executable acceptance is `backend/tests/test_dav_api.py`. Required evidence includes raw, singly encoded, contiguous nested and split nested traversal cases; encoded-percent data; malformed triplets; slash/backslash variants; encoded controls and invalid Unicode; route-level TestClient behavior; and a large input that exercises the non-recursive path. The current exact branch must run this test plus Ruff and the repository security/CI gates after every source or document change. A predecessor-head pass is not current-head evidence.
+The owned executable acceptance is `backend/tests/test_dav_api.py`. Required evidence includes raw, singly encoded, contiguous nested and split nested traversal cases; encoded-percent data; malformed triplets; slash/backslash variants; encoded C0/DEL and decoded C1 controls; invalid Unicode; direct-handler pre-log rejection of control characters; route-level TestClient behavior; and a large input that exercises the non-recursive path. The current exact branch must run this test plus Ruff and the repository security/CI gates after every source or document change. A predecessor-head pass is not current-head evidence.
 
 Issue #1344 stays open until current-base exact-head hosted checks, current-head independent review and all valid findings are complete. This document does not claim protected integration, release, deployment, broader DAV writeback support, or a security certification.
 

@@ -67,8 +67,13 @@ def test_dav_route_uses_signed_session_dependency():
 def test_dav_options(dev_auth_dependency_overrides):
     with TestClient(app) as client:
         response = client.options("/dav/user123/projects/", headers=AUTH_HEADERS)
-        assert response.status_code == 200
-        assert "calendar-access" in response.headers.get("DAV", "")
+
+    assert response.status_code == 200
+    assert "DAV" not in response.headers
+    assert {method.strip() for method in response.headers["Allow"].split(",")} == {
+        "OPTIONS",
+        "PROPFIND",
+    }
 
 
 def test_dav_rejects_different_user_path(dev_auth_dependency_overrides):
@@ -383,7 +388,8 @@ def test_dav_missing_raw_path_allows_percent_free_decoded_path(
     )
 
     assert response.status_code == 200
-    assert "calendar-access" in response.headers.get("DAV", "")
+    assert "DAV" not in response.headers
+    assert response.headers.get("Allow") == "OPTIONS, PROPFIND"
 
 
 def test_normalize_dav_authorization_path_treats_route_path_as_already_decoded() -> None:

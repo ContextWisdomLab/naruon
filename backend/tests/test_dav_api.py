@@ -159,21 +159,16 @@ def test_dav_unsupported_method_logs_reason(dev_auth_dependency_overrides, caplo
         for record in caplog.records
     )
 
+
 def test_dav_log_injection_prevention(dev_auth_dependency_overrides, caplog):
-    """
-    Test that DAV handlers safely encode control characters in the requested path,
-    preventing log injection vulnerabilities.
-    """
+    """Keep control characters escaped if a direct handler test reaches logging."""
+    import asyncio
     import logging
+
+    from fastapi import Request
 
     caplog.set_level(logging.INFO)
     malicious_path = "user123/projects/test\x1b[31minjected\n\r"
-
-    # Since HTTP clients block raw control chars and starlette unquotes but might reject it before reaching our route,
-    # we test the handler directly to ensure the logger is using repr().
-    import asyncio
-    from fastapi import Request
-
     scope = {
         "type": "http",
         "method": "OPTIONS",
@@ -183,42 +178,150 @@ def test_dav_log_injection_prevention(dev_auth_dependency_overrides, caplog):
     async def run_handler():
         req = Request(scope)
         from api.auth import AuthContext
-        auth_ctx = AuthContext(user_id="user123", organization_id="org1", role="user", group_ids=[], workspace_id="ws1")
+
+        auth_ctx = AuthContext(
+            user_id="user123",
+            organization_id="org1",
+            role="user",
+            group_ids=[],
+            workspace_id="ws1",
+        )
 
         from api.dav import dav_handler
+
         await dav_handler(request=req, path=malicious_path, auth_context=auth_ctx)
 
     asyncio.run(run_handler())
 
-    # In some fastapi versions, returning an unexpected path might return 404. Let's just assert the log was captured.
-    # The vulnerability is about the logger.
-
-    # Assert that the raw ansi escape / newline was not logged, but encoded
     raw_ansi = "\x1b[31m"
     found_in_logs = False
     for record in caplog.records:
         if "DAV Request" in record.message:
             assert raw_ansi not in record.message, "Raw ANSI escape sequence found in logs!"
             assert "\n" not in record.message[12:], "Raw newline found in log message body!"
-            assert "\\x1b[31minjected\\n\\r" in record.message or "\\x1b[31minjected\\r\\n" in record.message, "Escaped characters missing from log message!"
+            assert (
+                "\\x1b[31minjected\\n\\r" in record.message
+                or "\\x1b[31minjected\\r\\n" in record.message
+            ), "Escaped characters missing from log message!"
             found_in_logs = True
 
     assert found_in_logs, "DAV Request log was not found"
 
 
 @pytest.mark.parametrize(
-    "path",
+    "request_path",
     [
-        "/%252e%252e/bob",
-        "/%25252e%25252e/bob",
-        "/alice%255c..%255c..%255cbob",
+        "/dav/user123/projects/%252e%252e",
+        "/dav/user123/projects/%25252e%25252e",
+        "/dav/user123/projects/alice%255c..%255cbob",
+        "/dav/user123/projects/%2525",
     ],
 )
-def test_normalize_dav_authorization_path_rejects_nested_encoding(path: str) -> None:
-    with pytest.raises(HTTPException):
-        _normalize_dav_authorization_path(path)
+def test_dav_route_rejects_ambiguous_nested_encoding(
+    dev_auth_dependency_overrides,
+    request_path: str,
+) -> None:
+    with TestClient(app) as client:
+        response = client.request("PROPFIND", request_path, headers=AUTH_HEADERS)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "DAV path contains nested percent encoding"
 
 
-def test_normalize_dav_authorization_path_single_decode_round_trip() -> None:
+@pytest.mark.parametrize(
+    "request_path",
+    [
+        "/dav/user123/projects/report%25",
+        "/dav/user123/projects/%25report",
+    ],
+)
+def test_dav_route_preserves_encoded_percent_as_data(
+    dev_auth_dependency_overrides,
+    stub_dav_project_folders,
+    request_path: str,
+) -> None:
+    with TestClient(app) as client:
+        response = client.request("PROPFIND", request_path, headers=AUTH_HEADERS)
+
+    assert response.status_code == 207
+    assert "%" in response.text
+
+
+@pytest.mark.parametrize(
+    "request_path",
+    [
+        "/dav/user123/projects/%GG",
+        "/dav/user123/projects/%2",
+    ],
+)
+def test_dav_route_rejects_malformed_raw_percent_escape(
+    dev_auth_dependency_overrides,
+    request_path: str,
+) -> None:
+    with TestClient(app) as client:
+        response = client.request("PROPFIND", request_path, headers=AUTH_HEADERS)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "DAV path contains invalid percent encoding"
+
+
+@pytest.mark.parametrize(
+    "request_path",
+    [
+        "/dav/user123/projects/%00",
+        "/dav/user123/projects/%0A",
+        "/dav/user123/projects/%7F",
+    ],
+)
+def test_dav_route_rejects_percent_encoded_control_character(
+    dev_auth_dependency_overrides,
+    request_path: str,
+) -> None:
+    with TestClient(app) as client:
+        response = client.request("PROPFIND", request_path, headers=AUTH_HEADERS)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "DAV path contains control characters"
+
+
+def test_dav_route_rejects_invalid_utf8_replacement(
+    dev_auth_dependency_overrides,
+) -> None:
+    with TestClient(app) as client:
+        response = client.request(
+            "PROPFIND",
+            "/dav/user123/projects/%FF",
+            headers=AUTH_HEADERS,
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "DAV path contains invalid Unicode"
+
+
+@pytest.mark.parametrize(
+    "request_path",
+    [
+        "/dav/user123/projects/%2e%2e",
+        "/dav/user123/projects/%5c..%5c",
+    ],
+)
+def test_dav_route_rejects_single_decode_traversal(
+    dev_auth_dependency_overrides,
+    request_path: str,
+) -> None:
+    with TestClient(app) as client:
+        response = client.request("PROPFIND", request_path, headers=AUTH_HEADERS)
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "DAV path must include an owner user"
+
+
+def test_normalize_dav_authorization_path_treats_route_path_as_already_decoded() -> None:
     assert _normalize_dav_authorization_path("/alice/docs") == "/alice/docs"
-    assert _normalize_dav_authorization_path("/%2e%2e/bob") == "/../bob"
+    assert _normalize_dav_authorization_path("/%2e%2e/bob") == "/%2e%2e/bob"
+    assert _normalize_dav_authorization_path("/alice%/docs") == "/alice%/docs"
+
+
+def test_normalize_dav_authorization_path_has_no_recursive_input_amplification() -> None:
+    path = "/alice/" + ("segment-" * 8192)
+    assert _normalize_dav_authorization_path(path) == path

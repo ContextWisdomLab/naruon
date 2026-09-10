@@ -55,3 +55,12 @@ def test_datetime_default_guard_does_not_swallow_callable_failures():
         assert str(exc) == "default evaluation failed"
     else:
         raise AssertionError("default evaluation failures must fail closed")
+
+
+def test_datetime_default_guard_excludes_non_datetime_callable_defaults():
+    guarded_columns = {
+        (table, column, kind)
+        for table, column, kind, _default_callable in _datetime_default_callables()
+    }
+
+    assert ("security_audit_events", "event_uid", "default") not in guarded_columns

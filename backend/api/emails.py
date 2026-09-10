@@ -52,6 +52,7 @@ router = APIRouter(prefix="/api/emails")
 
 _SEND_EMAIL_RATE_LIMIT_MAX_ATTEMPTS = 10
 _SEND_EMAIL_RATE_LIMIT_WINDOW_SECONDS = 60.0
+_SEND_EMAIL_RATE_LIMIT_MAX_SCOPES = 1000
 _email_send_attempts_by_scope: dict[tuple[str | None, str], list[float]] = {}
 _email_send_rate_limit_lock = Lock()
 
@@ -76,6 +77,15 @@ def _enforce_send_email_rate_limit(auth_context: AuthContext) -> None:
             )
         attempts.append(now)
         _email_send_attempts_by_scope[key] = attempts
+        if len(_email_send_attempts_by_scope) > _SEND_EMAIL_RATE_LIMIT_MAX_SCOPES:
+            stale_scopes = [
+                scope
+                for scope, scope_attempts in _email_send_attempts_by_scope.items()
+                if scope != key
+                and not any(attempt > cutoff for attempt in scope_attempts)
+            ]
+            for scope in stale_scopes:
+                del _email_send_attempts_by_scope[scope]
 
 
 def canonical_thread_key(email: Email) -> str:

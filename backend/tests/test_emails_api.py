@@ -1886,6 +1886,36 @@ def test_send_email_endpoint_rate_limits_per_user(mock_send_email, monkeypatch):
     mock_send_email.assert_called_once()
 
 
+def test_send_email_rate_limit_evicts_only_expired_scopes_when_over_cap(
+    monkeypatch,
+):
+    from api.auth import AuthContext
+
+    monkeypatch.setattr(emails_api, "_SEND_EMAIL_RATE_LIMIT_MAX_SCOPES", 2)
+    monkeypatch.setattr(emails_api.time, "monotonic", lambda: 1000.0)
+    emails_api._email_send_attempts_by_scope.clear()
+    try:
+        emails_api._email_send_attempts_by_scope[("org-acme", "stale-user")] = [1.0]
+        emails_api._email_send_attempts_by_scope[("org-acme", "live-user")] = [999.0]
+        emails_api._enforce_send_email_rate_limit(
+            AuthContext(
+                user_id="new-user",
+                organization_id="org-acme",
+                role="user",
+                group_ids=[],
+                workspace_id="ws1",
+            )
+        )
+
+        assert ("org-acme", "stale-user") not in (
+            emails_api._email_send_attempts_by_scope
+        )
+        assert ("org-acme", "live-user") in emails_api._email_send_attempts_by_scope
+        assert ("org-acme", "new-user") in emails_api._email_send_attempts_by_scope
+    finally:
+        emails_api._email_send_attempts_by_scope.clear()
+
+
 @patch("api.emails.send_email", return_value={"status": "simulated", "simulated": True})
 def test_send_email_endpoint_ignores_user_id_query_and_uses_authenticated_user_config(
     mock_send_email, monkeypatch, sample_email

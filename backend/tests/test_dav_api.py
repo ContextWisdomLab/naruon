@@ -160,52 +160,42 @@ def test_dav_unsupported_method_logs_reason(dev_auth_dependency_overrides, caplo
     )
 
 
-def test_dav_log_injection_prevention(dev_auth_dependency_overrides, caplog):
-    """Keep control characters escaped if a direct handler test reaches logging."""
+def test_dav_direct_control_path_is_rejected_before_logging(
+    dev_auth_dependency_overrides,
+    caplog,
+):
     import asyncio
     import logging
 
     from fastapi import Request
 
-    caplog.set_level(logging.INFO)
+    from api.auth import AuthContext
+    from api.dav import dav_handler
+
+    caplog.set_level(logging.INFO, logger="api.dav")
     malicious_path = "user123/projects/test\x1b[31minjected\n\r"
-    scope = {
-        "type": "http",
-        "method": "OPTIONS",
-        "headers": [],
-    }
+    request = Request({"type": "http", "method": "OPTIONS", "headers": []})
+    auth_context = AuthContext(
+        user_id="user123",
+        organization_id="org1",
+        role="user",
+        group_ids=[],
+        workspace_id="ws1",
+    )
 
-    async def run_handler():
-        req = Request(scope)
-        from api.auth import AuthContext
-
-        auth_ctx = AuthContext(
-            user_id="user123",
-            organization_id="org1",
-            role="user",
-            group_ids=[],
-            workspace_id="ws1",
+    async def run_handler() -> None:
+        await dav_handler(
+            request=request,
+            path=malicious_path,
+            auth_context=auth_context,
         )
 
-        from api.dav import dav_handler
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(run_handler())
 
-        await dav_handler(request=req, path=malicious_path, auth_context=auth_ctx)
-
-    asyncio.run(run_handler())
-
-    raw_ansi = "\x1b[31m"
-    found_in_logs = False
-    for record in caplog.records:
-        if "DAV Request" in record.message:
-            assert raw_ansi not in record.message, "Raw ANSI escape sequence found in logs!"
-            assert "\n" not in record.message[12:], "Raw newline found in log message body!"
-            assert (
-                "\\x1b[31minjected\\n\\r" in record.message
-                or "\\x1b[31minjected\\r\\n" in record.message
-            ), "Escaped characters missing from log message!"
-            found_in_logs = True
-
-    assert found_in_logs, "DAV Request log was not found"
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "DAV path contains control characters"
+    assert not any("DAV Request" in record.getMessage() for record in caplog.records)
 
 
 @pytest.mark.parametrize(

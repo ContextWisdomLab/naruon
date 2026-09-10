@@ -153,6 +153,23 @@ def test_propfind_root_text_is_rejected(
     assert response.status_code == 400
 
 
+def test_unicode_spaces_are_not_silently_treated_as_xml_whitespace(
+    dev_auth_dependency_overrides,
+) -> None:
+    """Only XML S characters may separate element-only PROPFIND grammar."""
+
+    bodies = [
+        '<D:propfind xmlns:D="DAV:">\u00a0<D:allprop/></D:propfind>',
+        '<D:propfind xmlns:D="DAV:"><D:allprop>\u00a0</D:allprop></D:propfind>',
+        '<D:propfind xmlns:D="DAV:"><D:allprop/><D:include>\u00a0'
+        '<D:getetag/></D:include></D:propfind>',
+    ]
+
+    for body in bodies:
+        response = _propfind_request(body.encode("utf-8"))
+        assert response.status_code == 400
+
+
 def test_propfind_child_tail_text_is_rejected(
     dev_auth_dependency_overrides,
 ) -> None:

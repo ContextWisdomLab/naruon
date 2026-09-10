@@ -33,6 +33,7 @@ def generate_ics_from_task(task: CalendarTask) -> str:
 
     action_item = Todo()
     action_item.add("UID", task.task_uid)
+    action_item.add("CREATED", task.created_at)
     action_item.add("DTSTAMP", task.updated_at)
     action_item.add("SUMMARY", task.title)
     action_item.add("STATUS", ics_status)

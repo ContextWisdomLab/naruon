@@ -1938,6 +1938,40 @@ def test_send_email_rate_limit_window_expiry_allows_new_send(monkeypatch):
         emails_api._email_send_attempts_by_scope.clear()
 
 
+def test_send_email_rate_limit_isolates_organization_scopes(monkeypatch):
+    from api.auth import AuthContext
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(emails_api, "_SEND_EMAIL_RATE_LIMIT_MAX_ATTEMPTS", 2)
+    emails_api._email_send_attempts_by_scope.clear()
+    try:
+        scope_a = AuthContext(
+            user_id="same-user",
+            organization_id="org-a",
+            role="user",
+            group_ids=[],
+            workspace_id="ws1",
+        )
+        scope_b = AuthContext(
+            user_id="same-user",
+            organization_id="org-b",
+            role="user",
+            group_ids=[],
+            workspace_id="ws1",
+        )
+        emails_api._enforce_send_email_rate_limit(scope_a)
+        emails_api._enforce_send_email_rate_limit(scope_a)
+        try:
+            emails_api._enforce_send_email_rate_limit(scope_a)
+        except HTTPException as exc:
+            assert exc.status_code == 429
+        else:
+            raise AssertionError("scope-a must stay limited")
+        emails_api._enforce_send_email_rate_limit(scope_b)
+    finally:
+        emails_api._email_send_attempts_by_scope.clear()
+
+
 @patch("api.emails.send_email", return_value={"status": "simulated", "simulated": True})
 def test_send_email_endpoint_ignores_user_id_query_and_uses_authenticated_user_config(
     mock_send_email, monkeypatch, sample_email

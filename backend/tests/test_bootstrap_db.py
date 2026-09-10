@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from core.config import settings
 from db.models import Base
-from scripts.bootstrap_db import schema_backfill_sql
+from scripts.bootstrap_db import execute_schema_backfill, schema_backfill_sql
 from db.models import (
     AgentRunRecord,
     CalendarWritebackSource,
@@ -30,8 +30,7 @@ def _get_schema_statements(monkeypatch):
 
 
 def _execute_schema_backfill(sync_conn):
-    for statement in schema_backfill_sql():
-        sync_conn.execute(statement)
+    execute_schema_backfill(sync_conn)
 
 
 def test_schema_backfill_adds_email_columns(monkeypatch):
@@ -770,11 +769,11 @@ async def test_connector_signal_events_real_postgres_bootstrap_smoke():
                 text("""
                     INSERT INTO email_records (
                         user_id, organization_id, message_id, sender, recipients,
-                        subject, "date", body
+                        subject, "date", body, is_read
                     )
                     VALUES (
                         :user_id, :organization_id, :message_id, :sender,
-                        :recipients, :subject, now(), :body
+                        :recipients, :subject, now(), :body, true
                     )
                     RETURNING id
                     """),

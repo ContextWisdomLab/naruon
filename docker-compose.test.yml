@@ -1,0 +1,22 @@
+# Test-only: no customer volumes, configuration files, or provider services.
+services:
+  test_postgres:
+    image: pgvector/pgvector@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
+    user: "999:999"
+    environment:
+      POSTGRES_PASSWORD: ${TEST_POSTGRES_SECRET:?per-run test credential required}
+      POSTGRES_DB: postgres
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports: ["127.0.0.1::5432"]
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    shm_size: 256mb
+    tmpfs:
+      - /var/lib/postgresql/data:uid=999,gid=999,mode=0700
+      - /var/run/postgresql:uid=999,gid=999,mode=0755
+      - /tmp:mode=1777
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 1s
+      timeout: 3s
+      retries: 30

@@ -2,10 +2,6 @@ name: Application CI
 
 on:
   pull_request:
-    branches:
-      - develop
-      - master
-      - "release/**"
   push:
     branches:
       - develop
@@ -15,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: application-ci-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.repository }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -48,7 +44,8 @@ jobs:
 
       - name: Install backend dependencies
         run: |
-          python -m pip install --disable-pip-version-check --require-hashes -r backend/requirements-hashes.txt
+          python -m venv backend/.venv
+          backend/.venv/bin/python -m pip install --disable-pip-version-check --require-hashes -r backend/requirements-hashes.txt
 
       - name: Install Noema agent optional dependency
         # Installs pydantic-ai (services/noema_agent.py) so the real build-path
@@ -57,24 +54,28 @@ jobs:
         # --require-hashes can validate both preinstalled shared dependencies and
         # agent-only packages.
         run: |
-          python -m pip install --disable-pip-version-check --require-hashes \
+          backend/.venv/bin/python -m pip install --disable-pip-version-check --require-hashes \
             -r backend/requirements-hashes.txt \
             -r backend/requirements-agent.txt
 
       - name: Run backend lint
         run: |
           cd backend
-          python -m ruff check .
+          .venv/bin/python -m ruff check .
 
-      - name: Run backend tests
-        run: |
-          set -o pipefail
-          cd backend
-          python -m pytest -q 2>&1 | tee pytest_output.log
-          if grep -qiE 'timeout|fatal|warn|denied' pytest_output.log; then
-            echo "::error::Tests produced Timeout, Fatal, Warn, or Denied outputs"
-            exit 1
-          fi
+      - name: Run backend tests on fresh and repeatedly migrated PostgreSQL
+        id: backend_tests
+        run: bash scripts/ci/run_backend_postgres.sh
+
+      - name: Preserve backend database and test evidence
+        if: ${{ always() && steps.backend_tests.outputs.evidence_dir != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: backend-postgres-${{ matrix.python-version }}
+          path: |
+            ${{ steps.backend_tests.outputs.evidence_dir }}/*.log
+            ${{ steps.backend_tests.outputs.evidence_dir }}/pytest.xml
+          if-no-files-found: error
 
   frontend:
     name: frontend
@@ -91,7 +92,9 @@ jobs:
           persist-credentials: false
 
       - name: Install pnpm
-        run: corepack enable pnpm
+        run: |
+          corepack enable pnpm
+          corepack install --global pnpm@11.5.3
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

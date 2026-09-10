@@ -23,19 +23,23 @@ and the merge scheduler come from central workflows in
 ### Backend (FastAPI, Python, in `backend/`)
 
 ```bash
+uv sync --project backend --locked
+uv pip install --python backend/.venv/bin/python --require-hashes \
+  -r backend/requirements-hashes.txt -r backend/requirements-agent.txt
+bash scripts/ci/run_backend_postgres.sh       # isolated DB, fresh/repeat migrations, full pytest
 cd backend
-python3 -m pip install -r requirements.txt   # CI: --require-hashes -r requirements-hashes.txt
-python3 scripts/migrate_db.py                # Alembic upgrade head (managed path)
-python3 -m pytest -q                         # full test suite
-python -m pytest tests/test_tasks_api.py -q  # single test file
-python -m ruff check .                       # lint (CI-enforced)
-uvicorn main:app --reload                    # local dev server only
+.venv/bin/python -m pytest tests/test_tasks_api.py -q  # focused test; not DB CI evidence
+.venv/bin/python -m ruff check .             # lint (CI-enforced)
+.venv/bin/python scripts/start_backend.py    # validates injected settings first
 ```
 
 - CI runs backend tests with `PYTHONWARNINGS=error` and
   `DISABLE_BACKGROUND_WORKERS=1`, then fails the job if the pytest output
-  contains `Timeout`, `Fatal`, `Warn`, or `Denied`. Match that locally for
-  merge evidence.
+  contains `Timeout`, `Fatal`, `Warn`, or `Denied`. The shared runner loads
+  `ci_postgres_gate` so PostgreSQL-marked skips fail; unconfigured live API
+  tests remain explicit skips, not browser or deployment proof. Its printed
+  evidence directory contains redacted logs/JUnit after task-scoped cleanup.
+  See `docs/doctoring/application_ci_postgres.md` for scope and baseline.
 - Containers never run `uvicorn main:app` directly; the entrypoint is
   `python scripts/start_backend.py`, which validates required settings first.
 - `scripts/bootstrap_db.py` is the local/dev-only schema compatibility path;
@@ -81,6 +85,8 @@ source (never mount `~/.env` as a Compose `env_file`):
 
 The other compose files are purpose-specific evaluation/evidence stacks:
 
+- `docker-compose.test.yml` — disposable PostgreSQL only, used by the CI runner;
+  no operator env file, customer volume, model service or provider call.
 - `docker-compose.live-e2e.yml` — live E2E evidence: pre-built
   `BACKEND_IMAGE`/`FRONTEND_IMAGE`, migrate/seed marker containers, nginx at
   `127.0.0.1:18080`.

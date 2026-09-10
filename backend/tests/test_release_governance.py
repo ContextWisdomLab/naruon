@@ -651,8 +651,10 @@ def test_app_ci_runs_backend_and_frontend_checks_without_duplicate_release_pushe
     workflow = read_repo_text(".github/workflows/app-ci.yml")
 
     assert "pull_request:" in workflow
-    assert "release/**" in workflow
-    assert "python -m pytest" in workflow
+    assert "run: bash scripts/ci/run_backend_postgres.sh" in workflow
+    assert "python -m venv backend/.venv" in workflow
+    assert "backend/.venv/bin/python -m pip install" in workflow
+    assert "always() && steps.backend_tests.outputs.evidence_dir" in workflow
     assert "PYTHONWARNINGS: error" in workflow
     assert 'DISABLE_BACKGROUND_WORKERS: "1"' in workflow
     assert "npm test" in workflow
@@ -669,6 +671,39 @@ def test_app_ci_runs_backend_and_frontend_checks_without_duplicate_release_pushe
     assert "master" in push_block
     assert "release/**" not in push_block
 
+    pull_request_block = workflow.split("pull_request:", 1)[1].split("push:", 1)[0]
+    assert "branches:" not in pull_request_block
+    assert "branches-ignore:" not in pull_request_block
+
+
+@pytest.mark.parametrize(
+    "workflow_path",
+    [
+        ".github/workflows/app-ci.yml",
+        ".github/workflows/bandit.yml",
+        ".github/workflows/docker-publish.yml",
+    ],
+)
+def test_pr_validation_workflows_run_for_stacked_base_branches(
+    workflow_path: str,
+) -> None:
+    workflow_text = read_repo_text(workflow_path)
+    workflow = yaml.load(workflow_text, Loader=yaml.BaseLoader)
+
+    assert workflow["on"]["pull_request"] in (None, "")
+    assert (
+        "group: ${{ github.workflow }}-${{ github.repository }}-"
+        "${{ github.event.pull_request.number || github.ref }}"
+    ) in workflow_text
+
+
+def test_merge_gate_policy_documents_stacked_base_validation() -> None:
+    policy = read_repo_text("docs/development/merge-gate-policy.md")
+
+    assert "run on every pull\n  request base, including stacked branches" in policy
+    assert "direct push checks for `develop` and `master`" in policy
+    assert "tag publication is never cancelled" in policy
+
 
 def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_tags() -> (
     None
@@ -678,6 +713,7 @@ def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_
     assert "pull_request:" in workflow
     assert "push:" in workflow
     assert "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true" in workflow
+    assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in workflow
     assert (
         workflow.count(
             "docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0"
@@ -710,7 +746,8 @@ def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_
     ]
     assert "tags:" in push_block
     assert "branches:" not in push_block
-    assert "develop" in pull_request_block
+    assert "branches:" not in pull_request_block
+    assert "branches-ignore:" not in pull_request_block
     assert "ai_email_client-backend" in workflow
     assert "ai_email_client-frontend" in workflow
     assert workflow.count("image: naruon") == 2
@@ -746,8 +783,13 @@ def test_frontend_dockerfile_builds_and_starts_production_artifact() -> None:
     docker_publish_workflow = read_repo_text(".github/workflows/docker-publish.yml")
     frontend_deployment = read_repo_text("k8s/frontend-deployment.yaml")
     package_json = read_repo_text("frontend/package.json")
+    app_ci_workflow = read_repo_text(".github/workflows/app-ci.yml")
 
     assert '"packageManager": "pnpm@11.5.3"' in package_json
+    assert "corepack install --global pnpm@11.5.3" in app_ci_workflow
+    assert app_ci_workflow.index("corepack install --global pnpm@11.5.3") < (
+        app_ci_workflow.index("cache: pnpm")
+    )
     assert "NEXT_PUBLIC_API_URL" not in root_dockerfile
     assert "NEXT_PUBLIC_API_URL" not in dockerfile
     assert "NEXT_PUBLIC_API_URL" not in docker_publish_workflow

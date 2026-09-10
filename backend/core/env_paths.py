@@ -33,5 +33,8 @@ def expand_operator_path(path: str | os.PathLike[str]) -> Path:
 
 
 def operator_env_file_paths(paths: Iterable[str] = ENV_FILE_PATHS) -> tuple[str, ...]:
-    """Return env-file paths with operator-home expansion applied."""
+    """Resolve the explicit bootstrap transport, or the existing local defaults."""
+    selected_source = os.environ.get("NARUON_ENV_FILE")
+    if selected_source:
+        return (str(expand_operator_path(selected_source)),)
     return tuple(str(expand_operator_path(path)) for path in paths)

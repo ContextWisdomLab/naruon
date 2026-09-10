@@ -1,5 +1,18 @@
 # Architecture
 
+## Application CI database boundary
+
+`scripts/ci/run_backend_postgres.sh` is the local/Actions test entrypoint for a
+fresh task-only PostgreSQL instance. `docker-compose.test.yml` pins the
+multi-platform image digest and exposes only a random loopback port; generated
+test credentials never select an operator database. Alembic runs twice before
+the complete backend suite. `ci_postgres_gate` fails PostgreSQL-marked skips,
+while optional live API skips disclose missing deployment evidence. Cleanup
+targets only the generated Compose project and preserves command failures.
+This is repository test infrastructure, not a new runtime service or a copy
+of central review/security workflows. See
+[`application_ci_postgres.md`](docs/doctoring/application_ci_postgres.md).
+
 ## System shape
 
 ```mermaid

@@ -10,7 +10,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from core.env_paths import ENV_FILE_PATHS, expand_operator_path  # noqa: E402
+from core.env_paths import operator_env_file_paths  # noqa: E402
 from core.runtime_secrets import validate_auth_session_hmac_secret_value  # noqa: E402
 from core.url_validation import (  # noqa: E402
     parse_allowed_hosts,
@@ -54,8 +54,8 @@ def _read_env_file(path: Path) -> dict[str, str]:
 def _runtime_values() -> tuple[dict[str, str], list[Path]]:
     values: dict[str, str] = {}
     checked_paths: list[Path] = []
-    for env_file in ENV_FILE_PATHS:
-        path = expand_operator_path(env_file)
+    for env_file in operator_env_file_paths():
+        path = Path(env_file)
         checked_paths.append(path)
         values.update(_read_env_file(path))
     values.update({key: value for key, value in os.environ.items() if value})

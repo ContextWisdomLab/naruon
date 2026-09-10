@@ -258,7 +258,7 @@ IS_DRAFT="$(printf '%s' "$PR_JSON" | jq -r '.isDraft')"
 REVIEW_DECISION="$(printf '%s' "$PR_JSON" | jq -r '.reviewDecision // ""')"
 
 if [ "$IS_DRAFT" = "true" ]; then
-  add_blocker 'Draft PR: merge automation is paused.'
+  add_waiting 'Draft PR: merge automation is paused.'
 fi
 
 if [ "$MERGE_STATE" = "BEHIND" ]; then
@@ -341,6 +341,31 @@ CODERABBIT_BLOCKING_PATTERN='pre[- ]merge|blocking|failure|failed|warning|potent
 CODERABBIT_ISSUE_BLOCKING_PATTERN='pre[- ]merge[^\n]*(blocking|failure|failed|warning|potential issue)|blocking (issue|finding)|potential issue|actionable comments?|changes requested|request changes'
 CODERABBIT_ISSUE_SUBSTANTIVE_BLOCKING_PATTERN='pre[- ]merge[^\n]*(blocking|failure|failed|warning|potential issue)|blocking (issue|finding)|potential issue|changes requested|request changes'
 CODERABBIT_NO_ACTIONABLE_PATTERN='no actionable comments? (were )?generated'
+CODERABBIT_CLEAN_OUTPUT_LINE_PATTERN='^[ \t]*(No actionable comments? (were )?generated|No warnings found)[.!]?[ \t\r]*$'
+CODERABBIT_APPROVAL_PENDING_PATTERN='CodeRabbit has no unresolved comments, but it has not reviewed the latest commit'
+CODERABBIT_APPROVAL_NOTICE_SPAN_PATTERN='<!-- approval_notice_start -->.*?<!-- approval_notice_end -->'
+
+# Fetch comments once for both pending notices and substantive blockers.
+# Without CodeRabbit check/status evidence, an exact-head structured OpenCode
+# approval may satisfy the fallback even when a pending notice exists.
+# Separate findings still block; a notice without either evidence source waits.
+if ! ISSUE_COMMENTS_JSON="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" 2>"$ISSUE_COMMENTS_ERROR_FILE")"; then
+  printf 'issue comment lookup failed:\n'
+  printf '%s\n' "$(<"$ISSUE_COMMENTS_ERROR_FILE")" | sed 's/^/    /'
+  add_blocker 'PR issue comments could not be read; see the workflow run log.'
+  ISSUE_COMMENTS_JSON='[]'
+fi
+CODERABBIT_APPROVAL_PENDING_COUNT="$(printf '%s' "$ISSUE_COMMENTS_JSON" | jq -s \
+  --arg head_sha "$HEAD_SHA" \
+  --arg approval_pending_pattern "$CODERABBIT_APPROVAL_PENDING_PATTERN" '
+  [.[][]
+    | select((.user.login // "") | test("'"$REVIEW_BOT_LOGIN_PATTERN"'"; "i"))
+    | select((.body // "") | contains("<!-- approval_notice_start -->"))
+    | select((.body // "") | test($approval_pending_pattern; "i"))
+    | select((.body // "") | contains($head_sha))]
+  | length'
+)"
+
 CHECK_RUNS="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?per_page=100")"
 COMMIT_STATUS_JSON='{"statuses":[]}'
 if ! COMMIT_STATUS_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/status" 2>"$COMMIT_STATUS_ERROR_FILE")"; then
@@ -353,11 +378,13 @@ CODERABBIT_MATCHES="$(printf '%s' "$CHECK_RUNS" | jq '
     | select(
         .app.slug == "coderabbitai"
         or .app.slug == "github-code-quality"
-        or (.name | test("CodeRabbit|coderabbit|GitHub Code Quality|github-code-quality"; "i"))
       )]'
 )"
 CODERABBIT_STATUS_MATCHES="$(printf '%s' "$COMMIT_STATUS_JSON" | jq '
   [.statuses[]
+    | select(.creator.type == "Bot")
+    | select((.creator.login // "" | ascii_downcase) as $login
+        | $login == "coderabbitai[bot]" or $login == "github-code-quality[bot]")
     | select((.context // "") | test("CodeRabbit|coderabbit|GitHub Code Quality|github-code-quality"; "i"))]
   | group_by((.context // "") | ascii_downcase)
   | map(sort_by(.updated_at // .created_at // "") | last)
@@ -365,6 +392,7 @@ CODERABBIT_STATUS_MATCHES="$(printf '%s' "$COMMIT_STATUS_JSON" | jq '
 CODERABBIT_CHECK_COUNT="$(printf '%s' "$CODERABBIT_MATCHES" | jq 'length')"
 CODERABBIT_STATUS_COUNT="$(printf '%s' "$CODERABBIT_STATUS_MATCHES" | jq 'length')"
 CODERABBIT_COUNT=$((CODERABBIT_CHECK_COUNT + CODERABBIT_STATUS_COUNT))
+OPENCODE_ADVERSARIAL_APPROVAL_COUNT=0
 if [ "$CODERABBIT_COUNT" = "0" ]; then
   if ! OPENCODE_REVIEWS_JSON="$(gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" 2>"$OPENCODE_REVIEWS_ERROR_FILE")"; then
     printf 'OpenCode review lookup failed:\n'
@@ -386,24 +414,24 @@ if [ "$CODERABBIT_COUNT" = "0" ]; then
     if [ "$OPENCODE_ADVERSARIAL_APPROVAL_COUNT" = "0" ]; then
       add_waiting "Waiting for current-head CodeRabbit evidence or a structured OpenCode App adversarial approval on ${HEAD_REF_OID}."
     else
-      printf 'CodeRabbit check is absent; accepted current-head OpenCode App adversarial approval on %s.\n' "$HEAD_REF_OID"
+      printf 'CodeRabbit check evidence is absent; accepted current-head OpenCode App adversarial approval on %s.\n' "$HEAD_REF_OID"
     fi
   fi
 else
   CODERABBIT_PENDING="$(printf '%s' "$CODERABBIT_MATCHES" | jq '[.[] | select(.status != "completed")] | length')"
   CODERABBIT_STATUS_PENDING="$(printf '%s' "$CODERABBIT_STATUS_MATCHES" | jq '[.[] | select((.state // "" | ascii_downcase) == "pending")] | length')"
-  CODERABBIT_FAILED="$(printf '%s' "$CODERABBIT_MATCHES" | jq --arg pattern "$CODERABBIT_BLOCKING_PATTERN" '
+  CODERABBIT_FAILED="$(printf '%s' "$CODERABBIT_MATCHES" | jq --arg pattern "$CODERABBIT_BLOCKING_PATTERN" \
+    --arg clean_line "$CODERABBIT_CLEAN_OUTPUT_LINE_PATTERN" '
     [.[]
       | select(.status == "completed")
+      # Remove only whole known clean lines, never an output containing one.
+      | ([.output.title, .output.summary, .output.text] | map(. // "") | join("\n")
+          | split("\n") | map(select(test($clean_line; "i") | not)) | join("\n")) as $check_output
       | select((.conclusion // "") as $conclusion
-        | if $conclusion == "success" or $conclusion == "skipped" then false
+        | if $check_output | test($pattern; "i") then true
+          elif $conclusion == "success" or $conclusion == "skipped" then false
           elif $conclusion == "neutral" then
-            # Skip evidence only counts when the output carries no blocking
-            # language alongside it.
-            (([.output.title, .output.summary, .output.text] | map(. // "") | join("\n")) as $neutral_output
-              | (($neutral_output | test("Review skipped"; "i"))
-                 and (($neutral_output | test($pattern; "i")) | not))
-              | not)
+            ($check_output | test("Review skipped"; "i") | not)
           else true
           end)]
     | length'
@@ -426,33 +454,38 @@ else
   fi
 fi
 
-if ! ISSUE_COMMENTS_JSON="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" 2>"$ISSUE_COMMENTS_ERROR_FILE")"; then
-  printf 'issue comment lookup failed:\n'
-  printf '%s\n' "$(<"$ISSUE_COMMENTS_ERROR_FILE")" | sed 's/^/    /'
-  add_blocker 'PR issue comments could not be read; see the workflow run log.'
-else
-  CODERABBIT_ISSUE_BLOCKERS="$(printf '%s' "$ISSUE_COMMENTS_JSON" | jq -s \
-    --arg head_sha "$HEAD_SHA" \
-    --arg pattern "$CODERABBIT_ISSUE_BLOCKING_PATTERN" \
-    --arg substantive_pattern "$CODERABBIT_ISSUE_SUBSTANTIVE_BLOCKING_PATTERN" \
-    --arg no_actionable_pattern "$CODERABBIT_NO_ACTIONABLE_PATTERN" '
-    [.[][]
-      | select((.user.login // "") | test("'"$REVIEW_BOT_LOGIN_PATTERN"'"; "i"))
-      | select(
-          (.body // "") as $body
-          | ($body | split("<details>")[0]) as $summary
-          | ($body | test($pattern; "i"))
-            and (
-              (($body | test($no_actionable_pattern; "i")) | not)
-              or ($summary | test($substantive_pattern; "i"))
-            )
-        )
-      | select((.body // "") | contains($head_sha))]
-    | length'
-  )"
-  if [ "$CODERABBIT_ISSUE_BLOCKERS" != "0" ]; then
-    add_blocker "Current-head CodeRabbit issue comment has blocking warning/failure evidence on ${HEAD_REF_OID}."
-  fi
+# CODERABBIT_APPROVAL_PENDING_COUNT was already computed above (before the
+# check-run/status lookup), from the same ISSUE_COMMENTS_JSON fetched there.
+# Only the blocking-evidence scan runs here: it strips just the marker-
+# delimited approval-pending span from each comment body before testing for
+# blocking language, rather than excluding the whole comment whenever that
+# marker is present anywhere in it -- a comment can legitimately carry both
+# the boilerplate pending notice and a separate, real blocking finding, and
+# the latter must still be caught.
+CODERABBIT_ISSUE_BLOCKERS="$(printf '%s' "$ISSUE_COMMENTS_JSON" | jq -s \
+  --arg head_sha "$HEAD_SHA" \
+  --arg pattern "$CODERABBIT_ISSUE_BLOCKING_PATTERN" \
+  --arg substantive_pattern "$CODERABBIT_ISSUE_SUBSTANTIVE_BLOCKING_PATTERN" \
+  --arg no_actionable_pattern "$CODERABBIT_NO_ACTIONABLE_PATTERN" \
+  --arg notice_span_pattern "$CODERABBIT_APPROVAL_NOTICE_SPAN_PATTERN" '
+  [.[][]
+    | select((.user.login // "") | test("'"$REVIEW_BOT_LOGIN_PATTERN"'"; "i"))
+    | select(
+        ((.body // "") | gsub($notice_span_pattern; ""; "m")) as $body
+        | ($body | split("<details>")[0]) as $summary
+        | ($body | test($pattern; "i"))
+          and (
+            (($body | test($no_actionable_pattern; "i")) | not)
+            or ($summary | test($substantive_pattern; "i"))
+          )
+      )
+    | select((.body // "") | contains($head_sha))]
+  | length'
+)"
+if [ "$CODERABBIT_ISSUE_BLOCKERS" != "0" ]; then
+  add_blocker "Current-head CodeRabbit issue comment has blocking warning/failure evidence on ${HEAD_REF_OID}."
+elif [ "$CODERABBIT_COUNT" = "0" ] && [ "$CODERABBIT_APPROVAL_PENDING_COUNT" != "0" ] && [ "$OPENCODE_ADVERSARIAL_APPROVAL_COUNT" = "0" ]; then
+  add_waiting "Waiting for CodeRabbit to review the latest commit on ${HEAD_REF_OID}."
 fi
 
 if ! REVIEW_COMMENTS_JSON="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" 2>"$REVIEW_COMMENTS_ERROR_FILE")"; then

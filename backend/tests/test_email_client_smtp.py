@@ -4,6 +4,7 @@ import socket
 
 import pytest
 import services.email_client as email_client
+from runner.local_mail_adapters import LocalMailAccountConfig, LocalMailAdapters
 
 import os
 
@@ -12,6 +13,72 @@ TEST_SMTP_PASSWORD = os.environ.get("TEST_SMTP_PASSWORD", "dummy-smtp-password")
 
 def _make_socket() -> socket.socket:
     return socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("send_path", ["direct_send", "registered_connector"])
+async def test_smtp_connect_cancellation_closes_socket(monkeypatch, send_path):
+    """Cancelling either sender must close its real socket before returning."""
+    monkeypatch.setattr(email_client.settings, "ALLOWED_SMTP_HOSTS", "smtp.example.com")
+    monkeypatch.setattr(
+        email_client.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 587))
+        ],
+    )
+    connect_started = asyncio.Event()
+    connect_pending = asyncio.Event()
+    captured_sockets = []
+
+    async def pending_connect(smtp_socket, socket_address):
+        assert socket_address == ("8.8.8.8", 587)
+        captured_sockets.append(smtp_socket)
+        connect_started.set()
+        await connect_pending.wait()
+
+    monkeypatch.setattr(asyncio.get_running_loop(), "sock_connect", pending_connect)
+    smtp_config = email_client.SmtpConfig(
+        smtp_server="smtp.example.com",
+        smtp_port=587,
+        smtp_username="sender@example.com",
+        smtp_password="unit-test-value",
+    )
+    if send_path == "direct_send":
+        send_operation = email_client.send_email(
+            email_client.EmailMessageParams("recipient@example.com", "Subject", "Body"),
+            smtp_config,
+        )
+    else:
+        mail_adapters = LocalMailAdapters([
+            LocalMailAccountConfig(
+                account="test_account",
+                user_id="test_user",
+                smtp_server=smtp_config.smtp_server,
+                smtp_port=smtp_config.smtp_port,
+                smtp_username=smtp_config.smtp_username,
+                smtp_password=smtp_config.smtp_password,
+            )
+        ])
+        send_operation = mail_adapters.send_smtp({
+            "account": "test_account",
+            "to": "recipient@example.com",
+            "subject": "Subject",
+            "body": "Body",
+        })
+    send_task = asyncio.create_task(send_operation)
+    try:
+        await asyncio.wait_for(connect_started.wait(), timeout=5)
+        send_task.cancel("send cancelled")
+        with pytest.raises(asyncio.CancelledError, match="send cancelled"):
+            await send_task
+        assert len(captured_sockets) == 1
+        assert captured_sockets[0].fileno() == -1
+    finally:
+        send_task.cancel()
+        await asyncio.gather(send_task, return_exceptions=True)
+        for smtp_socket in captured_sockets:
+            smtp_socket.close()
 
 
 def test_smtp_host_policy_denies_empty_allowlist_before_dns(monkeypatch):

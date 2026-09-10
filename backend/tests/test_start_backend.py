@@ -14,8 +14,10 @@ def _clear_runtime_settings(monkeypatch) -> None:
         "OIDC_CLIENT_ID",
         "OIDC_JWKS_URL",
         "ALLOWED_OIDC_HOSTS",
+        "NARUON_ENV_FILE",
     ):
         monkeypatch.delenv(setting_name, raising=False)
+    monkeypatch.setenv("NARUON_ENV_FILE", "/dev/null")
 
 
 def _patch_oidc_dns(monkeypatch, address: str | dict[str, list[str]]) -> None:
@@ -54,6 +56,7 @@ def test_start_backend_reports_missing_database_url_without_import_traceback(
 
 def test_start_backend_accepts_operator_home_env_file(monkeypatch, tmp_path):
     _clear_runtime_settings(monkeypatch)
+    monkeypatch.delenv("NARUON_ENV_FILE")
     home_dir = tmp_path / "home"
     home_dir.mkdir()
     (home_dir / ".env").write_text(
@@ -70,6 +73,26 @@ def test_start_backend_accepts_operator_home_env_file(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
 
     assert start_backend.validate_runtime_settings() == []
+
+
+def test_start_backend_respects_explicit_empty_bootstrap_transport(
+    monkeypatch, tmp_path
+):
+    """Preflight must use the same selected source as Settings and CI."""
+    _clear_runtime_settings(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    # The RED probe must never read real operator files or dump environment values.
+    monkeypatch.setattr(
+        start_backend,
+        "_read_env_file",
+        lambda file_path: (
+            {"DATABASE_URL": "unit-probe"} if str(file_path) == ".env" else {}
+        ),
+    )
+    monkeypatch.setenv("NARUON_ENV_FILE", "/dev/null")
+    runtime_values, checked_paths = start_backend._runtime_values()
+    assert "DATABASE_URL" not in tuple(runtime_values)
+    assert [str(checked_path) for checked_path in checked_paths] == ["/dev/null"]
 
 
 def test_start_backend_can_run_preflight_only_with_valid_settings(monkeypatch):

@@ -8,9 +8,17 @@ awaited by default.
 ## Required gate contract
 
 - Required status checks must pass on the current head SHA.
-- Application CI must run backend pytest and frontend test/lint/build checks on
-  pull requests to `master` and `release/**`, while release-branch pushes must
-  not create duplicate check noise; push checks are scoped to `master`.
+- Application CI, Bandit, and pull-request image validation run on every pull
+  request base, including stacked branches. Application CI and Bandit retain
+  direct push checks for `develop` and `master`; image publication remains
+  tag-only for `v*`. Validation concurrency is scoped by workflow, repository,
+  and PR, while tag publication is never cancelled by a newer run.
+- Backend Application CI must provision its own disposable PostgreSQL, install
+  the Alembic history on a fresh database, repeat the upgrade, and execute the
+  suite with PostgreSQL skips rejected. DB readiness, fixture collection or an
+  ORM-only bootstrap is not migrated runtime evidence. Local/Actions use
+  `bash scripts/ci/run_backend_postgres.sh`; preserve its redacted logs, JUnit,
+  exact head and cleanup result. Optional live API skips are not live evidence.
 - The robot-review gate prefers CodeRabbit evidence. When the current head has
   CodeRabbit check-run evidence, it satisfies the gate only when current-head
   blocking findings, warnings, and failures are fixed, rebutted with evidence,
@@ -46,6 +54,14 @@ awaited by default.
   resolution via GITHUB_PATH.
 - Authoritative `Review skipped` evidence counts only when the same check
   output carries no blocking warning/failure language alongside it.
+- A review-like check name or status context is not publisher authentication.
+  Check evidence requires the `coderabbitai` or `github-code-quality` App slug;
+  status evidence requires the corresponding exact `[bot]` creator and Bot type.
+  Missing or unrelated publishers cannot replace the OpenCode fallback.
+  Successful and skipped check conclusions still block when their own output
+  contains the blocking warning/failure evidence described above. Exclude only
+  complete known clean lines (`No warnings found` and
+  `No actionable comments were generated`), never the whole containing output.
 - `reviewDecision=CHANGES_REQUESTED` is a blocker until requested changes are
   addressed or superseded on the current head.
 - Blocker comments use the idempotent
@@ -64,6 +80,65 @@ awaited by default.
 - Security workflows and scanners are required gates, not optional paths.
 
 ## Evidence commands
+
+### Multiline robot notices and collected regressions (2026-09-06)
+
+At predecessor `550798ccafebea4b1a9a65018e63b9661ff25a53`, a multiline
+CodeRabbit approval notice could be mistaken for a substantive blocker even
+after an exact-head OpenCode fallback was accepted. The existing fake-GitHub
+shell harness reproduced this after adding realistic line breaks: it published
+a failure instead of the expected ready state. The common notice-removal
+expression now uses jq's `m` flag so dot matches newlines; `s` only changes
+anchor semantics. Only the non-greedy marker-delimited notice is removed;
+separate blocking warnings must remain blockers. No approval or review rule
+is weakened and no external GitHub mutation occurs in this harness.
+
+Run `bash scripts/ci/test_pr_governance_gate.sh` for the full metadata scenarios.
+The four-workflow stacked-base regression lives in
+`backend/tests/test_stacked_pr_workflow_contract.py`, where Application CI
+collects it; the root-level copy was moved, not discarded or duplicated.
+Local harness evidence is not a hosted approval or protected merge.
+
+Review finding #3939597997 exposed a second stale-notice path at
+`e058f3ead35f9a19d3c3b20c6ab5fc04d2e2cbb2`: a successful current-head
+CodeRabbit check or status was overwritten by an `in_progress` governance
+result solely because its issue comment still carried the pending notice.
+The new success-check fixture failed the expected ready assertion; the fake
+publisher explicitly emitted `in_progress`. Pending notices now add a wait
+only when CodeRabbit check/status evidence is absent and no qualifying
+OpenCode approval exists. Existing pending/failed check handling and separate
+substantive-comment blockers remain authoritative. The full shell harness
+covers success checks and success statuses with stale notices separately;
+the notice-only waiting fixture now correctly contains no check evidence.
+
+Independent readiness review at `fac3437c03d928e45632763530a4f130dfe505fd`
+identified two pre-existing metadata risks, not regressions introduced by the
+stale-notice repair: name-only publisher matching and success/skipped results
+bypassing output inspection. Six isolated fake-GitHub scenarios each emitted
+an incorrect success before the fix: an unrelated App check or status creator,
+each with and without the pending notice, and success/skipped checks carrying
+a pre-merge blocking warning. Publisher authentication now precedes evidence
+selection, and output inspection precedes conclusion acceptance. The real
+current-head CodeRabbit status creator was checked as `coderabbitai[bot]`, Bot.
+These are local metadata-gate findings; no protected-branch bypass or malicious
+publication in production was established. Keep the full harness, authoritative
+positive cases, fallback and separate-comment blockers intact when repairing
+this boundary; do not grant another publisher access to silence a wait state.
+
+Review #3944130242 exposed a regression at `b6d6c286`: output-first matching
+also rejected those clean summaries. The new focused harness assertion failed
+before repair. Output is now split into lines before matching whole known
+clean statements; case, surrounding whitespace, CRLF and terminal punctuation
+are covered. An initial whole-string regex attempt still failed and was not
+accepted. Eleven scenarios cover clean success/skipped/neutral, an explicit
+failure despite clean text, a separate real warning for each passing conclusion,
+same-line `except`/`but` qualifications, neutral without skip evidence and an
+untrusted publisher with clean text. Unknown wording remains subject to
+the existing blocker policy; this is not a general natural-language negation
+parser. Publisher authentication and separate-comment evidence are unchanged.
+
+Reference: jqlang. (n.d.). *Regular expressions*. In *jq 1.7 manual*.
+https://jqlang.org/manual/v1.7/#regular-expressions
 
 Use the same head SHA across all checks:
 

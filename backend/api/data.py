@@ -36,6 +36,7 @@ from services.newsdom_pdf_recognition import (
 )
 from services.ontology_service import ontology_service
 from services.webdav_service import webdav_service
+from services.workspace_scope import get_or_create_workspace
 
 router = APIRouter(prefix="/api/data", tags=["data"])
 
@@ -2484,6 +2485,36 @@ async def _count_scalar(db: AsyncSession, statement) -> int:
     return int(result.scalar_one() or 0)
 
 
+def _auth_context_owns_its_workspace(auth_context: AuthContext) -> bool:
+    """Whether ``auth_context.workspace_id`` is the canonical
+    ``workspace-<organization_id>``/``workspace-<user_id>`` derivation for
+    this session, rather than an internally inconsistent claim pairing."""
+    expected_workspace_id = (
+        f"workspace-{auth_context.organization_id}"
+        if auth_context.organization_id
+        else f"workspace-{auth_context.user_id}"
+    )
+    return auth_context.workspace_id == expected_workspace_id
+
+
+def _document_organization_filter(auth_context: AuthContext) -> ColumnElement:
+    """Scope a ``Document`` query to this session's organization.
+
+    Revision 0016_document_org_scope added ``organization_id`` without
+    backfilling existing rows, so a legacy document can have it unset. Such a
+    row is trusted to belong to whichever single organization the document's
+    (already-filtered) ``workspace_id`` canonically maps to -- but only when
+    this session's own workspace/organization pairing is that canonical
+    derivation, not an internally inconsistent claim.
+    """
+    organization_filter = Document.organization_id == auth_context.organization_id
+    if _auth_context_owns_its_workspace(auth_context):
+        organization_filter = or_(
+            organization_filter, Document.organization_id.is_(None)
+        )
+    return organization_filter
+
+
 async def _get_workspace_document(
     db: AsyncSession,
     auth_context: AuthContext,
@@ -2493,6 +2524,7 @@ async def _get_workspace_document(
         select(Document).where(
             Document.document_id == document_id,
             Document.workspace_id == auth_context.workspace_id,
+            _document_organization_filter(auth_context),
         )
     )
     document = result.scalar_one_or_none()
@@ -3166,6 +3198,7 @@ async def upload_data_document(
     auth_context: AuthContext = Depends(get_auth_context),
     db: AsyncSession = Depends(get_db),
 ) -> DataDocumentActionResponse:
+    await get_or_create_workspace(db, auth_context.workspace_id)
     document = Document(
         workspace_id=auth_context.workspace_id,
         organization_id=auth_context.organization_id,
@@ -3301,6 +3334,7 @@ async def upload_document_for_pdf_dom_recognition(
             status_code=415,
             detail="Only application/pdf uploads are supported for DOM recognition.",
         )
+    await get_or_create_workspace(db, auth_context.workspace_id)
     document = Document(
         workspace_id=auth_context.workspace_id,
         organization_id=auth_context.organization_id,
@@ -3931,7 +3965,10 @@ async def get_data_quality_surface(
     documents = await _scoped_rows(
         db,
         select(Document)
-        .where(Document.workspace_id == auth_context.workspace_id)
+        .where(
+            Document.workspace_id == auth_context.workspace_id,
+            _document_organization_filter(auth_context),
+        )
         .order_by(Document.created_at.desc(), Document.document_id.asc())
         .limit(8),
     )

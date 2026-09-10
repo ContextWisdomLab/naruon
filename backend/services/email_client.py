@@ -400,7 +400,7 @@ async def _connect_validated_smtp_socket(
             ),
             timeout=SMTP_TIMEOUT_SECONDS,
         )
-    except Exception:
+    except (Exception, asyncio.CancelledError):
         smtp_socket.close()
         raise
     return smtp_socket

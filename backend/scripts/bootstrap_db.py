@@ -1,16 +1,12 @@
 import asyncio
 import os
-from collections.abc import Sequence
-
-from sqlalchemy import Executable, text
+from sqlalchemy import Executable, Index, MetaData, Table, inspect, text
 from sqlalchemy.engine import Connection
 
 from db.models import Base
 from db.session import engine
 
 INVALID_EMAIL_BACKFILL_OWNER_IDS = {None, "", "default"}
-
-
 def _static_bootstrap_sql(statement: str) -> Executable:
     # ponytail: repo-authored static bootstrap SQL only; bind params before runtime input.
     return text(statement)
@@ -185,10 +181,6 @@ def _get_create_indexes_statements() -> list[Executable]:
         text(
             "CREATE INDEX IF NOT EXISTS ix_email_records_owner_date "
             "ON email_records (user_id, organization_id, date)"
-        ),
-        text(
-            "CREATE INDEX IF NOT EXISTS ix_emails_owner_date "
-            "ON emails (user_id, organization_id, date)"
         ),
         text(
             "CREATE INDEX IF NOT EXISTS ix_sender_relationships_owner_source "
@@ -527,16 +519,24 @@ def schema_backfill_sql() -> list[Executable]:
     return statements
 
 
-def _execute_statements(conn: Connection, statements: Sequence[Executable]) -> None:
-    for statement in statements:
+def execute_schema_backfill(conn: Connection) -> None:
+    for statement in schema_backfill_sql():
         conn.execute(statement)
+    if inspect(conn).has_table("emails"):
+        emails = Table("emails", MetaData(), autoload_with=conn)
+        Index(
+            "ix_emails_owner_date",
+            emails.c.user_id,
+            emails.c.organization_id,
+            emails.c.date,
+        ).create(conn, checkfirst=True)
 
 
 async def bootstrap_db() -> None:
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
-        await conn.run_sync(_execute_statements, schema_backfill_sql())
+        await conn.run_sync(execute_schema_backfill)
 
 
 if __name__ == "__main__":

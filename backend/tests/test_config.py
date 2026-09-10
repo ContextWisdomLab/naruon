@@ -177,6 +177,7 @@ def test_allowed_cors_origins_reject_unsafe_values(monkeypatch, allowed_origins)
 def test_settings_load_repo_root_env_when_started_from_backend_directory(
     monkeypatch, tmp_path
 ):
+    monkeypatch.delenv("NARUON_ENV_FILE", raising=False)
     backend_dir = tmp_path / "backend"
     backend_dir.mkdir()
     repo_env = tmp_path / ".env"
@@ -192,6 +193,7 @@ def test_settings_load_repo_root_env_when_started_from_backend_directory(
     )
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("AUTH_SESSION_HMAC_SECRET", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path / "unit_home"))
     monkeypatch.chdir(backend_dir)
 
     loaded_settings = Settings()
@@ -202,6 +204,7 @@ def test_settings_load_repo_root_env_when_started_from_backend_directory(
 def test_settings_load_operator_home_env_when_project_env_is_absent(
     monkeypatch, tmp_path
 ):
+    monkeypatch.delenv("NARUON_ENV_FILE", raising=False)
     project_dir = tmp_path / "project" / "backend"
     home_dir = tmp_path / "home"
     project_dir.mkdir(parents=True)

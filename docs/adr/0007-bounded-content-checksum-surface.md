@@ -1,12 +1,12 @@
 # ADR-0007: Bound the customer content-checksum algorithm surface
 
-**Status:** Accepted
+**Status:** Proposed
 
 **Date:** 2026-08-15
 
 **Decision owner:** Naruon maintainers
 
-**Capability maturity:** deterministic tool contract; runtime availability remains subject to protected-branch integration and verification
+**Capability maturity:** deterministic tool contract proposed on an unmerged branch; production authority requires protected-branch integration and verification
 
 **Scope:** Naruon's customer-facing deterministic content-checksum utility only. This ADR does not define sender authentication, signatures, password hashing, key derivation, or external artifact-signing policy.
 
@@ -37,7 +37,9 @@ Naruon's deterministic tool registry already supplies a stable execution boundar
 
 ## Verification
 
-The implementation contract requires stable vectors for all three algorithms, exact UTF-8 behavior, rejection of non-allowlisted names, byte-boundary tests, idempotent registry startup, 100% owned production statement/branch coverage where exposed, and current-head security/review gates before protected integration.
+The implementation contract requires stable vectors for all three algorithms, exact UTF-8 behavior, equivalence with incremental hashing of the same UTF-8 byte sequence across chunk boundaries, rejection of non-allowlisted names, byte-boundary tests, idempotent registry startup, 100% owned production statement/branch coverage where exposed, and current-head security/review gates before protected integration.
+
+This ADR remains Proposed while the implementation is outside protected `develop`. It may be marked Accepted only after the decision and its exact implementation are normally integrated under the live protected-branch contract; a Draft PR or passing branch-local test suite is not acceptance authority.
 
 Standards status and APA 7 references are maintained in [`docs/doctoring/content-checksum-generator.md`](../doctoring/content-checksum-generator.md).
 

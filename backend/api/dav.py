@@ -321,7 +321,7 @@ def _project_folder_response(path_owner_user_id: str, folder: dict) -> str:
     folder_uid = str(folder["folder_uid"])
     project_name = str(folder["project_name"])
     return _dav_response_xml(
-        href=f"/api/dav/{path_owner_user_id}/projects/{folder_uid}",
+        href=f"/api/dav/{path_owner_user_id}/projects/{folder_uid}/",
         display_name=project_name,
         is_collection=True,
     )

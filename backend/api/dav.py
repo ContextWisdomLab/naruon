@@ -193,16 +193,13 @@ async def _handle_project_propfind(
     if len(segments) > 3:
         raise HTTPException(status_code=404, detail="DAV project folder not found")
 
+    addressed_collection_response = _dav_response_xml(
+        href=f"/api/dav/{path_owner_user_id}/projects/",
+        display_name="projects",
+        is_collection=True,
+    )
     if folder_uid is None and depth == "0":
-        return _dav_xml_response(
-            [
-                _dav_response_xml(
-                    href=f"/api/dav/{path_owner_user_id}/projects/",
-                    display_name="projects",
-                    is_collection=True,
-                )
-            ]
-        )
+        return _dav_xml_response([addressed_collection_response])
 
     folders = await webdav_service.get_project_folders_from_db(
         db,
@@ -213,7 +210,13 @@ async def _handle_project_propfind(
 
     if folder_uid is None:
         return _dav_xml_response(
-            [_project_folder_response(path_owner_user_id, folder) for folder in folders]
+            [
+                addressed_collection_response,
+                *[
+                    _project_folder_response(path_owner_user_id, folder)
+                    for folder in folders
+                ],
+            ]
         )
 
     if folders:

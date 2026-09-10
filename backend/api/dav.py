@@ -25,6 +25,7 @@ _DAV_RAW_PATH_MAX_OCTETS = 8192
 _DAV_DECODED_PATH_MAX_CHARACTERS = 8192
 _DAV_PROPFIND_BODY_MAX_OCTETS = 8192
 _DAV_PROJECT_COLLECTION_MEMBER_LIMIT = 256
+_XML_SPACE_CHARACTERS = frozenset(" \t\r\n")
 
 
 def _validate_dav_raw_request_path(request: Request, decoded_path: str) -> None:
@@ -179,18 +180,24 @@ def _dav_depth(request: Request) -> str:
     return depth
 
 
+def _has_non_xml_space_content(text: str | None) -> bool:
+    """Return whether element-only content contains characters outside XML S."""
+    return bool(text) and any(character not in _XML_SPACE_CHARACTERS for character in text)
+
+
 def _validate_dav_property_name_container(element, *, directive_name: str) -> None:
     """Reject text, mixed content, or property values in name-only selectors."""
     property_names = list(element)
-    if (element.text or "").strip() or any(
-        (property_name.tail or "").strip() for property_name in property_names
+    if _has_non_xml_space_content(element.text) or any(
+        _has_non_xml_space_content(property_name.tail)
+        for property_name in property_names
     ):
         raise HTTPException(
             status_code=400,
             detail=f"DAV {directive_name} directive must not contain text",
         )
     if any(
-        list(property_name) or (property_name.text or "").strip()
+        list(property_name) or _has_non_xml_space_content(property_name.text)
         for property_name in property_names
     ):
         raise HTTPException(
@@ -230,8 +237,8 @@ async def _validate_dav_propfind_body(request: Request) -> None:
         )
 
     directives = list(propfind_element)
-    if (propfind_element.text or "").strip() or any(
-        (directive.tail or "").strip() for directive in directives
+    if _has_non_xml_space_content(propfind_element.text) or any(
+        _has_non_xml_space_content(directive.tail) for directive in directives
     ):
         raise HTTPException(
             status_code=400,
@@ -239,7 +246,7 @@ async def _validate_dav_propfind_body(request: Request) -> None:
         )
 
     if len(directives) == 1 and directives[0].tag == "{DAV:}allprop":
-        if list(directives[0]) or (directives[0].text or "").strip():
+        if list(directives[0]) or _has_non_xml_space_content(directives[0].text):
             raise HTTPException(
                 status_code=400,
                 detail="DAV allprop directive must be empty",
@@ -250,7 +257,7 @@ async def _validate_dav_propfind_body(request: Request) -> None:
         "{DAV:}allprop",
         "{DAV:}include",
     ]:
-        if list(directives[0]) or (directives[0].text or "").strip():
+        if list(directives[0]) or _has_non_xml_space_content(directives[0].text):
             raise HTTPException(
                 status_code=400,
                 detail="DAV allprop directive must be empty",
@@ -265,7 +272,7 @@ async def _validate_dav_propfind_body(request: Request) -> None:
         )
 
     if len(directives) == 1 and directives[0].tag == "{DAV:}propname":
-        if list(directives[0]) or (directives[0].text or "").strip():
+        if list(directives[0]) or _has_non_xml_space_content(directives[0].text):
             raise HTTPException(
                 status_code=400,
                 detail="DAV propname directive must be empty",

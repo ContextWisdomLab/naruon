@@ -43,25 +43,26 @@ import { WorkspaceHome } from "./WorkspaceHome";
 type DeferredResponse = {
   promise: Promise<{ ok: true; json: () => Promise<unknown> }>;
   bodyPromise: Promise<unknown>;
-  resolve: (body: unknown) => void;
+  resolveResponse: () => void;
+  resolveBody: (body: unknown) => void;
 };
 
 function deferredResponse(): DeferredResponse {
-  let resolveResponse!: (response: { ok: true; json: () => Promise<unknown> }) => void;
-  let resolveBody!: (body: unknown) => void;
+  let resolveResponsePromise!: (response: { ok: true; json: () => Promise<unknown> }) => void;
+  let resolveBodyPromise!: (body: unknown) => void;
   const bodyPromise = new Promise<unknown>((resolve) => {
-    resolveBody = resolve;
+    resolveBodyPromise = resolve;
   });
   const promise = new Promise<{ ok: true; json: () => Promise<unknown> }>((resolve) => {
-    resolveResponse = resolve;
+    resolveResponsePromise = resolve;
   });
+  const response = { ok: true as const, json: () => bodyPromise };
+
   return {
     promise,
     bodyPromise,
-    resolve: (body: unknown) => {
-      resolveResponse({ ok: true, json: () => bodyPromise });
-      resolveBody(body);
-    },
+    resolveResponse: () => resolveResponsePromise(response),
+    resolveBody: resolveBodyPromise,
   };
 }
 
@@ -84,7 +85,7 @@ describe("WorkspaceHome empty-state live regions", () => {
     vi.unstubAllGlobals();
   });
 
-  it("announces primary dashboard empty states after asynchronous loading completes", async () => {
+  it("announces primary dashboard empty states only after asynchronous bodies leave loading", async () => {
     vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
       matches: false,
       media: query,
@@ -123,13 +124,32 @@ describe("WorkspaceHome empty-state live regions", () => {
     expect(container.textContent).toContain("메일을 불러오는 중...");
 
     await act(async () => {
-      emailsResponse.resolve({ emails: [] });
-      pendingRepliesResponse.resolve({ emails: [] });
-      tasksResponse.resolve([]);
+      emailsResponse.resolveResponse();
+      pendingRepliesResponse.resolveResponse();
+      tasksResponse.resolveResponse();
       await Promise.all([
         emailsResponse.promise,
         pendingRepliesResponse.promise,
         tasksResponse.promise,
+      ]);
+    });
+
+    expect(container.textContent).toContain("답변 대기 메일을 불러오는 중...");
+    expect(container.textContent).toContain("작업을 불러오는 중...");
+    expect(container.textContent).toContain("메일을 불러오는 중...");
+    for (const copy of [
+      "답변 대기 중인 보낸 메일이 없습니다.",
+      "대기 작업이 없습니다.",
+      "수신된 메일이 없습니다.",
+    ]) {
+      expect(statusWithText(container, copy), copy).toBeNull();
+    }
+
+    await act(async () => {
+      emailsResponse.resolveBody({ emails: [] });
+      pendingRepliesResponse.resolveBody({ emails: [] });
+      tasksResponse.resolveBody([]);
+      await Promise.all([
         emailsResponse.bodyPromise,
         pendingRepliesResponse.bodyPromise,
         tasksResponse.bodyPromise,

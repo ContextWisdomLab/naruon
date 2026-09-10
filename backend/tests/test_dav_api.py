@@ -348,6 +348,44 @@ def test_dav_missing_raw_path_fails_closed_for_residual_percent(
     assert exc_info.value.detail == "DAV raw path required for percent-bearing path"
 
 
+def test_dav_missing_raw_path_allows_percent_free_decoded_path(
+    dev_auth_dependency_overrides,
+) -> None:
+    import asyncio
+
+    from fastapi import Request
+
+    from api.auth import AuthContext
+    from api.dav import dav_handler
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "OPTIONS",
+            "headers": [],
+            "path": "/dav/user123/projects/",
+        }
+    )
+    auth_context = AuthContext(
+        user_id="user123",
+        organization_id="org1",
+        role="user",
+        group_ids=[],
+        workspace_id="ws1",
+    )
+
+    response = asyncio.run(
+        dav_handler(
+            request=request,
+            path="user123/projects/",
+            auth_context=auth_context,
+        )
+    )
+
+    assert response.status_code == 200
+    assert "calendar-access" in response.headers.get("DAV", "")
+
+
 def test_normalize_dav_authorization_path_treats_route_path_as_already_decoded() -> None:
     assert _normalize_dav_authorization_path("/alice/docs") == "/alice/docs"
     assert _normalize_dav_authorization_path("/%2e%2e/bob") == "/%2e%2e/bob"

@@ -1972,6 +1972,50 @@ def test_send_email_rate_limit_isolates_organization_scopes(monkeypatch):
         emails_api._email_send_attempts_by_scope.clear()
 
 
+def test_send_email_rate_limit_is_thread_safe_under_concurrent_bursts(monkeypatch):
+    import threading
+
+    from api.auth import AuthContext
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(emails_api, "_SEND_EMAIL_RATE_LIMIT_MAX_ATTEMPTS", 10)
+    emails_api._email_send_attempts_by_scope.clear()
+    scope = AuthContext(
+        user_id="burst-user",
+        organization_id="org-acme",
+        role="user",
+        group_ids=[],
+        workspace_id="ws1",
+    )
+    outcomes: list[str] = []
+    guard = threading.Lock()
+
+    def attempt_send() -> None:
+        try:
+            emails_api._enforce_send_email_rate_limit(scope)
+            result = "allowed"
+        except HTTPException as exc:
+            assert exc.status_code == 429
+            result = "limited"
+        with guard:
+            outcomes.append(result)
+
+    threads = [threading.Thread(target=attempt_send) for _ in range(20)]
+    try:
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10.0)
+        assert not any(thread.is_alive() for thread in threads)
+    finally:
+        recorded = len(emails_api._email_send_attempts_by_scope.get(("org-acme", "burst-user"), []))
+        emails_api._email_send_attempts_by_scope.clear()
+
+    assert outcomes.count("allowed") == 10
+    assert outcomes.count("limited") == 10
+    assert recorded == 10
+
+
 @patch("api.emails.send_email", return_value={"status": "simulated", "simulated": True})
 def test_send_email_endpoint_ignores_user_id_query_and_uses_authenticated_user_config(
     mock_send_email, monkeypatch, sample_email

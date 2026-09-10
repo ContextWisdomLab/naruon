@@ -3,7 +3,6 @@ import re
 from html import escape as escape_xml_text
 from unicodedata import category as unicode_category
 from urllib.parse import unquote_to_bytes
-from xml.etree.ElementTree import ParseError
 
 from defusedxml import ElementTree as DefusedElementTree
 from defusedxml.common import DefusedXmlException
@@ -198,7 +197,7 @@ async def _validate_dav_propfind_body(request: Request) -> None:
 
     try:
         propfind_element = DefusedElementTree.fromstring(bytes(request_body))
-    except (DefusedXmlException, ParseError) as exc:
+    except (DefusedXmlException, DefusedElementTree.ParseError) as exc:
         raise HTTPException(
             status_code=400,
             detail="DAV PROPFIND body must be well-formed XML",

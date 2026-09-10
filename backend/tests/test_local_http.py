@@ -113,6 +113,7 @@ def test_local_request_target_preserves_safe_path_and_query() -> None:
         )
         == "/auth/session"
     )
+    assert validate_local_request_target("/api/literal%25") == "/api/literal%25"
 
 
 @pytest.mark.parametrize(
@@ -162,6 +163,8 @@ def test_local_request_target_rejects_excessive_percent_encoding_depth() -> None
         "/api/%2",
         "/api/%GG",
         "/api/%FF",
+        "/api/%2525GG",
+        "/api/%252",
     ],
 )
 def test_local_request_target_rejects_invalid_percent_encoding(path: str) -> None:

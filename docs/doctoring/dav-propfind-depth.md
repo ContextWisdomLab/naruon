@@ -1,4 +1,4 @@
-# DAV PROPFIND finite-depth boundary
+# DAV PROPFIND finite-depth and request-body boundary
 
 ## Decision
 
@@ -18,6 +18,23 @@ Naruon applies that protocol meaning without making a WebDAV compliance claim:
 
 The 256-member ceiling is a Naruon product resource policy, not an RFC 4918 limit. RFC 4918 §16 permits WebDAV error bodies to be extended with custom child elements in a namespace other than the reserved `DAV:` namespace and notes that 403 is appropriate when a request should not simply be repeated because the same server-side condition will make it fail again. The numeric status therefore remains meaningful to generic clients while the namespaced precondition lets Naruon-aware clients distinguish the collection-size policy from the RFC-defined infinite-depth refusal.
 
+### Request-body semantics
+
+RFC 4918 §9.1 makes the request body semantically significant: `prop` requests selected property values, `propname` requests property names, and `allprop` requests the normal property-value set; an empty body is treated as `allprop`. Section 14.20 defines the grammar as `propname | (allprop, include?) | prop`. A server must not silently choose a different directive when the request shape is invalid or unsupported.
+
+The previous Naruon route ignored every PROPFIND body. A valid `propname` or selected `prop` request therefore returned the same hard-coded property values as an empty request, and malformed XML could still produce a 207 response. That is a request-semantics mismatch even though Naruon does not advertise a `DAV` compliance class.
+
+The current bounded discovery profile now has an explicit body contract:
+
+- an empty body and an explicit empty `DAV:allprop` use the existing supported discovery-property profile;
+- valid `DAV:prop` and `DAV:propname` directives return HTTP 501 until their distinct response semantics are implemented;
+- valid `allprop` plus `include` returns HTTP 501 rather than silently dropping the requested additional properties;
+- malformed XML, a non-`DAV:propfind` root, a non-empty `allprop`, or conflicting/invalid directive structure returns HTTP 400;
+- XML is parsed with the repository's existing `defusedxml` dependency, so entity expansion and external-entity constructs fail closed;
+- application-level PROPFIND body accumulation is capped at 8192 octets and returns HTTP 413 on overflow.
+
+The 8192-octet body ceiling is a Naruon product resource policy, not an RFC 4918 value. Streaming the ASGI request body avoids application-level unbounded aggregation; it does not claim that an HTTP server or intermediary never buffers transport chunks before the application receives them. The gateway remains intentionally partial: truthful refusal is preferred to fabricating `prop`, `propname`, or `include` behavior.
+
 This decision is deliberately consistent with the existing capability-discovery boundary in `dav-authorization-path-decoding.md`: `OPTIONS` advertises `Allow: OPTIONS, PROPFIND` but omits the `DAV` compliance header. Supporting a bounded subset of PROPFIND semantics is not represented as class-1 WebDAV compliance.
 
 ## Failure lineage
@@ -32,13 +49,15 @@ A subsequent standards audit found a second interoperability defect inside the n
 
 Resource review then found that "bounded" was still false for member cardinality: root depth-one discovery called `get_project_folders_from_db()` without a SQL limit and materialized every matching project folder before serializing every response. Reality RED `facfdcc1dad83bb5f1b9855c823e39fde3c74b2e` requires the DAV root query to request a 257-row overflow probe and requires a 257-member result to fail closed instead of returning a 207 response. Service child `b784ce93591c496e6b5a0d8b36341c3a4a8b4091` adds an optional SQL `LIMIT` capability without changing existing unbounded callers. DAV fix `093e748cbc7ce34360ef3cdef017957909542d23` uses `LIMIT 257`, returns normal depth-one output only for at most 256 members, and returns the namespaced 403 precondition above on overflow. Compatibility child `e28199395aac868b6d287d24aabea7c3e533811a` updates existing DAV stubs to assert the bounded query contract, and `18b1bd70281c12050083b87d3da3e6e0a47a149a` verifies that the service-level `max_results` parameter is actually compiled into SQL rather than being an API-only hint.
 
+Request-body audit then found a fourth semantics/resource defect: the route never inspected the PROPFIND body, so different RFC-defined requests collapsed to the same successful response and attacker-controlled XML could be arbitrarily large without an application-level discovery-body ceiling. Source-order RED `bad0f67c54a267c3b72ec7ff12f494d4707655f5` requires selected-property and `propname` requests not to masquerade as allprop, malformed/conflicting bodies to fail, and an 8193-octet body to be rejected. Causal fix `56a77d109ee429e7258a77f803a794c1925f9098` adds bounded streaming, `defusedxml` parsing, RFC-grammar validation, and truthful 501 refusal for valid but unsupported property-selection modes. Acceptance child `27b909f09cb4b53000475f44d546769fb23d0e20` adds explicit `allprop/include`, wrong-root, non-empty-allprop, and external-entity cases while preserving empty/explicit-allprop success.
+
 ## Invariants and acceptance
 
-Protocol depth is part of request semantics and must not be rewritten merely to obtain a successful response. The server may bound work by refusing infinity or an oversized direct-member set, but it must distinguish refusal from successful finite traversal. For a collection, depth zero is self-only and depth one is self plus direct internal members; returning only children or silently truncating members is not an equivalent representation. Authentication and canonical-path authorization still execute before PROPFIND depth handling, so invalid ownership or path representations are not disclosed through the depth response.
+Protocol depth and request-body directive are both part of request semantics and must not be rewritten merely to obtain a successful response. The server may bound work by refusing infinity, an oversized direct-member set, an oversized body, or a valid directive whose semantics are not yet implemented, but it must distinguish refusal from successful traversal/property retrieval. For a collection, depth zero is self-only and depth one is self plus direct internal members; returning only children or silently truncating members is not an equivalent representation. Authentication and canonical-path authorization still execute before PROPFIND body/depth handling, so invalid ownership or path representations are not disclosed through parser or depth responses.
 
-Executable acceptance is owned by `backend/tests/test_dav_depth_contract.py`, with compatibility coverage in `backend/tests/test_dav_api.py` and `backend/tests/test_dav_canonical_path_succession.py`. The depth contract covers explicit zero and one, depth-one target-plus-member shape, the 256-member success ceiling and 257-row overflow probe, the RFC-recommended missing-header infinity interpretation, explicit infinity refusal, malformed values, and the WebDAV error preconditions. The exact branch head must run these tests together with the repository's full backend, security, and image-validation gates after every source, test, or documentation change. Earlier GREEN runs are predecessor evidence after any later source, test, or doctoring commit.
+Executable acceptance is owned by `backend/tests/test_dav_depth_contract.py` and `backend/tests/test_dav_propfind_body_contract.py`, with compatibility coverage in `backend/tests/test_dav_api.py` and `backend/tests/test_dav_canonical_path_succession.py`. The depth contract covers explicit zero and one, depth-one target-plus-member shape, the 256-member success ceiling and 257-row overflow probe, the RFC-recommended missing-header infinity interpretation, explicit infinity refusal, malformed values, and the WebDAV error preconditions. The body contract covers empty/allprop equivalence within Naruon's supported property profile, truthful refusal of `prop`, `propname`, and `allprop/include`, malformed/conflicting XML, external entities, and the 8192-octet application-level ceiling. The exact branch head must run these tests together with the repository's full backend, security, and image-validation gates after every source, test, or documentation change. Earlier GREEN runs are predecessor evidence after any later source, test, or doctoring commit.
 
-No claim is made that Naruon implements infinite-depth traversal, PROPPATCH, COPY, MOVE, locking, CalDAV, CardDAV, or WebDAV class-1 compliance. Those capabilities require their own complete contracts and executable interoperability evidence before advertisement.
+No claim is made that Naruon implements full `allprop`, selected `prop`, `propname`, `include`, infinite-depth traversal, PROPPATCH, COPY, MOVE, locking, CalDAV, CardDAV, or WebDAV class-1 compliance. Those capabilities require their own complete contracts and executable interoperability evidence before advertisement.
 
 ## References
 

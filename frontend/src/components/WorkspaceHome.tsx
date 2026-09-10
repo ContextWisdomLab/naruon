@@ -422,7 +422,7 @@ function StartupDashboard({ onOpenView }: { onOpenView: (view: WorkspaceStartupV
               {loading ? (
                 <div className="text-sm text-muted-foreground p-2">답변 대기 메일을 불러오는 중...</div>
               ) : pendingReplies.length === 0 ? (
-                <div className="text-sm text-muted-foreground p-2">답변 대기 중인 보낸 메일이 없습니다.</div>
+                <div role="status" aria-live="polite" className="text-sm text-muted-foreground p-2">답변 대기 중인 보낸 메일이 없습니다.</div>
               ) : pendingReplies.map((reply) => {
                 const safeSubject = toSafeReactText(reply.subject?.trim() || null, '(제목 없음)');
                 const safeSnippet = toSafeReactText(reply.snippet);
@@ -451,7 +451,7 @@ function StartupDashboard({ onOpenView }: { onOpenView: (view: WorkspaceStartupV
               {loading ? (
                 <div className="text-sm text-muted-foreground p-2">작업을 불러오는 중...</div>
               ) : pendingTasks.length === 0 ? (
-                <div className="text-sm text-muted-foreground p-2">대기 작업이 없습니다.</div>
+                <div role="status" aria-live="polite" className="text-sm text-muted-foreground p-2">대기 작업이 없습니다.</div>
               ) : pendingTasks.slice(0, 3).map((task) => {
                 const pKor = mapPriorityToKorean(task.priority);
                 const pClass = pKor === '긴급' || pKor === '높음' ? 'text-red-500' : pKor === '보통' ? 'text-green-500' : 'text-muted-foreground';
@@ -552,7 +552,7 @@ function StartupDashboard({ onOpenView }: { onOpenView: (view: WorkspaceStartupV
               {loading ? (
                 <div className="text-sm text-muted-foreground p-2">메일을 불러오는 중...</div>
               ) : emails.length === 0 ? (
-                <div className="text-sm text-muted-foreground p-2">수신된 메일이 없습니다.</div>
+                <div role="status" aria-live="polite" className="text-sm text-muted-foreground p-2">수신된 메일이 없습니다.</div>
               ) : emails.slice(0, 5).map((mail) => (
                 <div key={mail.id} className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3 min-w-0 flex-1">

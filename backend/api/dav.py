@@ -1,7 +1,6 @@
 import logging
 import re
 from html import escape as escape_xml_text
-from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,30 +14,40 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dav", tags=["dav"])
 
 
-_INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
-_NESTED_PERCENT_ESCAPE = re.compile(r"%(?=[0-9A-Fa-f]{2})")
+_INVALID_RAW_PERCENT_ESCAPE = re.compile(br"%(?![0-9A-Fa-f]{2})")
+_NESTED_RAW_PERCENT_ESCAPE = re.compile(br"%25(?=[0-9A-Fa-f]{2})")
+_ENCODED_CONTROL_CHARACTER = re.compile(br"%(?:0[0-9A-Fa-f]|1[0-9A-Fa-f]|7[Ff])")
 
 
-def _normalize_dav_authorization_path(path: str) -> str:
-    # RFC 3986 §2.4: never decode the same string more than once. Decode
-    # exactly once, then reject ambiguous nested encodings instead of
-    # collapsing them with a recursive-unquote loop (CWE-174).
-    normalized_path = path.replace("\\", "/")
-    try:
-        decoded_path = unquote(normalized_path, errors="strict").replace("\\", "/")
-    except UnicodeDecodeError as exc:
-        raise HTTPException(
-            status_code=400, detail="DAV path contains invalid percent encoding"
-        ) from exc
-    if _INVALID_PERCENT_ESCAPE.search(decoded_path):
+def _validate_dav_raw_request_path(request: Request) -> None:
+    """Validate encoding syntax before the framework-decoded DAV path is trusted."""
+    raw_path = request.scope.get("raw_path")
+    if raw_path is None:
+        return
+    if not isinstance(raw_path, bytes):
+        raise HTTPException(status_code=400, detail="DAV raw path is unavailable")
+    if any(byte < 0x20 or byte == 0x7F for byte in raw_path):
+        raise HTTPException(status_code=400, detail="DAV path contains control characters")
+    if _INVALID_RAW_PERCENT_ESCAPE.search(raw_path):
         raise HTTPException(
             status_code=400, detail="DAV path contains invalid percent encoding"
         )
-    if decoded_path != normalized_path and _NESTED_PERCENT_ESCAPE.search(decoded_path):
+    if _ENCODED_CONTROL_CHARACTER.search(raw_path):
+        raise HTTPException(status_code=400, detail="DAV path contains control characters")
+    if _NESTED_RAW_PERCENT_ESCAPE.search(raw_path):
         raise HTTPException(
             status_code=400, detail="DAV path contains nested percent encoding"
         )
-    return decoded_path
+
+
+def _normalize_dav_authorization_path(path: str) -> str:
+    """Normalize the path value after ASGI routing has already decoded the target."""
+    normalized_path = path.replace("\\", "/")
+    if "\ufffd" in normalized_path or any(
+        0xD800 <= ord(character) <= 0xDFFF for character in normalized_path
+    ):
+        raise HTTPException(status_code=400, detail="DAV path contains invalid Unicode")
+    return normalized_path
 
 
 def _dav_path_owner_user_id(path: str) -> str | None:
@@ -190,6 +199,7 @@ async def dav_handler(
     Provider-backed writeback stays fail-closed until source capability and
     ETag/If-Match enforcement are available through signed writeback intents.
     """
+    _validate_dav_raw_request_path(request)
     _ensure_dav_owner_scope(path, auth_context)
     safe_path = repr(path)[1:-1]
     logger.info("DAV Request: %s /%s", request.method, safe_path)

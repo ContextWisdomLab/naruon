@@ -179,6 +179,26 @@ def _dav_depth(request: Request) -> str:
     return depth
 
 
+def _validate_dav_property_name_container(element, *, directive_name: str) -> None:
+    """Reject text, mixed content, or property values in name-only selectors."""
+    property_names = list(element)
+    if (element.text or "").strip() or any(
+        (property_name.tail or "").strip() for property_name in property_names
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"DAV {directive_name} directive must not contain text",
+        )
+    if any(
+        list(property_name) or (property_name.text or "").strip()
+        for property_name in property_names
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"DAV {directive_name} directive must contain property names only",
+        )
+
+
 async def _validate_dav_propfind_body(request: Request) -> None:
     """Validate the bounded PROPFIND body semantics this discovery slice supports."""
     request_body = bytearray()
@@ -235,6 +255,10 @@ async def _validate_dav_propfind_body(request: Request) -> None:
                 status_code=400,
                 detail="DAV allprop directive must be empty",
             )
+        _validate_dav_property_name_container(
+            directives[1],
+            directive_name="include",
+        )
         raise HTTPException(
             status_code=501,
             detail="DAV allprop include semantics are not implemented",
@@ -252,6 +276,10 @@ async def _validate_dav_propfind_body(request: Request) -> None:
         )
 
     if len(directives) == 1 and directives[0].tag == "{DAV:}prop":
+        _validate_dav_property_name_container(
+            directives[0],
+            directive_name="prop",
+        )
         raise HTTPException(
             status_code=501,
             detail="DAV selected-property PROPFIND semantics are not implemented",

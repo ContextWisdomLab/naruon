@@ -48,7 +48,7 @@ def _evaluate_mapped_default(default_callable):
 
 
 def _is_datetime_timezone_aware(value: datetime.datetime) -> bool:
-    return value.tzinfo is not None
+    return value.tzinfo is not None and value.tzinfo.utcoffset(value) is not None
 
 
 def test_datetime_column_defaults_are_timezone_aware():

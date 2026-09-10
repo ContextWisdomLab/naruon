@@ -273,6 +273,8 @@ def test_dav_route_rejects_malformed_raw_percent_escape(
         "/dav/user123/projects/%00",
         "/dav/user123/projects/%0A",
         "/dav/user123/projects/%7F",
+        "/dav/user123/projects/%C2%80",
+        "/dav/user123/projects/%C2%9F",
     ],
 )
 def test_dav_route_rejects_percent_encoded_control_character(

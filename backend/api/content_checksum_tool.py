@@ -66,9 +66,10 @@ async def content_checksum_handler(params: dict[str, Any]) -> dict[str, Any]:
         length, encoding, and an authenticity warning.
 
     Raises:
-        ContentChecksumError: If the algorithm is not allowlisted or the
-            encoded content exceeds one MiB. Each expected failure carries a
-            stable machine-readable ``error_code``.
+        ContentChecksumError: If the algorithm is not allowlisted, the text
+            cannot be represented as valid UTF-8, or the encoded content exceeds
+            one MiB. Each expected failure carries a stable machine-readable
+            ``error_code``.
     """
     text = params["text"]
     algorithm = params["algorithm"]
@@ -78,7 +79,13 @@ async def content_checksum_handler(params: dict[str, Any]) -> dict[str, Any]:
             error_code="unsupported_checksum_algorithm",
         )
 
-    payload = text.encode("utf-8")
+    try:
+        payload = text.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ContentChecksumError(
+            "Content must contain valid Unicode scalar values",
+            error_code="content_checksum_invalid_utf8",
+        ) from exc
     if len(payload) > MAX_CONTENT_BYTES:
         raise ContentChecksumError(
             f"Content exceeds {MAX_CONTENT_BYTES} UTF-8 bytes",

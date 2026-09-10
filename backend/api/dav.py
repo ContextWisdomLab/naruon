@@ -239,8 +239,6 @@ async def dav_handler(
         )
 
     if request.method == "PUT":
-        body = await request.body()
-        logger.info("DAV PUT received %s bytes at /%s", len(body), safe_path)
         logger.warning(
             "DAV PUT rejected at /%s: provider-backed DAV writeback is not "
             "implemented; signed writeback-intent API is required",

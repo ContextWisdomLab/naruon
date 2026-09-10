@@ -136,4 +136,60 @@ describe("TasksLayout", () => {
     expect(detailTab?.getAttribute("aria-selected")).toBe("true");
     expect(detailTab?.tabIndex).toBe(0);
   });
+
+  it("uses the reply SLA mutation response for an existing task id", async () => {
+    const existingTask = {
+      id: "task-duplicate-1",
+      title: "기존 미답변 작업",
+      status: "open",
+      priority: "normal",
+      source_type: "reply_sla",
+      source_email_id: "mail-1",
+      related_thread_id: "thread-1",
+      updated_at: "2026-06-18T05:00:00Z",
+    };
+    const refreshedTask = {
+      ...existingTask,
+      title: "미답변 팔로업: 최신 메일 제목",
+      status: "blocked",
+      priority: "urgent",
+      updated_at: "2026-06-18T06:00:00Z",
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/tasks")) return Promise.resolve(jsonResponse([existingTask]));
+      if (url.endsWith("/api/tasks/reply-sla-escalations")) {
+        expect(init?.method).toBe("POST");
+        return Promise.resolve(jsonResponse({
+          evaluated: 1,
+          created: 0,
+          policy: { overdue_hours: 48 },
+          tasks: [refreshedTask],
+        }));
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<TasksLayout />);
+    });
+    await flushAsyncWork();
+
+    expect(container.textContent).toContain("기존 미답변 작업");
+
+    await act(async () => {
+      container?.querySelector<HTMLButtonElement>('button[aria-label="보낸 메일 미답변 팔로업 작업 생성"]')?.click();
+    });
+    await flushAsyncWork();
+
+    expect(container.textContent).toContain("미답변 팔로업: 최신 메일 제목");
+    expect(container.textContent).not.toContain("기존 미답변 작업");
+    expect(container.textContent).toContain("긴급");
+    expect(container.textContent).toContain("검토 필요");
+  });
 });

@@ -2,7 +2,10 @@
 
 import pytest
 
-from api.content_checksum_tool import register_content_checksum_tool
+from api.content_checksum_tool import (
+    ContentChecksumError,
+    register_content_checksum_tool,
+)
 from api.tools import registry
 from main import app
 
@@ -94,6 +97,18 @@ async def test_content_checksum_generator_hashes_exact_utf8_without_normalizing(
         "bf12767b0f2a56b2190075bae8169f656e3ce8d6357d4aff184bc6c7ea48f9f6"
     )
     assert composed["digest_hex"] != decomposed["digest_hex"]
+
+
+@pytest.mark.asyncio
+async def test_content_checksum_generator_rejects_invalid_utf8_scalar_input() -> None:
+    """A lone surrogate must fail with the checksum tool's stable validation code."""
+    with pytest.raises(ContentChecksumError) as exc_info:
+        await registry.invoke_tool(
+            "content_checksum_generator",
+            {"text": "\ud800", "algorithm": "sha256"},
+        )
+
+    assert exc_info.value.error_code == "content_checksum_invalid_utf8"
 
 
 @pytest.mark.asyncio

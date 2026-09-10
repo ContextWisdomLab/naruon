@@ -88,6 +88,27 @@ describe("EmailList", () => {
     expect(selectedThread?.className).toContain("min-h-20");
   });
 
+  it("announces an empty inbox through exactly one polite status region", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ emails: [] })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<EmailList onSelectEmail={vi.fn()} selectedEmailId={null} />);
+    });
+    await flushAsyncWork();
+
+    const emptyStatuses = Array.from(container.querySelectorAll<HTMLElement>('[role="status"]')).filter(
+      (node) => node.textContent?.includes("받은 메일이 없습니다"),
+    );
+    expect(emptyStatuses).toHaveLength(1);
+    expect(emptyStatuses[0]?.getAttribute("aria-live")).toBe("polite");
+    expect(container.textContent).not.toContain("맥락 검색 결과가 없습니다");
+  });
+
   it("uses the missing-title fallback for blank email subjects", async () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve(
@@ -121,7 +142,7 @@ describe("EmailList", () => {
     expect(container.textContent).toContain("(제목 없음)");
   });
 
-  it("shows search loading feedback and clears the query back to inbox results", async () => {
+  it("shows search loading feedback, distinguishes search-empty copy, and clears back to inbox results", async () => {
     let resolveSearch: ((value: ReturnType<typeof jsonResponse>) => void) | null = null;
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
@@ -149,10 +170,14 @@ describe("EmailList", () => {
     expect(input).not.toBeNull();
     expect(form).not.toBeNull();
     expect(submitButton).not.toBeNull();
+    expect(container.textContent).toContain("받은 메일이 없습니다");
 
     await act(async () => {
       setInputValue(input as HTMLInputElement, "계약");
     });
+    expect(container.textContent).toContain("받은 메일이 없습니다");
+    expect(container.textContent).not.toContain("맥락 검색 결과가 없습니다");
+
     const clearButton = container.querySelector<HTMLButtonElement>('button[aria-label="맥락 검색어 지우기"]');
     expect(clearButton).not.toBeNull();
 
@@ -175,6 +200,9 @@ describe("EmailList", () => {
     });
     await flushAsyncWork();
 
+    expect(container.textContent).toContain("맥락 검색 결과가 없습니다");
+    expect(container.textContent).not.toContain("받은 메일이 없습니다");
+
     await act(async () => {
       clearButton?.click();
     });
@@ -182,6 +210,7 @@ describe("EmailList", () => {
 
     expect(input?.value).toBe("");
     expect(fetchMock).toHaveBeenLastCalledWith("/api/emails", expect.any(Object));
+    expect(container.textContent).toContain("받은 메일이 없습니다");
   });
 
   it("renders sent mail reply tracking mode from the sent folder API", async () => {

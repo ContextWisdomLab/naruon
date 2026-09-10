@@ -51,18 +51,24 @@ def _is_datetime_timezone_aware(value: datetime.datetime) -> bool:
     return value.tzinfo is not None and value.tzinfo.utcoffset(value) is not None
 
 
-def test_datetime_column_defaults_are_timezone_aware():
-    naive_defaults: list[str] = []
-    for table, column, kind, default_callable in _datetime_default_callables():
+def _invalid_datetime_default_entries(entries):
+    """Return mapped DateTime defaults that violate the timezone contract."""
+
+    invalid_defaults: list[str] = []
+    for table, column, kind, default_callable in entries:
         value = _evaluate_mapped_default(default_callable)
         if isinstance(value, datetime.datetime) and not _is_datetime_timezone_aware(value):
-            naive_defaults.append(f"{table}.{column} ({kind})")
+            invalid_defaults.append(f"{table}.{column} ({kind})")
+    return invalid_defaults
 
-    assert not naive_defaults, (
-        "naive datetime defaults are deprecated (datetime.utcnow) and fatal "
-        "under PYTHONWARNINGS=error; use "
-        "lambda: datetime.datetime.now(datetime.timezone.utc): "
-        + ", ".join(sorted(naive_defaults))
+
+def test_datetime_column_defaults_are_timezone_aware():
+    invalid_defaults = _invalid_datetime_default_entries(_datetime_default_callables())
+
+    assert not invalid_defaults, (
+        "DateTime defaults/onupdates must return timezone-aware datetime values; "
+        "use lambda: datetime.datetime.now(datetime.timezone.utc): "
+        + ", ".join(sorted(invalid_defaults))
     )
 
 
@@ -85,6 +91,17 @@ def test_datetime_default_guard_excludes_non_datetime_callable_defaults():
     }
 
     assert ("security_audit_events", "event_uid", "default") not in guarded_columns
+
+
+def test_datetime_default_guard_rejects_non_datetime_results():
+    def invalid_default(_context):
+        return "2026-09-11T00:00:00+00:00"
+
+    invalid_defaults = _invalid_datetime_default_entries(
+        [("example_table", "updated_at", "default", invalid_default)]
+    )
+
+    assert invalid_defaults == ["example_table.updated_at (default)"]
 
 
 def test_timezone_awareness_rejects_tzinfo_with_null_offset():

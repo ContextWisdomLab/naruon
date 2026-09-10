@@ -26,6 +26,14 @@ _DAV_DECODED_PATH_MAX_CHARACTERS = 8192
 _DAV_PROPFIND_BODY_MAX_OCTETS = 8192
 _DAV_PROJECT_COLLECTION_MEMBER_LIMIT = 256
 _XML_SPACE_CHARACTERS = frozenset(" \t\r\n")
+_DAV_PROPFIND_DIRECTIVE_TAGS = frozenset(
+    {
+        "{DAV:}allprop",
+        "{DAV:}include",
+        "{DAV:}prop",
+        "{DAV:}propname",
+    }
+)
 
 
 def _validate_dav_raw_request_path(request: Request, decoded_path: str) -> None:
@@ -185,6 +193,19 @@ def _has_non_xml_space_content(text: str | None) -> bool:
     return bool(text) and any(character not in _XML_SPACE_CHARACTERS for character in text)
 
 
+def _validate_dav_empty_directive(element, *, directive_name: str) -> None:
+    """Validate EMPTY directive text while ignoring RFC-permitted extension children."""
+    extension_children = list(element)
+    if _has_non_xml_space_content(element.text) or any(
+        _has_non_xml_space_content(extension_child.tail)
+        for extension_child in extension_children
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"DAV {directive_name} directive must not contain text",
+        )
+
+
 def _validate_dav_property_name_container(element, *, directive_name: str) -> None:
     """Reject text, mixed content, or property values in name-only selectors."""
     property_names = list(element)
@@ -236,34 +257,36 @@ async def _validate_dav_propfind_body(request: Request) -> None:
             detail="DAV PROPFIND body must contain DAV:propfind",
         )
 
-    directives = list(propfind_element)
+    all_children = list(propfind_element)
     if _has_non_xml_space_content(propfind_element.text) or any(
-        _has_non_xml_space_content(directive.tail) for directive in directives
+        _has_non_xml_space_content(child.tail) for child in all_children
     ):
         raise HTTPException(
             status_code=400,
             detail="DAV PROPFIND body must use element-only directive content",
         )
 
+    directives = [
+        child for child in all_children if child.tag in _DAV_PROPFIND_DIRECTIVE_TAGS
+    ]
+
     if len(directives) == 1 and directives[0].tag == "{DAV:}allprop":
-        if list(directives[0]) or _has_non_xml_space_content(directives[0].text):
-            raise HTTPException(
-                status_code=400,
-                detail="DAV allprop directive must be empty",
-            )
+        _validate_dav_empty_directive(directives[0], directive_name="allprop")
         return
 
-    if len(directives) == 2 and [element.tag for element in directives] == [
+    if len(directives) == 2 and {element.tag for element in directives} == {
         "{DAV:}allprop",
         "{DAV:}include",
-    ]:
-        if list(directives[0]) or _has_non_xml_space_content(directives[0].text):
-            raise HTTPException(
-                status_code=400,
-                detail="DAV allprop directive must be empty",
-            )
+    }:
+        allprop_element = next(
+            element for element in directives if element.tag == "{DAV:}allprop"
+        )
+        include_element = next(
+            element for element in directives if element.tag == "{DAV:}include"
+        )
+        _validate_dav_empty_directive(allprop_element, directive_name="allprop")
         _validate_dav_property_name_container(
-            directives[1],
+            include_element,
             directive_name="include",
         )
         raise HTTPException(
@@ -272,11 +295,7 @@ async def _validate_dav_propfind_body(request: Request) -> None:
         )
 
     if len(directives) == 1 and directives[0].tag == "{DAV:}propname":
-        if list(directives[0]) or _has_non_xml_space_content(directives[0].text):
-            raise HTTPException(
-                status_code=400,
-                detail="DAV propname directive must be empty",
-            )
+        _validate_dav_empty_directive(directives[0], directive_name="propname")
         raise HTTPException(
             status_code=501,
             detail="DAV propname PROPFIND semantics are not implemented",
@@ -298,139 +317,148 @@ async def _validate_dav_propfind_body(request: Request) -> None:
     )
 
 
-def _project_folder_response(path_owner_user_id: str, folder: dict) -> str:
-    folder_uid = str(folder["folder_uid"])
-    project_name = str(folder["project_name"])
-    return _dav_response_xml(
-        href=f"/api/dav/{path_owner_user_id}/projects/{folder_uid}",
-        display_name=project_name,
-        is_collection=True,
+def _dav_propfind_root_response(*, user_id: str) -> Response:
+    return _dav_xml_response(
+        [
+            _dav_response_xml(
+                href=f"/dav/{user_id}/projects/",
+                display_name="projects",
+            )
+        ]
     )
 
 
-async def _handle_project_propfind(
-    *,
-    request: Request,
-    path: str,
-    auth_context: AuthContext,
-    db: AsyncSession,
-) -> Response:
-    segments = _dav_path_segments(path)
-    if len(segments) < 2 or segments[1] != "projects":
-        raise HTTPException(status_code=404, detail="DAV collection not found")
+def _dav_propfind_project_response(*, user_id: str, project_name: str) -> Response:
+    return _dav_xml_response(
+        [
+            _dav_response_xml(
+                href=f"/dav/{user_id}/projects/{project_name}/",
+                display_name=project_name,
+            )
+        ]
+    )
 
-    path_owner_user_id = segments[0]
+
+def _dav_propfind_folder_response(
+    *,
+    user_id: str,
+    project_name: str,
+    folder_path: str,
+) -> Response:
+    folder_name = folder_path.rstrip("/").split("/")[-1] or project_name
+    return _dav_xml_response(
+        [
+            _dav_response_xml(
+                href=f"/dav/{user_id}/projects/{project_name}/{folder_path.strip('/')}/",
+                display_name=folder_name,
+            )
+        ]
+    )
+
+
+def _dav_project_collection_responses(
+    *,
+    user_id: str,
+    project_names: list[str],
+) -> list[str]:
+    responses = [
+        _dav_response_xml(
+            href=f"/dav/{user_id}/projects/",
+            display_name="projects",
+        )
+    ]
+    responses.extend(
+        _dav_response_xml(
+            href=f"/dav/{user_id}/projects/{project_name}/",
+            display_name=project_name,
+        )
+        for project_name in project_names
+    )
+    return responses
+
+
+@router.options("/{path:path}")
+async def dav_options(
+    path: str,
+    request: Request,
+    auth_context: AuthContext = Depends(get_auth_context),
+) -> Response:
+    """Advertise only DAV capabilities this compatibility surface actually supports."""
+    _validate_dav_raw_request_path(request, request.url.path)
+    canonical_path = _normalize_dav_authorization_path(path)
+    _ensure_dav_owner_scope(canonical_path, auth_context)
+    return Response(
+        status_code=200,
+        headers={"Allow": "OPTIONS, PROPFIND"},
+    )
+
+
+@router.api_route("/{path:path}", methods=["PROPFIND"])
+async def dav_propfind(
+    path: str,
+    request: Request,
+    auth_context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Discover the bounded owner-scoped collection subset implemented by Naruon."""
+    _validate_dav_raw_request_path(request, request.url.path)
+    canonical_path = _normalize_dav_authorization_path(path)
+    _ensure_dav_owner_scope(canonical_path, auth_context)
+    await _validate_dav_propfind_body(request)
     depth = _dav_depth(request)
     if depth == "infinity":
         return _dav_finite_depth_error_response()
 
-    folder_uid = segments[2] if len(segments) == 3 else None
-    if len(segments) > 3:
-        raise HTTPException(status_code=404, detail="DAV project folder not found")
-
-    addressed_collection_response = _dav_response_xml(
-        href=f"/api/dav/{path_owner_user_id}/projects/",
-        display_name="projects",
-        is_collection=True,
-    )
-    if folder_uid is None and depth == "0":
-        return _dav_xml_response([addressed_collection_response])
-
-    if folder_uid is None:
-        folders = await webdav_service.get_project_folders_from_db(
+    segments = _dav_path_segments(canonical_path)
+    if len(segments) < 2 or segments[1] != "projects":
+        raise HTTPException(status_code=404, detail="DAV resource not found")
+    if len(segments) == 2:
+        if depth == "0":
+            return _dav_propfind_root_response(user_id=auth_context.user_id)
+        project_names = await webdav_service.get_project_folders_from_db(
             db,
-            auth_context.user_id,
             auth_context.organization_id,
             max_results=_DAV_PROJECT_COLLECTION_MEMBER_LIMIT + 1,
         )
-        if len(folders) > _DAV_PROJECT_COLLECTION_MEMBER_LIMIT:
+        if len(project_names) > _DAV_PROJECT_COLLECTION_MEMBER_LIMIT:
             return _dav_project_member_limit_error_response()
         return _dav_xml_response(
-            [
-                addressed_collection_response,
-                *[
-                    _project_folder_response(path_owner_user_id, folder)
-                    for folder in folders
-                ],
-            ]
+            _dav_project_collection_responses(
+                user_id=auth_context.user_id,
+                project_names=project_names,
+            )
         )
-
-    folders = await webdav_service.get_project_folders_from_db(
-        db,
-        auth_context.user_id,
-        auth_context.organization_id,
-        folder_uid=folder_uid,
+    if len(segments) == 3:
+        project_name = segments[2]
+        return _dav_propfind_project_response(
+            user_id=auth_context.user_id,
+            project_name=project_name,
+        )
+    project_name = segments[2]
+    folder_path = "/".join(segments[3:])
+    return _dav_propfind_folder_response(
+        user_id=auth_context.user_id,
+        project_name=project_name,
+        folder_path=folder_path,
     )
-    if folders:
-        return _dav_xml_response(
-            [_project_folder_response(path_owner_user_id, folder) for folder in folders]
-        )
-
-    raise HTTPException(status_code=404, detail="DAV project folder not found")
 
 
-@router.api_route(
-    "/{path:path}",
-    methods=["PROPFIND", "REPORT", "MKCOL", "GET", "PUT", "DELETE", "OPTIONS"],
-)
-async def dav_handler(
-    request: Request,
+@router.api_route("/{path:path}", methods=["PUT", "DELETE", "MKCOL", "MOVE"])
+async def dav_unsupported_write(
     path: str,
+    request: Request,
     auth_context: AuthContext = Depends(get_auth_context),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Route the authenticated DAV surface that is implemented for this slice.
-
-    Collection discovery is served from the server-side project registry.
-    Provider-backed writeback stays fail-closed until source capability and
-    ETag/If-Match enforcement are available through signed writeback intents.
-    """
-    _validate_dav_raw_request_path(request, path)
+) -> Response:
+    """Fail closed for write operations until provider-backed mutations are implemented."""
+    _validate_dav_raw_request_path(request, request.url.path)
     canonical_path = _normalize_dav_authorization_path(path)
     _ensure_dav_owner_scope(canonical_path, auth_context)
-    safe_path = repr(canonical_path)[1:-1]
-    logger.info("DAV Request: %s /%s", request.method, safe_path)
-
-    if request.method == "OPTIONS":
-        return Response(status_code=200, headers={"Allow": "OPTIONS, PROPFIND"})
-
-    if request.method == "PROPFIND":
-        await _validate_dav_propfind_body(request)
-        return await _handle_project_propfind(
-            request=request,
-            path=canonical_path,
-            auth_context=auth_context,
-            db=db,
-        )
-
-    if request.method == "PUT":
-        logger.warning(
-            "DAV PUT rejected at /%s: provider-backed DAV writeback is not "
-            "implemented; signed writeback-intent API is required",
-            safe_path,
-        )
-        return Response(
-            content=(
-                "Provider-backed DAV writeback is not implemented; use signed "
-                "writeback-intent APIs until source, capability, and "
-                "ETag/If-Match checks are enforced."
-            ),
-            media_type="text/plain",
-            status_code=501,
-        )
-
     logger.warning(
-        "DAV %s rejected at /%s: method is not implemented for the "
-        "provider-backed DAV gateway",
-        request.method,
-        safe_path,
+        "DAV write method is not implemented",
+        extra={
+            "method": request.method,
+            "path": canonical_path,
+            "organization_id": auth_context.organization_id,
+        },
     )
-    return Response(
-        content=(
-            "Provider-backed DAV method is not implemented; use supported "
-            "PROPFIND/OPTIONS discovery or signed writeback-intent APIs."
-        ),
-        media_type="text/plain",
-        status_code=501,
-    )
+    return Response(status_code=501)

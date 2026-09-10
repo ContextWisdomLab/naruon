@@ -317,148 +317,139 @@ async def _validate_dav_propfind_body(request: Request) -> None:
     )
 
 
-def _dav_propfind_root_response(*, user_id: str) -> Response:
-    return _dav_xml_response(
-        [
-            _dav_response_xml(
-                href=f"/dav/{user_id}/projects/",
-                display_name="projects",
-            )
-        ]
+def _project_folder_response(path_owner_user_id: str, folder: dict) -> str:
+    folder_uid = str(folder["folder_uid"])
+    project_name = str(folder["project_name"])
+    return _dav_response_xml(
+        href=f"/api/dav/{path_owner_user_id}/projects/{folder_uid}",
+        display_name=project_name,
+        is_collection=True,
     )
 
 
-def _dav_propfind_project_response(*, user_id: str, project_name: str) -> Response:
-    return _dav_xml_response(
-        [
-            _dav_response_xml(
-                href=f"/dav/{user_id}/projects/{project_name}/",
-                display_name=project_name,
-            )
-        ]
-    )
-
-
-def _dav_propfind_folder_response(
+async def _handle_project_propfind(
     *,
-    user_id: str,
-    project_name: str,
-    folder_path: str,
-) -> Response:
-    folder_name = folder_path.rstrip("/").split("/")[-1] or project_name
-    return _dav_xml_response(
-        [
-            _dav_response_xml(
-                href=f"/dav/{user_id}/projects/{project_name}/{folder_path.strip('/')}/",
-                display_name=folder_name,
-            )
-        ]
-    )
-
-
-def _dav_project_collection_responses(
-    *,
-    user_id: str,
-    project_names: list[str],
-) -> list[str]:
-    responses = [
-        _dav_response_xml(
-            href=f"/dav/{user_id}/projects/",
-            display_name="projects",
-        )
-    ]
-    responses.extend(
-        _dav_response_xml(
-            href=f"/dav/{user_id}/projects/{project_name}/",
-            display_name=project_name,
-        )
-        for project_name in project_names
-    )
-    return responses
-
-
-@router.options("/{path:path}")
-async def dav_options(
-    path: str,
     request: Request,
-    auth_context: AuthContext = Depends(get_auth_context),
-) -> Response:
-    """Advertise only DAV capabilities this compatibility surface actually supports."""
-    _validate_dav_raw_request_path(request, request.url.path)
-    canonical_path = _normalize_dav_authorization_path(path)
-    _ensure_dav_owner_scope(canonical_path, auth_context)
-    return Response(
-        status_code=200,
-        headers={"Allow": "OPTIONS, PROPFIND"},
-    )
-
-
-@router.api_route("/{path:path}", methods=["PROPFIND"])
-async def dav_propfind(
     path: str,
-    request: Request,
-    auth_context: AuthContext = Depends(get_auth_context),
-    db: AsyncSession = Depends(get_db),
+    auth_context: AuthContext,
+    db: AsyncSession,
 ) -> Response:
-    """Discover the bounded owner-scoped collection subset implemented by Naruon."""
-    _validate_dav_raw_request_path(request, request.url.path)
-    canonical_path = _normalize_dav_authorization_path(path)
-    _ensure_dav_owner_scope(canonical_path, auth_context)
-    await _validate_dav_propfind_body(request)
+    segments = _dav_path_segments(path)
+    if len(segments) < 2 or segments[1] != "projects":
+        raise HTTPException(status_code=404, detail="DAV collection not found")
+
+    path_owner_user_id = segments[0]
     depth = _dav_depth(request)
     if depth == "infinity":
         return _dav_finite_depth_error_response()
 
-    segments = _dav_path_segments(canonical_path)
-    if len(segments) < 2 or segments[1] != "projects":
-        raise HTTPException(status_code=404, detail="DAV resource not found")
-    if len(segments) == 2:
-        if depth == "0":
-            return _dav_propfind_root_response(user_id=auth_context.user_id)
-        project_names = await webdav_service.get_project_folders_from_db(
+    folder_uid = segments[2] if len(segments) == 3 else None
+    if len(segments) > 3:
+        raise HTTPException(status_code=404, detail="DAV project folder not found")
+
+    addressed_collection_response = _dav_response_xml(
+        href=f"/api/dav/{path_owner_user_id}/projects/",
+        display_name="projects",
+        is_collection=True,
+    )
+    if folder_uid is None and depth == "0":
+        return _dav_xml_response([addressed_collection_response])
+
+    if folder_uid is None:
+        folders = await webdav_service.get_project_folders_from_db(
             db,
+            auth_context.user_id,
             auth_context.organization_id,
             max_results=_DAV_PROJECT_COLLECTION_MEMBER_LIMIT + 1,
         )
-        if len(project_names) > _DAV_PROJECT_COLLECTION_MEMBER_LIMIT:
+        if len(folders) > _DAV_PROJECT_COLLECTION_MEMBER_LIMIT:
             return _dav_project_member_limit_error_response()
         return _dav_xml_response(
-            _dav_project_collection_responses(
-                user_id=auth_context.user_id,
-                project_names=project_names,
-            )
+            [
+                addressed_collection_response,
+                *[
+                    _project_folder_response(path_owner_user_id, folder)
+                    for folder in folders
+                ],
+            ]
         )
-    if len(segments) == 3:
-        project_name = segments[2]
-        return _dav_propfind_project_response(
-            user_id=auth_context.user_id,
-            project_name=project_name,
-        )
-    project_name = segments[2]
-    folder_path = "/".join(segments[3:])
-    return _dav_propfind_folder_response(
-        user_id=auth_context.user_id,
-        project_name=project_name,
-        folder_path=folder_path,
+
+    folders = await webdav_service.get_project_folders_from_db(
+        db,
+        auth_context.user_id,
+        auth_context.organization_id,
+        folder_uid=folder_uid,
     )
+    if folders:
+        return _dav_xml_response(
+            [_project_folder_response(path_owner_user_id, folder) for folder in folders]
+        )
+
+    raise HTTPException(status_code=404, detail="DAV project folder not found")
 
 
-@router.api_route("/{path:path}", methods=["PUT", "DELETE", "MKCOL", "MOVE"])
-async def dav_unsupported_write(
-    path: str,
+@router.api_route(
+    "/{path:path}",
+    methods=["PROPFIND", "REPORT", "MKCOL", "GET", "PUT", "DELETE", "OPTIONS"],
+)
+async def dav_handler(
     request: Request,
+    path: str,
     auth_context: AuthContext = Depends(get_auth_context),
-) -> Response:
-    """Fail closed for write operations until provider-backed mutations are implemented."""
-    _validate_dav_raw_request_path(request, request.url.path)
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Route the authenticated DAV surface that is implemented for this slice.
+
+    Collection discovery is served from the server-side project registry.
+    Provider-backed writeback stays fail-closed until source capability and
+    ETag/If-Match enforcement are available through signed writeback intents.
+    """
+    _validate_dav_raw_request_path(request, path)
     canonical_path = _normalize_dav_authorization_path(path)
     _ensure_dav_owner_scope(canonical_path, auth_context)
+    safe_path = repr(canonical_path)[1:-1]
+    logger.info("DAV Request: %s /%s", request.method, safe_path)
+
+    if request.method == "OPTIONS":
+        return Response(status_code=200, headers={"Allow": "OPTIONS, PROPFIND"})
+
+    if request.method == "PROPFIND":
+        await _validate_dav_propfind_body(request)
+        return await _handle_project_propfind(
+            request=request,
+            path=canonical_path,
+            auth_context=auth_context,
+            db=db,
+        )
+
+    if request.method == "PUT":
+        logger.warning(
+            "DAV PUT rejected at /%s: provider-backed DAV writeback is not "
+            "implemented; signed writeback-intent API is required",
+            safe_path,
+        )
+        return Response(
+            content=(
+                "Provider-backed DAV writeback is not implemented; use signed "
+                "writeback-intent APIs until source, capability, and "
+                "ETag/If-Match checks are enforced."
+            ),
+            media_type="text/plain",
+            status_code=501,
+        )
+
     logger.warning(
-        "DAV write method is not implemented",
-        extra={
-            "method": request.method,
-            "path": canonical_path,
-            "organization_id": auth_context.organization_id,
-        },
+        "DAV %s rejected at /%s: method is not implemented for the "
+        "provider-backed DAV gateway",
+        request.method,
+        safe_path,
     )
-    return Response(status_code=501)
+    return Response(
+        content=(
+            "Provider-backed DAV method is not implemented; use supported "
+            "PROPFIND/OPTIONS discovery or signed writeback-intent APIs."
+        ),
+        media_type="text/plain",
+        status_code=501,
+    )

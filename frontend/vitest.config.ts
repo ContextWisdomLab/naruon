@@ -10,6 +10,5 @@ export default defineConfig({
   test: {
     exclude: [...configDefaults.exclude, "tests/e2e/**"],
     setupFiles: ["./src/test/setup.ts"],
-    pool: "forks",
   },
 });

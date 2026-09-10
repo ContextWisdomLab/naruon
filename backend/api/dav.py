@@ -19,12 +19,19 @@ router = APIRouter(prefix="/dav", tags=["dav"])
 _INVALID_RAW_PERCENT_ESCAPE = re.compile(br"%(?![0-9A-Fa-f]{2})")
 _SECOND_PASS_PERCENT_ESCAPE = re.compile(br"%[0-9A-Fa-f]{2}")
 _ENCODED_CONTROL_CHARACTER = re.compile(br"%(?:0[0-9A-Fa-f]|1[0-9A-Fa-f]|7[Ff])")
+_DAV_RAW_PATH_MAX_OCTETS = 8192
+_DAV_DECODED_PATH_MAX_CHARACTERS = 8192
 
 
 def _validate_dav_raw_request_path(request: Request, decoded_path: str) -> None:
     """Validate wire encoding before trusting the framework-decoded DAV path."""
     raw_path = request.scope.get("raw_path")
     if raw_path is None:
+        if len(decoded_path) > _DAV_DECODED_PATH_MAX_CHARACTERS:
+            raise HTTPException(
+                status_code=414,
+                detail="DAV decoded path exceeds 8192 characters",
+            )
         if "%" in decoded_path:
             raise HTTPException(
                 status_code=400,
@@ -33,6 +40,11 @@ def _validate_dav_raw_request_path(request: Request, decoded_path: str) -> None:
         return
     if not isinstance(raw_path, bytes):
         raise HTTPException(status_code=400, detail="DAV raw path is unavailable")
+    if len(raw_path) > _DAV_RAW_PATH_MAX_OCTETS:
+        raise HTTPException(
+            status_code=414,
+            detail="DAV raw path exceeds 8192 octets",
+        )
     if any(byte < 0x20 or byte == 0x7F for byte in raw_path):
         raise HTTPException(status_code=400, detail="DAV path contains control characters")
     if _INVALID_RAW_PERCENT_ESCAPE.search(raw_path):
@@ -210,8 +222,9 @@ async def dav_handler(
     ETag/If-Match enforcement are available through signed writeback intents.
     """
     _validate_dav_raw_request_path(request, path)
-    _ensure_dav_owner_scope(path, auth_context)
-    safe_path = repr(path)[1:-1]
+    canonical_path = _normalize_dav_authorization_path(path)
+    _ensure_dav_owner_scope(canonical_path, auth_context)
+    safe_path = repr(canonical_path)[1:-1]
     logger.info("DAV Request: %s /%s", request.method, safe_path)
 
     if request.method == "OPTIONS":
@@ -220,14 +233,13 @@ async def dav_handler(
     if request.method == "PROPFIND":
         return await _handle_project_propfind(
             request=request,
-            path=path,
+            path=canonical_path,
             auth_context=auth_context,
             db=db,
         )
 
     if request.method == "PUT":
         body = await request.body()
-        safe_path = repr(path)[1:-1]
         logger.info("DAV PUT received %s bytes at /%s", len(body), safe_path)
         logger.warning(
             "DAV PUT rejected at /%s: provider-backed DAV writeback is not "

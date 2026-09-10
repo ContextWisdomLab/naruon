@@ -56,7 +56,45 @@ const EVIDENCE_KIND_LABELS: Record<string, string> = {
 
 function evidenceKindLabel(kind: string | null | undefined) {
   if (!kind || kind === "email_body") return null;
-  return EVIDENCE_KIND_LABELS[kind] ?? kind;
+  return EVIDENCE_KIND_LABELS[kind] ?? "연결 근거";
+}
+
+const RELATIONSHIP_TYPE_LABELS: Record<string, string> = {
+  sender_context: "발신자 맥락",
+  colleague: "업무 관계",
+};
+
+function relationshipTypeLabel(relationshipType: string) {
+  return RELATIONSHIP_TYPE_LABELS[relationshipType.trim().toLowerCase()] ?? "연결 관계";
+}
+
+const CUSTOMER_FACING_RELATIONSHIP_ACTIONS: Record<string, string> = {
+  summarize_then_archive: "요약 후 보관합니다.",
+  track_reply_and_tasks: "답장과 후속 작업을 확인합니다.",
+  prepare_response_draft: "답장 초안을 준비합니다.",
+  classify_sender: "발신자 관계를 확인합니다.",
+  "계약 검토 담당자를 확인합니다.": "계약 검토 담당자를 확인합니다.",
+  "후속 작업을 확인합니다.": "후속 작업을 확인합니다.",
+};
+
+const CUSTOMER_FACING_RELATIONSHIP_REASONS: Record<string, string> = {
+  summarize_then_archive: "핵심 내용을 확인한 뒤 정리할 수 있습니다.",
+  track_reply_and_tasks: "답장 여부와 이어서 할 일을 놓치지 않도록 제안했습니다.",
+  prepare_response_draft: "대화를 이어갈 답장이 필요한 관계입니다.",
+  classify_sender: "알맞은 후속 행동을 정하려면 발신자 관계 확인이 필요합니다.",
+};
+
+export function customerFacingRelationshipText(
+  relationshipAction: string,
+  fallbackCopy: string,
+) {
+  const normalizedAction = relationshipAction.trim();
+  return CUSTOMER_FACING_RELATIONSHIP_ACTIONS[normalizedAction] ?? fallbackCopy;
+}
+
+export function customerFacingRelationshipReason(relationshipAction: string) {
+  return CUSTOMER_FACING_RELATIONSHIP_REASONS[relationshipAction.trim()] ??
+    "선택한 원본과 발신자 관계를 바탕으로 제안했습니다.";
 }
 
 type SearchResponse = {
@@ -189,7 +227,7 @@ function SenderDagPanel({
         aria-live="polite"
         className="rounded-lg border border-border bg-background p-4 text-sm font-semibold text-muted-foreground"
       >
-        발신자 DAG를 불러오는 중입니다.
+        발신자 관계를 불러오는 중입니다.
       </div>
     );
   }
@@ -212,7 +250,7 @@ function SenderDagPanel({
         {canCapture ? (
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs">
-              원본 메일의 sender/thread 근거로 관계와 다음 액션을 캡처합니다.
+              선택한 원본 메일을 기준으로 관계와 다음 행동을 확인합니다.
             </p>
             <button
               type="button"
@@ -255,28 +293,27 @@ function SenderDagPanel({
               </p>
             </div>
             <div className="shrink-0 rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
-              {relationship.relationship_type} ·{" "}
+              {relationshipTypeLabel(relationship.relationship_type)} ·{" "}
               {(relationship.confidence_score * 100).toFixed(0)}%
             </div>
           </div>
           <div className="mt-4 grid gap-2 text-xs font-semibold text-muted-foreground sm:grid-cols-2">
             <div className="rounded border border-border bg-card px-3 py-2">
               <p className="break-all text-foreground">
-                {relationship.next_action}
+                {customerFacingRelationshipText(
+                  relationship.next_action,
+                  "후속 작업을 확인합니다.",
+                )}
               </p>
-              <p className="mt-1">Agent next action</p>
+              <p className="mt-1">다음 행동</p>
             </div>
             <div className="rounded border border-border bg-card px-3 py-2">
               <p className="break-words text-foreground">
-                {relationship.action_reason}
+                {customerFacingRelationshipReason(relationship.next_action)}
               </p>
               <p className="mt-1">판단 근거</p>
             </div>
           </div>
-          <p className="mt-3 break-words rounded bg-secondary/40 px-3 py-2 text-[11px] font-semibold text-muted-foreground">
-            source={relationship.source_message_id ?? "global"} / thread=
-            {relationship.source_thread_id ?? "none"}
-          </p>
         </article>
       ))}
     </div>
@@ -531,7 +568,7 @@ export function SearchLayout() {
         setRelationshipState({
           sourceKey: activeOntologySourceKey,
           items: [],
-          error: "발신자 DAG를 불러오지 못했습니다.",
+          error: "발신자 관계를 불러오지 못했습니다.",
         });
       });
 
@@ -617,7 +654,7 @@ export function SearchLayout() {
           {error}
         </div>
       ) : filteredResults.length === 0 ? (
-        <div role="status" aria-live="polite" className="p-5 text-sm font-semibold text-muted-foreground">
+        <div className="p-5 text-sm font-semibold text-muted-foreground">
           맥락 검색 결과가 없습니다.
         </div>
       ) : (
@@ -893,10 +930,10 @@ export function SearchLayout() {
                           <div className="rounded-xl border border-border bg-card p-4">
                             <p className="text-xs font-black text-primary">증거 바인딩</p>
                             <p className="mt-2 font-semibold text-foreground">
-                              {activeResult.source_message_id ? "원본 메시지 필터로 관계 API를 조회합니다." : "원본 메시지 필터가 없는 결과입니다."}
+                              {activeResult.source_message_id ? "선택한 원본 메일을 기준으로 관계를 확인합니다." : "연결할 원본 메일이 없는 결과입니다."}
                             </p>
                             <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                              관계 조회는 선택된 맥락 검색 결과의 source/thread 범위 안에서만 수행됩니다.
+                              다른 메일의 관계가 섞이지 않도록 선택한 결과 안에서만 확인합니다.
                             </p>
                           </div>
                           <div className="rounded-xl border border-border bg-card p-4">
@@ -939,7 +976,7 @@ export function SearchLayout() {
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-lg font-bold">관계 맥락과 타임라인</h2>
                   <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
-                    source/thread API 연결
+                    원본 근거 연결
                   </span>
                 </div>
 
@@ -951,7 +988,7 @@ export function SearchLayout() {
                         aria-hidden="true"
                       />
                       <h3 className="text-lg font-bold">
-                        발신자 DAG (Ontology)
+                        발신자 관계
                       </h3>
                     </div>
                     <SenderDagPanel
@@ -977,7 +1014,7 @@ export function SearchLayout() {
                         className="size-5 text-primary"
                         aria-hidden="true"
                       />
-                      <h3 className="text-lg font-bold">타임라인 (Timeline)</h3>
+                      <h3 className="text-lg font-bold">활동 흐름</h3>
                     </div>
                     <div className="relative ml-3 space-y-6 border-l-2 border-border">
                       <div className="relative pl-6">
@@ -999,7 +1036,7 @@ export function SearchLayout() {
                         </h4>
                         <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                           <CheckCircle2 className="size-3" aria-hidden="true" />
-                          thread reply_count={activeResult.reply_count ?? 1}
+                          답장 {activeResult.reply_count ?? 1}건
                         </p>
                       </div>
                       {activeResult.thread_id ? (
@@ -1013,7 +1050,7 @@ export function SearchLayout() {
                               className="size-4"
                               aria-hidden="true"
                             />
-                            {activeResult.thread_id}
+                            메일 흐름 연결됨
                           </h4>
                         </div>
                       ) : null}

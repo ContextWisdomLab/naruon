@@ -68,6 +68,10 @@ def test_safe_upload_filename_fails_closed_beyond_decode_round_limit():
         ("%0amessage.eml", None),
         ("secret.eml%00.zip", None),
         ("payload.exe", None),
+        ("malicious.exe.eml", None),
+        ("script.sh.eml", None),
+        ("sender@example.com.eml", "sender@example.com.eml"),
+        ("script.js.eml", "script.js.eml"),
     ],
 )
 def test_canonical_email_import_upload_filename(input_name, expected):

@@ -63,4 +63,29 @@ describe("NetworkGraph constant-time selection lookup contract", () => {
     expect(networkGraphSource).toContain("firstGraphEntryById(nodes");
     expect(networkGraphSource).not.toMatch(/new Map\((edges|nodes)\.map\(/);
   });
+
+  it("bounds option construction before traversing complete graph collections", () => {
+    const nodeLabels = sourceBetween("const nodeLabels = useMemo", "const firstEdge =");
+    const relationshipOptions = sourceBetween(
+      "const relationshipOptions = useMemo",
+      "const nodeOptions = useMemo",
+    );
+    const nodeOptions = sourceBetween(
+      "const nodeOptions = useMemo",
+      "const selectRelationship =",
+    );
+
+    expect(nodeLabels).toContain("for (const node of nodes)");
+    expect(nodeLabels).toContain("if (result.length >= 5) break;");
+    expect(nodeLabels).not.toContain(".map(");
+    expect(nodeLabels).not.toContain(".filter(");
+
+    expect(relationshipOptions).toContain("for (const edge of edgeMap.values())");
+    expect(relationshipOptions).toContain("if (result.length >= 5) break;");
+    expect(relationshipOptions).not.toContain("Array.from(");
+
+    expect(nodeOptions).toContain("for (const node of nodeInstanceMap.values())");
+    expect(nodeOptions).toContain("if (result.length >= 8) break;");
+    expect(nodeOptions).not.toContain("Array.from(");
+  });
 });

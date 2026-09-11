@@ -65,6 +65,7 @@ def test_propfind_propagates_framework_decoded_backslashes_to_project_routing(
 @pytest.mark.parametrize(
     "request_path",
     [
+        "/dav//user123/projects",
         "/dav/user123//projects",
         "/dav/user123/projects//demo",
         "/dav/user123/projects//",

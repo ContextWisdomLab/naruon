@@ -112,7 +112,7 @@ class ToolUpdate(BaseModel):
     parameters: Optional[Dict[str, Any]] = Field(
         default=None, description="도구 실행에 필요한 파라미터 스키마"
     )
-    is_active: Optional[bool] = Field(default=True, description="도구의 활성화 여부")
+    is_active: Optional[bool] = Field(default=None, description="도구의 활성화 여부")
     webhook_url: Optional[str] = Field(
         default=None, description="도구 실행을 위한 외부 웹훅 URL"
     )

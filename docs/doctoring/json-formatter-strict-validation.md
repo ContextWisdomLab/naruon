@@ -10,6 +10,8 @@ The generated implementation used Python's default `json.loads()` / `json.dumps(
 
 A later exact-head audit found a second data-integrity boundary. Python's normal object decoding constructs a dictionary and therefore retains only one value when the same decoded member name occurs more than once. RFC 8259 section 4 says object member names SHOULD be unique and warns that receiver behavior is unpredictable when they are not: implementations may keep the last pair, reject the object, or expose every pair. A formatter that silently accepts `{\"id\":1,\"id\":2}` and returns only one `id` value has changed the user's data while presenting the result as validation/formatting. Naruon therefore rejects duplicate decoded member names rather than choosing first-wins or last-wins semantics.
 
+A third exact-head audit found that valid-but-extremely-deep nesting can exceed the Python interpreter's recursion boundary before the existing 100,000-character ceiling is reached. In that case `json.loads()` raises `RecursionError`, while the formatter normalized only `JSONDecodeError` and `ValueError`. Direct invocation therefore leaked a different exception type, and the public `execute_tool` envelope returned the interpreter-specific recursion message instead of the formatter's deterministic `Invalid JSON string` contract. RFC 8259 section 9 explicitly permits implementations to limit maximum nesting depth, and the Python 3.14 JSON documentation states that the module is still subject to Python interpreter limits. This repair does not invent a new numerical nesting cap; it treats the interpreter-enforced boundary as a validation failure and normalizes it at the product boundary.
+
 The generated feature was also followed by dependency/security commits that eventually removed the feature itself while leaving only frontend dependency changes in PR #1659. Those dependency files belong to canonical owner #1623. Ordinary adoption commit `66439fc025ded2bc185d4a19d70bb6c6bed2a3c8` preserves the generated history as first-parent provenance while adopting exact #1623 `17a7618eda2b212b691f08fa936e042b34258fc9` and its tree. No dependency source is owned by this product lane after that point.
 
 ## RED and causal fixes
@@ -22,6 +24,10 @@ Source-order duplicate-member RED `83fcf7a81c436f3018886ff56cfaab130bc594ff` add
 
 Causal fix `3eb383487b5aed4ffdf48fbd588c2152aea02991` supplies `object_pairs_hook` and constructs each JSON object only after checking every decoded member name for prior occurrence. Because the hook is invoked for every object, the same rule applies to nested objects. Detection happens on decoded string names, so escape-spelling differences that decode to the same name do not evade the contract. Follow-up regression `3351cb2e2e4b56c75457c8b9bc25d08cd845071c` makes that decoded-name boundary executable with `"a"` and `"\u0061"` in the same object. The failure is normalized to `Invalid JSON string` at the public tool boundary.
 
+Source-order recursion-boundary RED `1d92c268196d346aad957b528a261964e9bdcb4d` adds a deeply nested array whose source remains below `ANALYSIS_TEXT_MAX_CHARS`. It requires both direct handler invocation and the public execution envelope to fail with the same deterministic validation message. Under the predecessor implementation the decoder's `RecursionError` escapes the handler contract and the public envelope exposes an interpreter-specific message.
+
+Causal fix `2b76321cc2d354c04d097ec4502777d8fa4838df` includes `RecursionError` in the same formatter validation boundary that already normalizes syntax and strictness failures. The commit briefly carried an unrelated `ToolCreate.category` description edit caused while replacing the source file; repair commit `cfd553e1c0dbce72a91232e00a4080da8d492e0f` restores that unrelated text without changing the recursion fix. The resulting product delta is therefore limited to the intended exception normalization plus its tests and doctoring.
+
 No arbitrary nesting, token, number-range, retry, or timeout limit is introduced by these repairs.
 
 ## Rejected alternatives
@@ -29,14 +35,15 @@ No arbitrary nesting, token, number-range, retry, or timeout limit is introduced
 - Treating Python's permissive non-finite defaults as valid JSON was rejected because it contradicts RFC 8259 interoperability syntax.
 - String-searching for `NaN`, `Infinity`, or duplicate member names was rejected because lexical search cannot distinguish strings from tokens or correctly interpret escaping and nesting.
 - Keeping the first or last duplicate object member was rejected because either choice silently discards user input and different JSON implementations make different choices.
+- Hard-coding a new nesting depth was rejected because the product already has an input-size ceiling and RFC 8259 allows implementation limits; the minimal defect is inconsistent failure normalization at the actual interpreter boundary.
 - Moving the frontend security bump into this PR was rejected because #1623 owns manifest/lock/security-floor truth.
 - Reformatting keys or normalizing Unicode was rejected because the formatter should change presentation, not user data semantics.
 
 ## Acceptance boundary
 
-The focused contract is GREEN only when the unchanged exact head executes `backend/tests/test_json_formatter_tool.py` together with the repository's normal backend checks. Acceptance includes malformed syntax, all three non-finite constants, top-level, nested, and escape-equivalent duplicate member names, the public failed-execution envelope, Unicode preservation, and the input-size ceiling. A local parser probe can validate the Python boundary but is not a substitute for exact-head CI. Stacked-PR workflow evidence must remain bound to the actual repository, PR, base SHA, and head SHA; predecessor or pre-retarget receipts do not transfer.
+The focused contract is GREEN only when the unchanged exact head executes `backend/tests/test_json_formatter_tool.py` together with the repository's normal backend checks. Acceptance includes malformed syntax, all three non-finite constants, top-level, nested, and escape-equivalent duplicate member names, recursion-limit nesting below the existing character ceiling, the public failed-execution envelope, Unicode preservation, and the input-size ceiling. A local parser probe can validate the Python boundary but is not a substitute for exact-head CI. Stacked-PR workflow evidence must remain bound to the actual repository, PR, base SHA, and head SHA; predecessor or pre-retarget receipts do not transfer.
 
-This work does not claim complete JSON canonicalization. It preserves object insertion order for accepted objects and numeric values as parsed by Python; canonical JSON, arbitrary-precision numeric normalization, schema validation, or cryptographic signing remain separate contracts.
+This work does not claim complete JSON canonicalization. It preserves object insertion order for accepted objects and numeric values as parsed by Python; canonical JSON, arbitrary-precision numeric normalization, schema validation, cryptographic signing, and a product-defined nesting-depth SLA remain separate contracts.
 
 ## Traceability
 
@@ -49,6 +56,7 @@ This work does not claim complete JSON canonicalization. It preserves object ins
 - Parent adoption: `66439fc025ded2bc185d4a19d70bb6c6bed2a3c8`
 - Strict-number RED/fix: `1b663b12f216ca3a5e201d9aee15da1ce1308065` → `a8d4a0f157f1d540980adc933cc6038395511dbe`
 - Duplicate-member RED/fix/decoded-name edge: `83fcf7a81c436f3018886ff56cfaab130bc594ff` → `3eb383487b5aed4ffdf48fbd588c2152aea02991` → `3351cb2e2e4b56c75457c8b9bc25d08cd845071c`
+- Recursion-boundary RED/fix/unrelated-delta repair: `1d92c268196d346aad957b528a261964e9bdcb4d` → `2b76321cc2d354c04d097ec4502777d8fa4838df` → `cfd553e1c0dbce72a91232e00a4080da8d492e0f`
 
 ## References
 

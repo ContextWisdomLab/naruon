@@ -1,12 +1,10 @@
-"""Timezone-aware datetime default guard for ORM columns (naruon#1041).
+"""Timezone-aware datetime default guard for ORM columns.
 
-Python 3.12+ deprecates ``datetime.datetime.utcnow``: it returns a naive
-timestamp whose ``DeprecationWarning`` is fatal under the CI app test
-suite's ``PYTHONWARNINGS=error``. Every column default / onupdate that
-produces a ``datetime`` must therefore be timezone-aware.
-
-This guard fails when any mapped column default yields a naive datetime,
-so a future model cannot silently reintroduce the deprecation.
+Mapped datetime defaults and on-update callables must return timezone-aware
+values. SQLAlchemy normalizes callable column defaults to accept an execution
+context, so this guard evaluates the actual mapped callable and deliberately
+lets evaluation errors fail the test instead of treating them as non-datetime
+values.
 """
 
 import datetime
@@ -15,6 +13,19 @@ import pytest
 from sqlalchemy import Column, DateTime
 
 from db.models import Base
+
+
+class _NullOffsetTimezone(datetime.tzinfo):
+    """tzinfo stub that is still naive under Python's datetime contract."""
+
+    def utcoffset(self, _value):
+        return None
+
+    def dst(self, _value):
+        return None
+
+    def tzname(self, _value):
+        return "null-offset"
 
 
 def _datetime_default_callables():
@@ -26,68 +37,92 @@ def _datetime_default_callables():
                 column_default = getattr(column, kind, None)
                 if column_default is None:
                     continue
-                arg = getattr(column_default, "arg", None)
-                if callable(arg):
-                    yield mapper.local_table.name, column.name, kind, arg
+                default_callable = getattr(column_default, "arg", None)
+                if callable(default_callable):
+                    yield mapper.local_table.name, column.name, kind, default_callable
 
 
-def _call_with_context(default_callable):
-    """Evaluate a column default the way SQLAlchemy does.
+def _evaluate_mapped_default(default_callable):
+    """Evaluate a SQLAlchemy-mapped callable without swallowing its errors."""
 
-    SQLAlchemy wraps context-less callables so they accept an execution
-    context, so try the context form first and fall back to the plain
-    call form.
-    """
-    try:
-        return default_callable(None)
-    except TypeError:
-        pass
-    try:
-        return default_callable()
-    except TypeError:
-        return None
+    return default_callable(None)
 
 
-def _datetime_default_issue(table, column, kind, default_callable):
-    value = _call_with_context(default_callable)
-    if not isinstance(value, datetime.datetime):
-        return f"{table}.{column} ({kind}) returned {type(value).__name__}"
-    if value.tzinfo is None:
-        return f"{table}.{column} ({kind}) is naive"
-    return None
+def _is_datetime_timezone_aware(value: datetime.datetime) -> bool:
+    return value.tzinfo is not None and value.tzinfo.utcoffset(value) is not None
+
+
+def _invalid_datetime_default_entries(entries):
+    """Return mapped DateTime defaults that violate the timestamp contract."""
+
+    invalid_defaults: list[str] = []
+    for table, column, kind, default_callable in entries:
+        value = _evaluate_mapped_default(default_callable)
+        invalid_value = not isinstance(value, datetime.datetime)
+        if invalid_value or not _is_datetime_timezone_aware(value):
+            invalid_defaults.append(f"{table}.{column} ({kind})")
+    return invalid_defaults
 
 
 def test_datetime_column_defaults_are_timezone_aware():
-    invalid_defaults: list[str] = []
-    for table, column, kind, default_callable in _datetime_default_callables():
-        issue = _datetime_default_issue(table, column, kind, default_callable)
-        if issue:
-            invalid_defaults.append(issue)
+    invalid_defaults = _invalid_datetime_default_entries(_datetime_default_callables())
 
     assert not invalid_defaults, (
-        "datetime defaults must return timezone-aware datetime values; "
-        "under PYTHONWARNINGS=error; use "
-        "lambda: datetime.datetime.now(datetime.timezone.utc): "
+        "DateTime defaults/onupdates must return timezone-aware datetime values; "
+        "use lambda: datetime.datetime.now(datetime.timezone.utc): "
         + ", ".join(sorted(invalid_defaults))
     )
 
 
+def test_datetime_default_guard_does_not_swallow_callable_failures():
+    def broken_default(_context):
+        raise TypeError("default evaluation failed")
+
+    try:
+        _evaluate_mapped_default(broken_default)
+    except TypeError as exc:
+        assert str(exc) == "default evaluation failed"
+    else:
+        raise AssertionError("default evaluation failures must fail closed")
+
+
+def test_datetime_default_guard_excludes_non_datetime_callable_defaults():
+    guarded_columns = {
+        (table, column, kind)
+        for table, column, kind, _default_callable in _datetime_default_callables()
+    }
+
+    assert ("security_audit_events", "event_uid", "default") not in guarded_columns
+
+
+@pytest.mark.parametrize("invalid_value", ["2026-09-11T00:00:00+00:00", 1757548800, None])
+def test_datetime_default_guard_rejects_non_datetime_results(invalid_value):
+    def invalid_default(_context, value=invalid_value):
+        return value
+
+    invalid_defaults = _invalid_datetime_default_entries(
+        [("example_table", "updated_at", "default", invalid_default)]
+    )
+
+    assert invalid_defaults == ["example_table.updated_at (default)"]
+
+
+def test_timezone_awareness_rejects_tzinfo_with_null_offset():
+    value = datetime.datetime(2026, 9, 11, tzinfo=_NullOffsetTimezone())
+
+    assert not _is_datetime_timezone_aware(value)
+
+
 @pytest.mark.parametrize("invalid_value", ["not-a-date", 123, None])
-def test_datetime_default_guard_rejects_non_datetime_callable_results(invalid_value):
+def test_datetime_default_guard_rejects_column_callable_results(invalid_value):
     column = Column(
         "event_time",
         DateTime(timezone=True),
         default=lambda: invalid_value,
     )
 
-    issue = _datetime_default_issue(
-        "synthetic_events",
-        column.name,
-        "default",
-        column.default.arg,
+    invalid_defaults = _invalid_datetime_default_entries(
+        [("synthetic_events", column.name, "default", lambda _context: invalid_value)]
     )
 
-    assert issue == (
-        f"synthetic_events.event_time (default) returned "
-        f"{type(invalid_value).__name__}"
-    )
+    assert invalid_defaults == ["synthetic_events.event_time (default)"]

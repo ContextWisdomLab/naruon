@@ -35,6 +35,8 @@ ProviderWritebackDispatch = Callable[..., Awaitable[dict[str, Any]]]
 
 def _due_retry_query(current_time: datetime.datetime, batch_limit: int):
     """Build the row-locking query used to claim provider retry work."""
+    if batch_limit <= 0:
+        raise ValueError("batch_limit must be positive")
     return (
         select(ProviderWritebackRetryItem)
         .where(

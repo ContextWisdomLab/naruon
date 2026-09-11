@@ -26,3 +26,8 @@
 ## 2024-05-24 - [React Component Memoization]
 **Learning:** In React components like `WorkspaceHome`, when layout state or polling changes trigger parent re-renders, expensive child components like `EmailDetail` will also re-render unnecessarily if not memoized.
 **Action:** Always consider `React.memo` for heavy child components that rely on stable props (like IDs) when the parent component has frequent unrelated state updates.
+## 2025-02-12 - Replaced Chained Array Allocations with Bounded Loops in React Hooks
+
+**Learning:** Using chained array iteration methods like `.map().filter().slice(0, N)` inside React `useMemo` hooks is an anti-pattern when working with potentially large datasets. Each step in the chain produces an intermediate array that occupies memory and triggers garbage collection. For simple mapping and filtering where only a small number of elements are needed, this leads to unnecessary `O(N)` memory allocation and computational overhead.
+
+**Action:** Whenever a React hook transforms an array and only requires a bounded subset (e.g., the first 5 elements), replace the chained array methods (`.map().filter().slice()`) with a single bounded `for...of` loop. Allocate a target array, perform the transformation and condition checks inside the loop, push matching elements, and use an early `break` once the limit is reached. This reduces the time and space complexity to `O(1)` (relative to the bound) and prevents `O(N)` bottlenecks.

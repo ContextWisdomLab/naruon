@@ -74,6 +74,39 @@ async def test_json_formatter_duplicate_member_execute_contract_fails_closed():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "surrogate_json",
+    [
+        r'"\ud800"',
+        r'"\udc00"',
+        r'{"\ud800":"value"}',
+    ],
+)
+async def test_json_formatter_rejects_unpaired_unicode_surrogates(surrogate_json):
+    with pytest.raises(ValueError, match="Invalid JSON string"):
+        await json_formatter_handler({"json_string": surrogate_json})
+
+
+@pytest.mark.asyncio
+async def test_json_formatter_accepts_valid_unicode_surrogate_pair():
+    result = await json_formatter_handler({"json_string": r'"\ud83d\ude00"'})
+
+    assert result == {"formatted_json": '"😀"'}
+
+
+@pytest.mark.asyncio
+async def test_json_formatter_unpaired_surrogate_execute_contract_fails_closed():
+    response = await execute_tool(
+        "json_formatter",
+        ExecuteRequest(parameters={"json_string": r'"\ud800"'}),
+    )
+
+    assert response.status == "failed"
+    assert response.result is None
+    assert response.message == "Invalid JSON string"
+
+
+@pytest.mark.asyncio
 async def test_json_formatter_rejects_recursion_limit_input():
     deeply_nested = "[" * 10_000 + "0" + "]" * 10_000
     assert len(deeply_nested) <= ANALYSIS_TEXT_MAX_CHARS

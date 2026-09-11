@@ -20,7 +20,7 @@ Causal fix `a8d4a0f157f1d540980adc933cc6038395511dbe` supplies `parse_constant` 
 
 Source-order duplicate-member RED `83fcf7a81c436f3018886ff56cfaab130bc594ff` adds top-level and nested duplicate-name inputs plus the public `execute_tool` failure envelope. Under the predecessor implementation those inputs are accepted after an earlier member value is silently discarded.
 
-Causal fix `3eb383487b5aed4ffdf48fbd588c2152aea02991` supplies `object_pairs_hook` and constructs each JSON object only after checking every decoded member name for prior occurrence. Because the hook is invoked for every object, the same rule applies to nested objects. Detection happens on decoded string names, so escape-spelling differences that decode to the same name do not evade the contract. The failure is again normalized to `Invalid JSON string` at the public tool boundary.
+Causal fix `3eb383487b5aed4ffdf48fbd588c2152aea02991` supplies `object_pairs_hook` and constructs each JSON object only after checking every decoded member name for prior occurrence. Because the hook is invoked for every object, the same rule applies to nested objects. Detection happens on decoded string names, so escape-spelling differences that decode to the same name do not evade the contract. Follow-up regression `3351cb2e2e4b56c75457c8b9bc25d08cd845071c` makes that decoded-name boundary executable with `"a"` and `"\u0061"` in the same object. The failure is normalized to `Invalid JSON string` at the public tool boundary.
 
 No arbitrary nesting, token, number-range, retry, or timeout limit is introduced by these repairs.
 
@@ -34,7 +34,7 @@ No arbitrary nesting, token, number-range, retry, or timeout limit is introduced
 
 ## Acceptance boundary
 
-The focused contract is GREEN only when the unchanged exact head executes `backend/tests/test_json_formatter_tool.py` together with the repository's normal backend checks. Acceptance includes malformed syntax, all three non-finite constants, top-level and nested duplicate member names, the public failed-execution envelope, Unicode preservation, and the input-size ceiling. A local parser probe can validate the Python boundary but is not a substitute for exact-head CI. Stacked-PR workflow evidence must remain bound to the actual repository, PR, base SHA, and head SHA; predecessor or pre-retarget receipts do not transfer.
+The focused contract is GREEN only when the unchanged exact head executes `backend/tests/test_json_formatter_tool.py` together with the repository's normal backend checks. Acceptance includes malformed syntax, all three non-finite constants, top-level, nested, and escape-equivalent duplicate member names, the public failed-execution envelope, Unicode preservation, and the input-size ceiling. A local parser probe can validate the Python boundary but is not a substitute for exact-head CI. Stacked-PR workflow evidence must remain bound to the actual repository, PR, base SHA, and head SHA; predecessor or pre-retarget receipts do not transfer.
 
 This work does not claim complete JSON canonicalization. It preserves object insertion order for accepted objects and numeric values as parsed by Python; canonical JSON, arbitrary-precision numeric normalization, schema validation, or cryptographic signing remain separate contracts.
 
@@ -48,7 +48,7 @@ This work does not claim complete JSON canonicalization. It preserves object ins
 - Generated feature removal: `02b961f70d1ca75b263f04aef853633609d9380d`
 - Parent adoption: `66439fc025ded2bc185d4a19d70bb6c6bed2a3c8`
 - Strict-number RED/fix: `1b663b12f216ca3a5e201d9aee15da1ce1308065` → `a8d4a0f157f1d540980adc933cc6038395511dbe`
-- Duplicate-member RED/fix: `83fcf7a81c436f3018886ff56cfaab130bc594ff` → `3eb383487b5aed4ffdf48fbd588c2152aea02991`
+- Duplicate-member RED/fix/decoded-name edge: `83fcf7a81c436f3018886ff56cfaab130bc594ff` → `3eb383487b5aed4ffdf48fbd588c2152aea02991` → `3351cb2e2e4b56c75457c8b9bc25d08cd845071c`
 
 ## References
 

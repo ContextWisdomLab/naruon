@@ -1,5 +1,9 @@
 import datetime
-from services.calendar_sync import generate_ics_from_task, CalendarTask
+
+import pytest
+from icalendar import Calendar
+
+from services.calendar_sync import CalendarTask, generate_ics_from_task
 
 
 def test_generate_ics_from_task():
@@ -29,7 +33,57 @@ def test_generate_ics_from_task():
     assert "SUMMARY:Review Q2 Marketing Report" in ics_content
     assert "STATUS:IN-PROCESS" in ics_content
     assert "DUE:20260525T150000Z" in ics_content
+    parsed = Calendar.from_ical(ics_content)
+    vtodo = next(component for component in parsed.walk() if component.name == "VTODO")
+    assert vtodo.decoded("CREATED") == created_at
     assert "END:VTODO" in ics_content
+
+
+def test_generate_ics_from_task_serializes_created_and_dtstamp_in_utc():
+    task = CalendarTask(
+        task_uid="utc-1",
+        title="UTC timestamps",
+        status="in_progress",
+        created_at=datetime.datetime(
+            2026,
+            5,
+            23,
+            10,
+            0,
+            tzinfo=datetime.timezone(datetime.timedelta(hours=9)),
+        ),
+        updated_at=datetime.datetime(
+            2026,
+            5,
+            23,
+            11,
+            0,
+            tzinfo=datetime.timezone(datetime.timedelta(hours=-5)),
+        ),
+    )
+
+    ics_content = generate_ics_from_task(task)
+
+    assert "CREATED:20260523T010000Z" in ics_content
+    assert "DTSTAMP:20260523T160000Z" in ics_content
+
+
+@pytest.mark.parametrize("field_name", ["created_at", "updated_at"])
+def test_generate_ics_from_task_rejects_naive_change_management_time(
+    field_name: str,
+):
+    aware = datetime.datetime(2026, 5, 23, 10, 0, tzinfo=datetime.timezone.utc)
+    task_values = {
+        "task_uid": "naive-1",
+        "title": "Naive timestamp",
+        "status": "in_progress",
+        "created_at": aware,
+        "updated_at": aware,
+    }
+    task_values[field_name] = datetime.datetime(2026, 5, 23, 10, 0)
+
+    with pytest.raises(ValueError, match=f"{field_name} must be timezone-aware"):
+        generate_ics_from_task(CalendarTask(**task_values))
 
 
 def test_generate_ics_from_task_escapes_summary_text():

@@ -48,6 +48,31 @@ async def test_json_formatter_execute_contract_fails_closed(non_finite_literal):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "duplicate_json",
+    [
+        '{"id":1,"id":2}',
+        '{"outer":{"name":"first","name":"second"}}',
+    ],
+)
+async def test_json_formatter_rejects_duplicate_object_member_names(duplicate_json):
+    with pytest.raises(ValueError, match="Invalid JSON string"):
+        await json_formatter_handler({"json_string": duplicate_json})
+
+
+@pytest.mark.asyncio
+async def test_json_formatter_duplicate_member_execute_contract_fails_closed():
+    response = await execute_tool(
+        "json_formatter",
+        ExecuteRequest(parameters={"json_string": '{"id":1,"id":2}'}),
+    )
+
+    assert response.status == "failed"
+    assert response.result is None
+    assert response.message == "Invalid JSON string"
+
+
+@pytest.mark.asyncio
 async def test_json_formatter_rejects_oversized_input_before_parsing():
     oversized = " " * (ANALYSIS_TEXT_MAX_CHARS + 1)
 

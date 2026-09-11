@@ -11,12 +11,17 @@ so a future model cannot silently reintroduce the deprecation.
 
 import datetime
 
+import pytest
+from sqlalchemy import Column, DateTime
+
 from db.models import Base
 
 
 def _datetime_default_callables():
     for mapper in Base.registry.mappers:
         for column in mapper.columns:
+            if not isinstance(column.type, DateTime):
+                continue
             for kind in ("default", "onupdate"):
                 column_default = getattr(column, kind, None)
                 if column_default is None:
@@ -43,16 +48,46 @@ def _call_with_context(default_callable):
         return None
 
 
-def test_datetime_column_defaults_are_timezone_aware():
-    naive_defaults: list[str] = []
-    for table, column, kind, default_callable in _datetime_default_callables():
-        value = _call_with_context(default_callable)
-        if isinstance(value, datetime.datetime) and value.tzinfo is None:
-            naive_defaults.append(f"{table}.{column} ({kind})")
+def _datetime_default_issue(table, column, kind, default_callable):
+    value = _call_with_context(default_callable)
+    if not isinstance(value, datetime.datetime):
+        return f"{table}.{column} ({kind}) returned {type(value).__name__}"
+    if value.tzinfo is None:
+        return f"{table}.{column} ({kind}) is naive"
+    return None
 
-    assert not naive_defaults, (
-        "naive datetime defaults are deprecated (datetime.utcnow) and fatal "
+
+def test_datetime_column_defaults_are_timezone_aware():
+    invalid_defaults: list[str] = []
+    for table, column, kind, default_callable in _datetime_default_callables():
+        issue = _datetime_default_issue(table, column, kind, default_callable)
+        if issue:
+            invalid_defaults.append(issue)
+
+    assert not invalid_defaults, (
+        "datetime defaults must return timezone-aware datetime values; "
         "under PYTHONWARNINGS=error; use "
         "lambda: datetime.datetime.now(datetime.timezone.utc): "
-        + ", ".join(sorted(naive_defaults))
+        + ", ".join(sorted(invalid_defaults))
+    )
+
+
+@pytest.mark.parametrize("invalid_value", ["not-a-date", 123, None])
+def test_datetime_default_guard_rejects_non_datetime_callable_results(invalid_value):
+    column = Column(
+        "event_time",
+        DateTime(timezone=True),
+        default=lambda: invalid_value,
+    )
+
+    issue = _datetime_default_issue(
+        "synthetic_events",
+        column.name,
+        "default",
+        column.default.arg,
+    )
+
+    assert issue == (
+        f"synthetic_events.event_time (default) returned "
+        f"{type(invalid_value).__name__}"
     )

@@ -577,6 +577,32 @@ registry.register(
 )
 
 
+async def json_formatter_handler(params: Dict[str, Any]) -> Dict[str, str]:
+    text = params.get("json_string", "")
+    if len(text) > ANALYSIS_TEXT_MAX_CHARS:
+        raise ValueError(
+            f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"
+        )
+    try:
+        parsed = json.loads(text)
+        formatted = json.dumps(parsed, indent=2, ensure_ascii=False)
+        return {"formatted_json": formatted}
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON string: {e}")
+
+
+registry.register(
+    ToolInfo(
+        code="json_formatter",
+        name="JSON 포매터 및 검증기 (JSON Formatter & Validator)",
+        description="주어진 JSON 문자열을 보기 좋게 포매팅하거나 유효성을 검사합니다.",
+        category="유틸리티",
+        parameters={"json_string": "string"},
+    ),
+    json_formatter_handler,
+)
+
+
 async def base64_encoder_handler(params: Dict[str, Any]) -> Dict[str, str]:
     text = params.get("text", "")
     return {"encoded_text": base64.b64encode(text.encode("utf-8")).decode("utf-8")}

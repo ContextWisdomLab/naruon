@@ -946,7 +946,7 @@ async def _import_single_eml(
         status="imported",
         reason_code=(
             "dedupe_review_required"
-            if parsed.get("date_evidence") != "parsed"
+            if fingerprint is None
             else None
         ),
         attachment_count=attachment_count,

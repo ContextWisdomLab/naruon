@@ -278,7 +278,6 @@ export default function NetworkGraph() {
   }, [nodes, edges, nodeMap, edgeMap]);
 
   const nodeLabels = useMemo(() => {
-    // Bolt Optimization: Replace chained array allocations with bounded loops to prevent O(N) memory overhead
     const result: string[] = [];
     for (const node of nodes) {
       const label = String(node.label ?? node.id);
@@ -292,7 +291,6 @@ export default function NetworkGraph() {
 
   const firstEdge = edges[0] ?? null;
   const relationshipOptions = useMemo(() => {
-    // Bolt Optimization: Replace chained array allocations with bounded loops to prevent O(N) memory overhead
     const result = [];
     let index = 0;
     for (const edge of edgeMap.values()) {
@@ -308,7 +306,6 @@ export default function NetworkGraph() {
   }, [edgeMap, nodeMap]);
 
   const nodeOptions = useMemo(() => {
-    // Bolt Optimization: Replace chained array allocations with bounded loops to prevent O(N) memory overhead
     const result = [];
     for (const node of nodeInstanceMap.values()) {
       result.push({

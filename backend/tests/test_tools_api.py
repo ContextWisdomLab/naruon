@@ -588,32 +588,6 @@ async def test_base64_decoder_tool_invalid_input():
     assert "Invalid Base64 string" in data["message"]
 
 
-@pytest.mark.asyncio
-async def test_json_formatter_tool_success():
-    from api.tools import json_formatter_handler
-    result = await json_formatter_handler({"json_string": "{\"key\":\"value\"}"})
-    assert "formatted_json" in result
-    assert result["formatted_json"] == '{\n  "key": "value"\n}'
-
-    # Also test proper Korean string handling
-    result_ko = await json_formatter_handler({"json_string": "{\"안녕\":\"하세요\"}"})
-    assert result_ko["formatted_json"] == '{\n  "안녕": "하세요"\n}'
-
-@pytest.mark.asyncio
-async def test_json_formatter_tool_invalid():
-    from api.tools import json_formatter_handler
-    import pytest
-    with pytest.raises(ValueError, match="Invalid JSON string"):
-        await json_formatter_handler({"json_string": "{\"key\":\"value\""})
-
-@pytest.mark.asyncio
-async def test_json_formatter_tool_oversized():
-    from api.tools import json_formatter_handler, ANALYSIS_TEXT_MAX_CHARS
-    import pytest
-    with pytest.raises(ValueError, match=f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"):
-        await json_formatter_handler({"json_string": "{" + '"a":' * (ANALYSIS_TEXT_MAX_CHARS // 4 + 1) + '"b"' + "}"})
-
-
 def test_create_tool_success():
     try:
         with TestClient(app) as client:

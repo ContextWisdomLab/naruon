@@ -5,6 +5,7 @@ import pytest
 
 from db.models import ProviderWritebackRetryItem
 from services.provider_writeback_retry_service import (
+    ProviderWritebackRetryWorker,
     is_retryable_provider_writeback_failure,
     _due_retry_query,
     process_due_provider_writeback_retries,
@@ -159,6 +160,25 @@ async def test_schedule_provider_writeback_retry_ignores_non_retryable_failures(
     assert db.commit_count == 0
 
 
+@pytest.mark.asyncio
+async def test_schedule_provider_writeback_retry_rejects_negative_delay():
+    db = FakeRetrySession()
+
+    with pytest.raises(ValueError, match="retry_delay_seconds must not be negative"):
+        await schedule_provider_writeback_retry(
+            db,
+            organization_id="org-acme",
+            workspace_id="workspace-org-acme",
+            command={"action": "write_webdav", "source_id": "webdav-primary"},
+            error_code="runner_not_connected",
+            runner_request_id="runner_req_1",
+            retry_delay_seconds=-1,
+        )
+
+    assert db.added_items == []
+    assert db.commit_count == 0
+
+
 def test_retryable_provider_writeback_failure_is_limited_to_writeback_transients():
     assert is_retryable_provider_writeback_failure(
         {"action": "write_caldav"}, "runner_response_timeout"
@@ -169,6 +189,30 @@ def test_retryable_provider_writeback_failure_is_limited_to_writeback_transients
     assert not is_retryable_provider_writeback_failure(
         {"action": "write_webdav"}, "adapter_not_configured"
     )
+
+
+@pytest.mark.parametrize("interval_seconds", [0, -1])
+def test_provider_retry_worker_rejects_nonpositive_interval(interval_seconds):
+    async def dispatch_command(*args, **kwargs):
+        return {"provider_write_executed": True}
+
+    with pytest.raises(ValueError, match="interval_seconds must be positive"):
+        ProviderWritebackRetryWorker(
+            dispatch_command,
+            interval_seconds=interval_seconds,
+        )
+
+
+@pytest.mark.parametrize("max_attempts", [0, -1])
+def test_provider_retry_worker_rejects_nonpositive_max_attempts(max_attempts):
+    async def dispatch_command(*args, **kwargs):
+        return {"provider_write_executed": True}
+
+    with pytest.raises(ValueError, match="max_attempts must be positive"):
+        ProviderWritebackRetryWorker(
+            dispatch_command,
+            max_attempts=max_attempts,
+        )
 
 
 @pytest.mark.asyncio
@@ -292,6 +336,37 @@ def test_due_retry_query_rejects_nonpositive_batch_limits(batch_limit):
 
     with pytest.raises(ValueError, match="batch_limit must be positive"):
         _due_retry_query(now, batch_limit)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("retry_delay_seconds", "max_attempts", "error_message"),
+    [
+        (-1, 3, "retry_delay_seconds must not be negative"),
+        (60, 0, "max_attempts must be positive"),
+        (60, -1, "max_attempts must be positive"),
+    ],
+)
+async def test_process_due_provider_writeback_retries_rejects_invalid_retry_policy(
+    retry_delay_seconds,
+    max_attempts,
+    error_message,
+):
+    db = FakeRetrySession([_retry_item()])
+
+    async def dispatch_command(*args, **kwargs):
+        raise AssertionError("invalid retry policy must fail before dispatch")
+
+    with pytest.raises(ValueError, match=error_message):
+        await process_due_provider_writeback_retries(
+            db,
+            dispatch_command,
+            retry_delay_seconds=retry_delay_seconds,
+            max_attempts=max_attempts,
+        )
+
+    assert db.executed_query is None
+    assert db.commit_count == 0
 
 
 @pytest.mark.asyncio

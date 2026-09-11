@@ -55,17 +55,21 @@ class ProviderWritebackRetryWorker:
         dispatch_command: ProviderWritebackDispatch,
         *,
         interval_seconds: int = 60,
+        retry_delay_seconds: int = 300,
         batch_limit: int = 25,
         max_attempts: int = 3,
     ):
         if interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
+        if retry_delay_seconds < 0:
+            raise ValueError("retry_delay_seconds must not be negative")
         if batch_limit <= 0:
             raise ValueError("batch_limit must be positive")
         if max_attempts <= 0:
             raise ValueError("max_attempts must be positive")
         self.dispatch_command = dispatch_command
         self.interval_seconds = interval_seconds
+        self.retry_delay_seconds = retry_delay_seconds
         self.batch_limit = batch_limit
         self.max_attempts = max_attempts
         self._task = None
@@ -114,7 +118,7 @@ class ProviderWritebackRetryWorker:
                 db,
                 self.dispatch_command,
                 batch_limit=self.batch_limit,
-                retry_delay_seconds=self.interval_seconds,
+                retry_delay_seconds=self.retry_delay_seconds,
                 max_attempts=self.max_attempts,
             )
 

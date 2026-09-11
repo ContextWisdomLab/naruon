@@ -4,11 +4,11 @@
 
 `process_due_provider_writeback_retries()` previously selected due `pending` rows with an ordered `SELECT ... LIMIT` but without a row-locking claim. Two worker transactions could therefore observe the same retry row before either committed and both could execute the same provider writeback.
 
-A later boundary review found a separate fail-closed defect in the same query builder. PostgreSQL treats a negative `LIMIT` as no limit, so accepting `batch_limit=-1` would silently remove the intended work bound. Zero also has no useful worker meaning. Source-order RED `58bf1c651b061cc8b3270ec0a34331e4c390256a` requires `_due_retry_query()` to reject both cases; causal fix `da0073d570beed05e0f530914b45fa08a787675f` raises `ValueError` before a SQL statement can be executed with a nonpositive limit.
+A later boundary review found a separate configuration-contract defect in the same query builder. `batch_limit=0` silently produces no work, while PostgreSQL rejects a negative `LIMIT` at execution. Neither value is a valid retry-worker batch size, and allowing either pushes a configuration error into silent disablement or a recurring database error instead of rejecting it at the Naruon boundary. Source-order RED `58bf1c651b061cc8b3270ec0a34331e4c390256a` requires `_due_retry_query()` to reject both cases; causal fix `da0073d570beed05e0f530914b45fa08a787675f` raises `ValueError` before query execution.
 
 ## Contract
 
-The due-work query uses `FOR UPDATE SKIP LOCKED` with due-time ordering and a strictly positive batch limit. The lock is held by the worker transaction while it processes the selected item; another PostgreSQL worker must skip that row rather than wait for it or dispatch it concurrently. Invalid nonpositive batch configuration fails closed instead of degrading into an unbounded PostgreSQL query.
+The due-work query uses `FOR UPDATE SKIP LOCKED` with due-time ordering and a strictly positive batch limit. The lock is held by the worker transaction while it processes the selected item; another PostgreSQL worker must skip that row rather than wait for it or dispatch it concurrently. Invalid nonpositive batch configuration fails closed at the application boundary instead of becoming a silent zero-work worker or a database execution error.
 
 This contract is deliberately narrower than exactly-once delivery. A process failure after a remote provider has accepted a write but before the local transaction commits can still require provider-level idempotency or conditional-write semantics. This change prevents concurrent live workers from claiming the same row; it does not claim to solve crash-after-side-effect replay.
 
@@ -26,9 +26,7 @@ The original direct-`develop` retry repair inherited unrelated frontend dependen
 
 PostgreSQL Global Development Group. (2026). *PostgreSQL 18 documentation: SELECT — The locking clause*. PostgreSQL. https://www.postgresql.org/docs/18/sql-select.html
 
-PostgreSQL documents `SKIP LOCKED` as skipping rows that cannot be locked immediately and specifically identifies queue-like tables with multiple consumers as an appropriate use because the resulting view is intentionally inconsistent for general-purpose reads.
-
-PostgreSQL also documents `LIMIT ALL` as equivalent to omitting the limit and accepts negative limits as no limit. Naruon therefore treats a nonpositive retry batch limit as invalid configuration rather than passing it to PostgreSQL.
+PostgreSQL documents `SKIP LOCKED` as skipping rows that cannot be locked immediately and specifically identifies queue-like tables with multiple consumers as an appropriate use because the resulting view is intentionally inconsistent for general-purpose reads. PostgreSQL's executor rejects a negative LIMIT (`LIMIT must not be negative`); `LIMIT 0` is valid but returns no rows. Naruon therefore treats both values as invalid retry-worker configuration and rejects them before database execution.
 
 ## Acceptance boundary
 

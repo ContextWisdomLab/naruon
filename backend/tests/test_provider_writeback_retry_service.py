@@ -24,7 +24,13 @@ class FakeRetrySession:
 
     async def execute(self, query):
         self.executed_query = query
-        return FakeRetryResult(self.due_items)
+        pending_items = [
+            item for item in self.due_items if item.retry_state == "pending"
+        ]
+        limit = query._limit_clause.value if query._limit_clause is not None else None
+        if limit is not None:
+            pending_items = pending_items[:limit]
+        return FakeRetryResult(pending_items)
 
     async def commit(self):
         self.commit_count += 1
@@ -231,6 +237,31 @@ async def test_process_due_provider_writeback_retries_claims_rows_with_skip_lock
 
     assert db.executed_query is not None
     assert db.executed_query._for_update_arg.skip_locked is True
+
+
+@pytest.mark.asyncio
+async def test_process_due_provider_writeback_retries_commits_each_claim_before_next_dispatch():
+    now = datetime.datetime(2026, 6, 15, 12, 0, tzinfo=datetime.timezone.utc)
+    first_item = _retry_item(attempt_count=1, due_at=now)
+    second_item = _retry_item(attempt_count=2, due_at=now + datetime.timedelta(seconds=1))
+    db = FakeRetrySession([first_item, second_item])
+    commit_counts_at_dispatch: list[int] = []
+
+    async def dispatch_command(*args, **kwargs):
+        commit_counts_at_dispatch.append(db.commit_count)
+        return {"provider_write_executed": True}
+
+    summary = await process_due_provider_writeback_retries(
+        db,
+        dispatch_command,
+        now=now + datetime.timedelta(seconds=2),
+        batch_limit=2,
+        max_attempts=4,
+    )
+
+    assert summary["processed"] == 2
+    assert commit_counts_at_dispatch == [0, 1]
+    assert db.commit_count == 2
 
 
 def test_due_retry_query_preserves_claim_order_and_batch_limit():

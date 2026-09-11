@@ -46,6 +46,11 @@ def _sanitize_display_text(text: str) -> str:
 # that force a quoted-string, and the characters escaped inside one.
 _ADDRESS_SPECIALS_RE = re.compile(r'[()<>@,;:\\".\[\]]')
 _ADDRESS_QUOTED_ESCAPE_RE = re.compile(r'["\\]')
+# RFC 5322 date-time always carries a zone. The obsolete grammar also admits
+# alphabetic zones; unknown ones have the same comparison semantics as -0000.
+_RFC5322_TRAILING_ZONE_RE = re.compile(
+    r"(?:[+-]\d{4}|[A-Za-z]{1,5})(?:\s*\([^)]*\))?\s*$"
+)
 
 
 def _format_display_address(display_name: str, address: str) -> str:
@@ -169,13 +174,14 @@ def _extract_date(msg: Message) -> tuple[datetime.datetime, str]:
     if not parsed_date:
         parsed_date = datetime.datetime.now(datetime.timezone.utc)
     elif parsed_date.tzinfo is None:
-        # RFC 5322 section 3.3: a "-0000" zone means the time zone is unknown,
-        # for which parsedate_to_datetime returns a naive datetime. Every other
-        # branch here yields a timezone-aware datetime, and mixing naive with
-        # aware datetimes raises TypeError on comparison/sorting and misbinds the
-        # instant when stored in a timestamptz column. Treat the unknown zone as
-        # UTC so the returned value is always timezone-aware.
-        parsed_date = parsed_date.replace(tzinfo=datetime.timezone.utc)
+        # parsedate_to_datetime returns naive values both for RFC 5322 -0000 /
+        # unknown obsolete zones and for non-conforming Date values that omit a
+        # zone entirely. Only the former carries a standards-defined instant.
+        if _RFC5322_TRAILING_ZONE_RE.search(str(date_header)):
+            parsed_date = parsed_date.replace(tzinfo=datetime.timezone.utc)
+        else:
+            evidence = "invalid"
+            parsed_date = datetime.datetime.now(datetime.timezone.utc)
     return parsed_date, evidence
 
 

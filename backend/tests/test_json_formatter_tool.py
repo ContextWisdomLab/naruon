@@ -1,6 +1,12 @@
 import pytest
 
-from api.tools import ANALYSIS_TEXT_MAX_CHARS, json_formatter_handler, registry
+from api.tools import (
+    ANALYSIS_TEXT_MAX_CHARS,
+    ExecuteRequest,
+    execute_tool,
+    json_formatter_handler,
+    registry,
+)
 
 
 @pytest.mark.asyncio
@@ -26,6 +32,19 @@ async def test_json_formatter_rejects_invalid_json_syntax():
 async def test_json_formatter_rejects_non_finite_json_numbers(non_finite_literal):
     with pytest.raises(ValueError, match="Invalid JSON string"):
         await json_formatter_handler({"json_string": non_finite_literal})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("non_finite_literal", ["NaN", "Infinity", "-Infinity"])
+async def test_json_formatter_execute_contract_fails_closed(non_finite_literal):
+    response = await execute_tool(
+        "json_formatter",
+        ExecuteRequest(parameters={"json_string": non_finite_literal}),
+    )
+
+    assert response.status == "failed"
+    assert response.result is None
+    assert response.message == "Invalid JSON string"
 
 
 @pytest.mark.asyncio

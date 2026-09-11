@@ -4,14 +4,37 @@ from services.contact_data_redactor import DETECTOR_VERSION, redact_contact_data
 
 
 def test_redacts_email_and_korean_phone_with_output_spans():
-    result = redact_contact_data("문의: user@example.com, 010-1234-5678")
+    source = "문의: user@example.com, 010-1234-5678"
+    result = redact_contact_data(source)
 
     assert result.redacted_text == "문의: [REDACTED_EMAIL], [REDACTED_PHONE]"
     assert result.match_counts == {"email": 1, "phone": 1}
     assert [match.data_class for match in result.matches] == ["email", "phone"]
     assert all(match.detector_version == DETECTOR_VERSION for match in result.matches)
     for match in result.matches:
+        assert source[match.source_start : match.source_end] not in result.redacted_text
         assert result.redacted_text[match.replacement_start : match.replacement_end].startswith("[REDACTED_")
+
+
+def test_spans_round_trip_with_unicode_prefix_and_multiple_placeholders():
+    source = "안내 📬 first@example.com 및 +82 10 1234 5678"
+    result = redact_contact_data(source, placeholders=True)
+
+    assert [
+        source[match.source_start : match.source_end] for match in result.matches
+    ] == ["first@example.com", "+82 10 1234 5678"]
+    assert [
+        result.redacted_text[match.replacement_start : match.replacement_end]
+        for match in result.matches
+    ] == ["[EMAIL_1]", "[PHONE_1]"]
+    assert result.redacted_text == "안내 📬 [EMAIL_1] 및 [PHONE_1]"
+
+
+def test_overlapping_phone_candidate_does_not_consume_email_like_suffix():
+    result = redact_contact_data("contact 01012345678@example.com")
+
+    assert [match.data_class for match in result.matches] == ["phone"]
+    assert result.redacted_text == "contact [REDACTED_PHONE]@example.com"
 
 
 def test_placeholders_are_deterministic_and_do_not_expose_values():

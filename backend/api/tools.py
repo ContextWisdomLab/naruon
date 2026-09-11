@@ -577,6 +577,11 @@ registry.register(
 )
 
 
+def _reject_non_finite_json_constant(value: str) -> None:
+    """Reject Python's non-standard JSON number extensions at the parser boundary."""
+    raise ValueError(f"non-finite JSON number is not permitted: {value}")
+
+
 async def json_formatter_handler(params: Dict[str, Any]) -> Dict[str, str]:
     text = params.get("json_string", "")
     if len(text) > ANALYSIS_TEXT_MAX_CHARS:
@@ -584,11 +589,16 @@ async def json_formatter_handler(params: Dict[str, Any]) -> Dict[str, str]:
             f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"
         )
     try:
-        parsed = json.loads(text)
-        formatted = json.dumps(parsed, indent=2, ensure_ascii=False)
-        return {"formatted_json": formatted}
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON string: {e}")
+        parsed = json.loads(text, parse_constant=_reject_non_finite_json_constant)
+        formatted = json.dumps(
+            parsed,
+            indent=2,
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError("Invalid JSON string") from exc
+    return {"formatted_json": formatted}
 
 
 registry.register(

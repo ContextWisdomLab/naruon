@@ -75,6 +75,7 @@ def _validate_dav_raw_request_path(request: Request, decoded_path: str) -> None:
 
 def _normalize_dav_authorization_path(path: str) -> str:
     """Normalize the path value after ASGI routing has already decoded the target."""
+    source_has_leading_slash = path.startswith("/")
     normalized_path = path.replace("\\", "/")
     if "\ufffd" in normalized_path or any(
         0xD800 <= ord(character) <= 0xDFFF for character in normalized_path
@@ -82,7 +83,14 @@ def _normalize_dav_authorization_path(path: str) -> str:
         raise HTTPException(status_code=400, detail="DAV path contains invalid Unicode")
     if any(unicode_category(character) == "Cc" for character in normalized_path):
         raise HTTPException(status_code=400, detail="DAV path contains control characters")
-    if normalized_path.startswith("/") or "//" in normalized_path:
+    if normalized_path.startswith("/") and not source_has_leading_slash:
+        raise HTTPException(
+            status_code=400,
+            detail="DAV path contains ambiguous empty segments",
+        )
+    path_segments = normalized_path.split("/")
+    has_traversal_segment = any(segment in {".", ".."} for segment in path_segments)
+    if "//" in normalized_path and not has_traversal_segment:
         raise HTTPException(
             status_code=400,
             detail="DAV path contains ambiguous empty segments",
@@ -416,6 +424,11 @@ async def dav_handler(
     ETag/If-Match enforcement are available through signed writeback intents.
     """
     _validate_dav_raw_request_path(request, path)
+    if path.startswith("/"):
+        raise HTTPException(
+            status_code=400,
+            detail="DAV path contains ambiguous empty segments",
+        )
     canonical_path = _normalize_dav_authorization_path(path)
     _ensure_dav_owner_scope(canonical_path, auth_context)
     safe_path = repr(canonical_path)[1:-1]

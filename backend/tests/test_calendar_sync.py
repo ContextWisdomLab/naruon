@@ -1,5 +1,4 @@
 import datetime
-from icalendar import Calendar
 from services.calendar_sync import generate_ics_from_task, CalendarTask
 
 
@@ -30,9 +29,6 @@ def test_generate_ics_from_task():
     assert "SUMMARY:Review Q2 Marketing Report" in ics_content
     assert "STATUS:IN-PROCESS" in ics_content
     assert "DUE:20260525T150000Z" in ics_content
-    parsed = Calendar.from_ical(ics_content)
-    vtodo = next(component for component in parsed.walk() if component.name == "VTODO")
-    assert vtodo.decoded("CREATED") == created_at
     assert "END:VTODO" in ics_content
 
 

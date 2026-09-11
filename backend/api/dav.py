@@ -82,6 +82,11 @@ def _normalize_dav_authorization_path(path: str) -> str:
         raise HTTPException(status_code=400, detail="DAV path contains invalid Unicode")
     if any(unicode_category(character) == "Cc" for character in normalized_path):
         raise HTTPException(status_code=400, detail="DAV path contains control characters")
+    if normalized_path.startswith("/") or "//" in normalized_path:
+        raise HTTPException(
+            status_code=400,
+            detail="DAV path contains ambiguous empty segments",
+        )
     return normalized_path
 
 

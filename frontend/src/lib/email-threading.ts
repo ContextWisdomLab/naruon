@@ -78,7 +78,7 @@ export function buildReplyPayload(
   const to = email.reply_to?.trim()
     ? extractMailbox(email.reply_to)
     : extractMailbox(email.sender);
-  const subject = email.subject && /^re:/i.test(email.subject)
+  const subject = email.subject?.startsWith("Re:")
     ? email.subject
     : `Re: ${email.subject || ""}`;
   const references = buildReferences(email);

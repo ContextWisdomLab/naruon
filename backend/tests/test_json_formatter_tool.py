@@ -197,3 +197,30 @@ async def test_json_formatter_rejects_oversized_input_before_parsing():
         match=f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters",
     ):
         await json_formatter_handler({"json_string": oversized})
+
+
+@pytest.mark.asyncio
+async def test_json_formatter_rejects_pretty_output_amplification_beyond_ceiling():
+    source = "[" * 100 + ",".join(["0"] * 600) + "]" * 100
+    assert len(source) < ANALYSIS_TEXT_MAX_CHARS
+
+    with pytest.raises(
+        ValueError,
+        match=f"Formatted JSON must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters",
+    ):
+        await json_formatter_handler({"json_string": source})
+
+
+@pytest.mark.asyncio
+async def test_json_formatter_output_amplification_fails_closed_at_public_boundary():
+    source = "[" * 100 + ",".join(["0"] * 600) + "]" * 100
+    response = await execute_tool(
+        "json_formatter",
+        ExecuteRequest(parameters={"json_string": source}),
+    )
+
+    assert response.status == "failed"
+    assert response.result is None
+    assert response.message == (
+        f"Formatted JSON must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"
+    )

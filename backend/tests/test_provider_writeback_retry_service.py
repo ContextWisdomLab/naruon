@@ -242,6 +242,14 @@ def test_due_retry_query_preserves_claim_order_and_batch_limit():
     assert query._limit_clause.value == 7
 
 
+@pytest.mark.parametrize("batch_limit", [0, -1])
+def test_due_retry_query_rejects_nonpositive_batch_limits(batch_limit):
+    now = datetime.datetime(2026, 6, 15, 12, 0, tzinfo=datetime.timezone.utc)
+
+    with pytest.raises(ValueError, match="batch_limit must be positive"):
+        _due_retry_query(now, batch_limit)
+
+
 @pytest.mark.asyncio
 async def test_process_due_provider_writeback_retries_reschedules_transient_failure():
     now = datetime.datetime(2026, 6, 15, 12, 0, tzinfo=datetime.timezone.utc)

@@ -62,6 +62,27 @@ def test_propfind_propagates_framework_decoded_backslashes_to_project_routing(
     assert "<D:displayname>demo</D:displayname>" in response.text
 
 
+@pytest.mark.parametrize(
+    "request_path",
+    [
+        "/dav/user123//projects",
+        "/dav/user123/projects//demo",
+        "/dav/user123/projects//",
+    ],
+)
+def test_dav_rejects_ambiguous_empty_path_segments(
+    dev_auth_dependency_overrides,
+    request_path: str,
+) -> None:
+    """Distinct URI empty segments must not collapse onto canonical DAV resources."""
+
+    with TestClient(app) as client:
+        response = client.request("OPTIONS", request_path, headers=AUTH_HEADERS)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "DAV path contains ambiguous empty segments"
+
+
 def test_dav_raw_path_enforces_explicit_8192_octet_resource_boundary() -> None:
     """The wire-path validator must bound work while supporting RFC 9110's minimum."""
 

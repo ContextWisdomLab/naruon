@@ -19,6 +19,9 @@ The fallback instant is not presented as source metadata evidence.
 
 - Source-order RED `05e35827ca91a15c21c2f6e3be2498e5a3091fcc` adds route-independent parser/fingerprint regressions. The zone-less example must produce `date_evidence=invalid` and no strong fingerprint, while `-0000` must remain parsed and UTC-comparable.
 - Causal production fix `8ed225a941defc985aa54bbe91e359abc1d5654f` distinguishes a trailing RFC 5322/obsolete zone token before assigning UTC to a naive parsed value. No filename-date promotion, Message-ID policy, persistence schema, or unrelated parser behavior is changed.
+- Independent review on exact `538f4334ae43c5bb97e2fb76c4e2a9556890c530` found that a parsed Date alone did not guarantee complete strong-fingerprint evidence: blank sender, subject, recipients, or body already caused `_email_fingerprint()` to return `None`, but the import result only requested dedupe review when `date_evidence` was not `parsed`.
+- Source-order RED `c278b1a7e5ae2b404aaab86046da52169090e30b` adds a parsed-Date import with a blank required fingerprint field and requires `dedupe_review_required`. The same focused contract also requires both provenance migration columns to remain explicitly nullable because missing evidence is a valid persisted state.
+- Causal production fix `a6ad38a76c8c5544eb313a485e78c1c4c8310189` derives the review outcome from the already-computed fingerprint: every imported item whose strong metadata fingerprint is unavailable is surfaced for review, while valid fingerprints keep the existing result behavior. No Date parsing semantics, Message-ID fallback identity, persistence schema, or duplicate lookup contract is broadened.
 
 Hosted evidence must be tied to the post-retarget exact base/head; predecessor direct-`develop` results and pre-retarget workflow generations are not acceptance evidence for this child.
 

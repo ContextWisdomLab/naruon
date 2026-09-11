@@ -107,6 +107,66 @@ async def test_json_formatter_unpaired_surrogate_execute_contract_fails_closed()
 
 
 @pytest.mark.asyncio
+async def test_json_formatter_preserves_exact_number_lexemes():
+    source = (
+        '{"precise":0.123456789012345678901234567890,'
+        '"tiny":1e-400,"negative_zero":-0,'
+        '"large":12345678901234567890.123456789}'
+    )
+
+    result = await json_formatter_handler({"json_string": source})
+
+    assert result == {
+        "formatted_json": (
+            "{\n"
+            '  "precise": 0.123456789012345678901234567890,\n'
+            '  "tiny": 1e-400,\n'
+            '  "negative_zero": -0,\n'
+            '  "large": 12345678901234567890.123456789\n'
+            "}"
+        )
+    }
+
+
+@pytest.mark.asyncio
+async def test_json_formatter_exact_numbers_survive_public_execution_boundary():
+    source = '{"value":1.234567890123456789e+100}'
+
+    response = await execute_tool(
+        "json_formatter",
+        ExecuteRequest(parameters={"json_string": source}),
+    )
+
+    assert response.status == "success"
+    assert response.result == {
+        "formatted_json": '{\n  "value": 1.234567890123456789e+100\n}'
+    }
+
+
+@pytest.mark.asyncio
+async def test_json_formatter_preserves_standard_scalar_and_empty_container_types():
+    source = '{"values":[true,false,null,1,1.25],"object":{},"array":[]}'
+
+    result = await json_formatter_handler({"json_string": source})
+
+    assert result == {
+        "formatted_json": (
+            "{\n"
+            '  "values": [\n'
+            "    true,\n"
+            "    false,\n"
+            "    null,\n"
+            "    1,\n"
+            "    1.25\n"
+            "  ],\n"
+            '  "object": {},\n'
+            '  "array": []\n'
+            "}"
+        )
+    }
+
+
+@pytest.mark.asyncio
 async def test_json_formatter_rejects_recursion_limit_input():
     deeply_nested = "[" * 10_000 + "0" + "]" * 10_000
     assert len(deeply_nested) <= ANALYSIS_TEXT_MAX_CHARS

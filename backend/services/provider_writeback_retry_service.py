@@ -58,6 +58,12 @@ class ProviderWritebackRetryWorker:
         batch_limit: int = 25,
         max_attempts: int = 3,
     ):
+        if interval_seconds <= 0:
+            raise ValueError("interval_seconds must be positive")
+        if batch_limit <= 0:
+            raise ValueError("batch_limit must be positive")
+        if max_attempts <= 0:
+            raise ValueError("max_attempts must be positive")
         self.dispatch_command = dispatch_command
         self.interval_seconds = interval_seconds
         self.batch_limit = batch_limit
@@ -137,6 +143,8 @@ async def schedule_provider_writeback_retry(
 ) -> str | None:
     if not is_retryable_provider_writeback_failure(command, error_code):
         return None
+    if retry_delay_seconds < 0:
+        raise ValueError("retry_delay_seconds must not be negative")
 
     now = datetime.datetime.now(datetime.timezone.utc)
     retry_item = ProviderWritebackRetryItem(
@@ -193,6 +201,10 @@ async def process_due_provider_writeback_retries(
 ) -> dict[str, int]:
     if batch_limit <= 0:
         raise ValueError("batch_limit must be positive")
+    if retry_delay_seconds < 0:
+        raise ValueError("retry_delay_seconds must not be negative")
+    if max_attempts <= 0:
+        raise ValueError("max_attempts must be positive")
 
     current_time = now or datetime.datetime.now(datetime.timezone.utc)
     summary = {key: 0 for key in PROVIDER_WRITEBACK_RETRY_SUMMARY_KEYS}

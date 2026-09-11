@@ -93,7 +93,7 @@ class ToolCreate(BaseModel):
     code: str = Field(..., description="도구의 고유 식별 코드")
     name: str = Field(..., description="도구의 이름")
     description: str = Field(..., description="도구에 대한 상세 설명")
-    category: str = Field(..., description="도구의 분류 (예: 이메일, 일정, 분석 등)")
+    category: str = Field(..., description="도구의 분류 (예: 이메일, 일정 등)")
     parameters: Optional[Dict[str, Any]] = Field(
         default=None, description="도구 실행에 필요한 파라미터 스키마"
     )
@@ -614,7 +614,7 @@ async def json_formatter_handler(params: Dict[str, Any]) -> Dict[str, str]:
             ensure_ascii=False,
             allow_nan=False,
         )
-    except (json.JSONDecodeError, ValueError) as exc:
+    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise ValueError("Invalid JSON string") from exc
     return {"formatted_json": formatted}
 

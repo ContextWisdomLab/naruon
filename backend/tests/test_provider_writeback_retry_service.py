@@ -6,6 +6,7 @@ import pytest
 from db.models import ProviderWritebackRetryItem
 from services.provider_writeback_retry_service import (
     is_retryable_provider_writeback_failure,
+    _due_retry_query,
     process_due_provider_writeback_retries,
     schedule_provider_writeback_retry,
 )
@@ -16,11 +17,13 @@ class FakeRetrySession:
         self.added_items: list[ProviderWritebackRetryItem] = []
         self.due_items = list(due_items or [])
         self.commit_count = 0
+        self.executed_query = None
 
     def add(self, item):
         self.added_items.append(item)
 
     async def execute(self, query):
+        self.executed_query = query
         return FakeRetryResult(self.due_items)
 
     async def commit(self):
@@ -209,6 +212,34 @@ async def test_process_due_provider_writeback_retries_marks_successful_retry():
             "schedule_retry": False,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_process_due_provider_writeback_retries_claims_rows_with_skip_locked():
+    now = datetime.datetime(2026, 6, 15, 12, 0, tzinfo=datetime.timezone.utc)
+    retry_item = _retry_item(due_at=now)
+    db = FakeRetrySession([retry_item])
+
+    async def dispatch_command(*args, **kwargs):
+        return {"provider_write_executed": True}
+
+    await process_due_provider_writeback_retries(
+        db,
+        dispatch_command,
+        now=now,
+    )
+
+    assert db.executed_query is not None
+    assert db.executed_query._for_update_arg.skip_locked is True
+
+
+def test_due_retry_query_preserves_claim_order_and_batch_limit():
+    now = datetime.datetime(2026, 6, 15, 12, 0, tzinfo=datetime.timezone.utc)
+
+    query = _due_retry_query(now, 7)
+
+    assert query._for_update_arg.skip_locked is True
+    assert query._limit_clause.value == 7
 
 
 @pytest.mark.asyncio

@@ -582,6 +582,20 @@ def _reject_non_finite_json_constant(value: str) -> None:
     raise ValueError(f"non-finite JSON number is not permitted: {value}")
 
 
+def _reject_duplicate_json_object_pairs(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    """Reject duplicate member names before Python can silently discard values."""
+    parsed: dict[str, Any] = {}
+    for name, value in pairs:
+        if name in parsed:
+            raise ValueError(
+                f"duplicate JSON object member name is not permitted: {name}"
+            )
+        parsed[name] = value
+    return parsed
+
+
 async def json_formatter_handler(params: Dict[str, Any]) -> Dict[str, str]:
     text = params.get("json_string", "")
     if len(text) > ANALYSIS_TEXT_MAX_CHARS:
@@ -589,7 +603,11 @@ async def json_formatter_handler(params: Dict[str, Any]) -> Dict[str, str]:
             f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"
         )
     try:
-        parsed = json.loads(text, parse_constant=_reject_non_finite_json_constant)
+        parsed = json.loads(
+            text,
+            parse_constant=_reject_non_finite_json_constant,
+            object_pairs_hook=_reject_duplicate_json_object_pairs,
+        )
         formatted = json.dumps(
             parsed,
             indent=2,

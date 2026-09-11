@@ -74,6 +74,28 @@ async def test_json_formatter_duplicate_member_execute_contract_fails_closed():
 
 
 @pytest.mark.asyncio
+async def test_json_formatter_rejects_recursion_limit_input():
+    deeply_nested = "[" * 10_000 + "0" + "]" * 10_000
+    assert len(deeply_nested) <= ANALYSIS_TEXT_MAX_CHARS
+
+    with pytest.raises(ValueError, match="Invalid JSON string"):
+        await json_formatter_handler({"json_string": deeply_nested})
+
+
+@pytest.mark.asyncio
+async def test_json_formatter_recursion_limit_execute_contract_fails_closed():
+    deeply_nested = "[" * 10_000 + "0" + "]" * 10_000
+    response = await execute_tool(
+        "json_formatter",
+        ExecuteRequest(parameters={"json_string": deeply_nested}),
+    )
+
+    assert response.status == "failed"
+    assert response.result is None
+    assert response.message == "Invalid JSON string"
+
+
+@pytest.mark.asyncio
 async def test_json_formatter_rejects_oversized_input_before_parsing():
     oversized = " " * (ANALYSIS_TEXT_MAX_CHARS + 1)
 

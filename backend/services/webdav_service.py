@@ -142,6 +142,7 @@ class WebDavService:
         user_id: str,
         organization_id: str | None,
         folder_uid: str | None = None,
+        max_results: int | None = None,
     ) -> List[Dict[str, Any]]:
         stmt = select(ProjectFolder).where(
             ProjectFolder.user_id == user_id,
@@ -151,6 +152,8 @@ class WebDavService:
         )
         if folder_uid is not None:
             stmt = stmt.where(ProjectFolder.folder_uid == folder_uid)
+        if max_results is not None:
+            stmt = stmt.limit(max_results)
         result = await session.execute(stmt)
         return [
             {

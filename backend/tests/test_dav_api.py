@@ -1,7 +1,10 @@
 import defusedxml.ElementTree as ET
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
+
+from api.dav import _normalize_dav_authorization_path
 
 from main import app
 from services.webdav_service import webdav_service
@@ -15,10 +18,13 @@ AUTH_HEADERS = {
 
 @pytest.fixture
 def stub_dav_project_folders(monkeypatch):
-    async def fake_project_folders(db, user_id, organization_id, folder_uid=None):
+    async def fake_project_folders(
+        db, user_id, organization_id, folder_uid=None, max_results=None
+    ):
         assert user_id == "user123"
         assert organization_id == "org-acme"
         if folder_uid is None:
+            assert max_results == 257
             return [
                 {
                     "folder_uid": "demo",
@@ -28,6 +34,7 @@ def stub_dav_project_folders(monkeypatch):
                     "organization_id": organization_id,
                 }
             ]
+        assert max_results is None
         return [
             {
                 "folder_uid": folder_uid,
@@ -64,8 +71,13 @@ def test_dav_route_uses_signed_session_dependency():
 def test_dav_options(dev_auth_dependency_overrides):
     with TestClient(app) as client:
         response = client.options("/dav/user123/projects/", headers=AUTH_HEADERS)
-        assert response.status_code == 200
-        assert "calendar-access" in response.headers.get("DAV", "")
+
+    assert response.status_code == 200
+    assert "DAV" not in response.headers
+    assert {method.strip() for method in response.headers["Allow"].split(",")} == {
+        "OPTIONS",
+        "PROPFIND",
+    }
 
 
 def test_dav_rejects_different_user_path(dev_auth_dependency_overrides):
@@ -97,7 +109,9 @@ def test_dav_rejects_ownerless_options_before_capability_discovery(
 def test_dav_propfind(dev_auth_dependency_overrides, stub_dav_project_folders):
     with TestClient(app) as client:
         response = client.request(
-            "PROPFIND", "/dav/user123/projects/", headers=AUTH_HEADERS
+            "PROPFIND",
+            "/dav/user123/projects/",
+            headers={**AUTH_HEADERS, "Depth": "1"},
         )
         assert response.status_code == 207
         assert "<D:multistatus" in response.text
@@ -111,7 +125,9 @@ def test_dav_propfind_escapes_path_values(
 ):
     with TestClient(app) as client:
         response = client.request(
-            "PROPFIND", "/dav/user123/projects/x%26y%3Cz%3E", headers=AUTH_HEADERS
+            "PROPFIND",
+            "/dav/user123/projects/x%26y%3Cz%3E",
+            headers={**AUTH_HEADERS, "Depth": "0"},
         )
         assert response.status_code == 207
         assert "x&amp;y&lt;z&gt;" in response.text
@@ -156,48 +172,244 @@ def test_dav_unsupported_method_logs_reason(dev_auth_dependency_overrides, caplo
         for record in caplog.records
     )
 
-def test_dav_log_injection_prevention(dev_auth_dependency_overrides, caplog):
-    """
-    Test that DAV handlers safely encode control characters in the requested path,
-    preventing log injection vulnerabilities.
-    """
+
+def test_dav_direct_control_path_is_rejected_before_logging(
+    dev_auth_dependency_overrides,
+    caplog,
+):
+    import asyncio
     import logging
 
-    caplog.set_level(logging.INFO)
-    malicious_path = "user123/projects/test\x1b[31minjected\n\r"
-
-    # Since HTTP clients block raw control chars and starlette unquotes but might reject it before reaching our route,
-    # we test the handler directly to ensure the logger is using repr().
-    import asyncio
     from fastapi import Request
+
+    from api.auth import AuthContext
+    from api.dav import dav_handler
+
+    caplog.set_level(logging.INFO, logger="api.dav")
+    malicious_path = "user123/projects/test\x1b[31minjected\n\r"
+    request = Request({"type": "http", "method": "OPTIONS", "headers": []})
+    auth_context = AuthContext(
+        user_id="user123",
+        organization_id="org1",
+        role="user",
+        group_ids=[],
+        workspace_id="ws1",
+    )
+
+    async def run_handler() -> None:
+        await dav_handler(
+            request=request,
+            path=malicious_path,
+            auth_context=auth_context,
+        )
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(run_handler())
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "DAV path contains control characters"
+    assert not any("DAV Request" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "request_path",
+    [
+        "/dav/user123/projects/%252e%252e",
+        "/dav/user123/projects/%25252e%25252e",
+        "/dav/user123/projects/alice%255c..%255cbob",
+        "/dav/user123/projects/%2525",
+        "/dav/user123/projects/%25%32%65",
+        "/dav/user123/projects/alice%25%35%63..%25%35%63bob",
+    ],
+)
+def test_dav_route_rejects_ambiguous_nested_encoding(
+    dev_auth_dependency_overrides,
+    request_path: str,
+) -> None:
+    with TestClient(app) as client:
+        response = client.request("PROPFIND", request_path, headers=AUTH_HEADERS)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "DAV path contains nested percent encoding"
+
+
+@pytest.mark.parametrize(
+    "request_path",
+    [
+        "/dav/user123/projects/report%25",
+        "/dav/user123/projects/%25report",
+    ],
+)
+def test_dav_route_preserves_encoded_percent_as_data(
+    dev_auth_dependency_overrides,
+    stub_dav_project_folders,
+    request_path: str,
+) -> None:
+    with TestClient(app) as client:
+        response = client.request(
+            "PROPFIND",
+            request_path,
+            headers={**AUTH_HEADERS, "Depth": "0"},
+        )
+
+    assert response.status_code == 207
+    assert "%" in response.text
+
+
+@pytest.mark.parametrize(
+    "request_path",
+    [
+        "/dav/user123/projects/%GG",
+        "/dav/user123/projects/%2",
+    ],
+)
+def test_dav_route_rejects_malformed_raw_percent_escape(
+    dev_auth_dependency_overrides,
+    request_path: str,
+) -> None:
+    with TestClient(app) as client:
+        response = client.request("PROPFIND", request_path, headers=AUTH_HEADERS)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "DAV path contains invalid percent encoding"
+
+
+@pytest.mark.parametrize(
+    "request_path",
+    [
+        "/dav/user123/projects/%00",
+        "/dav/user123/projects/%0A",
+        "/dav/user123/projects/%7F",
+        "/dav/user123/projects/%C2%80",
+        "/dav/user123/projects/%C2%9F",
+    ],
+)
+def test_dav_route_rejects_percent_encoded_control_character(
+    dev_auth_dependency_overrides,
+    request_path: str,
+) -> None:
+    with TestClient(app) as client:
+        response = client.request("PROPFIND", request_path, headers=AUTH_HEADERS)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "DAV path contains control characters"
+
+
+def test_dav_route_rejects_invalid_utf8_replacement(
+    dev_auth_dependency_overrides,
+) -> None:
+    with TestClient(app) as client:
+        response = client.request(
+            "PROPFIND",
+            "/dav/user123/projects/%FF",
+            headers=AUTH_HEADERS,
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "DAV path contains invalid Unicode"
+
+
+@pytest.mark.parametrize(
+    "request_path",
+    [
+        "/dav/user123/projects/%2e%2e",
+        "/dav/user123/projects/%5c..%5c",
+    ],
+)
+def test_dav_route_rejects_single_decode_traversal(
+    dev_auth_dependency_overrides,
+    request_path: str,
+) -> None:
+    with TestClient(app) as client:
+        response = client.request("PROPFIND", request_path, headers=AUTH_HEADERS)
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "DAV path must include an owner user"
+
+
+def test_dav_missing_raw_path_fails_closed_for_residual_percent(
+    dev_auth_dependency_overrides,
+) -> None:
+    import asyncio
+
+    from fastapi import Request
+
+    from api.auth import AuthContext
+    from api.dav import dav_handler
 
     scope = {
         "type": "http",
         "method": "OPTIONS",
         "headers": [],
+        "path": "/dav/user123/projects/report%",
     }
+    request = Request(scope)
+    auth_context = AuthContext(
+        user_id="user123",
+        organization_id="org1",
+        role="user",
+        group_ids=[],
+        workspace_id="ws1",
+    )
 
-    async def run_handler():
-        req = Request(scope)
-        from api.auth import AuthContext
-        auth_ctx = AuthContext(user_id="user123", organization_id="org1", role="user", group_ids=[], workspace_id="ws1")
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            dav_handler(
+                request=request,
+                path="user123/projects/report%",
+                auth_context=auth_context,
+            )
+        )
 
-        from api.dav import dav_handler
-        await dav_handler(request=req, path=malicious_path, auth_context=auth_ctx)
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "DAV raw path required for percent-bearing path"
 
-    asyncio.run(run_handler())
 
-    # In some fastapi versions, returning an unexpected path might return 404. Let's just assert the log was captured.
-    # The vulnerability is about the logger.
+def test_dav_missing_raw_path_allows_percent_free_decoded_path(
+    dev_auth_dependency_overrides,
+) -> None:
+    import asyncio
 
-    # Assert that the raw ansi escape / newline was not logged, but encoded
-    raw_ansi = "\x1b[31m"
-    found_in_logs = False
-    for record in caplog.records:
-        if "DAV Request" in record.message:
-            assert raw_ansi not in record.message, "Raw ANSI escape sequence found in logs!"
-            assert "\n" not in record.message[12:], "Raw newline found in log message body!"
-            assert "\\x1b[31minjected\\n\\r" in record.message or "\\x1b[31minjected\\r\\n" in record.message, "Escaped characters missing from log message!"
-            found_in_logs = True
+    from fastapi import Request
 
-    assert found_in_logs, "DAV Request log was not found"
+    from api.auth import AuthContext
+    from api.dav import dav_handler
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "OPTIONS",
+            "headers": [],
+            "path": "/dav/user123/projects/",
+        }
+    )
+    auth_context = AuthContext(
+        user_id="user123",
+        organization_id="org1",
+        role="user",
+        group_ids=[],
+        workspace_id="ws1",
+    )
+
+    response = asyncio.run(
+        dav_handler(
+            request=request,
+            path="user123/projects/",
+            auth_context=auth_context,
+        )
+    )
+
+    assert response.status_code == 200
+    assert "DAV" not in response.headers
+    assert response.headers.get("Allow") == "OPTIONS, PROPFIND"
+
+
+def test_normalize_dav_authorization_path_treats_route_path_as_already_decoded() -> None:
+    assert _normalize_dav_authorization_path("/alice/docs") == "/alice/docs"
+    assert _normalize_dav_authorization_path("/%2e%2e/bob") == "/%2e%2e/bob"
+    assert _normalize_dav_authorization_path("/alice%/docs") == "/alice%/docs"
+
+
+def test_normalize_dav_authorization_path_has_no_recursive_input_amplification() -> None:
+    path = "/alice/" + ("segment-" * 8192)
+    assert _normalize_dav_authorization_path(path) == path

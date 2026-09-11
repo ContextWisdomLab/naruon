@@ -82,10 +82,14 @@ describe("NetworkGraph constant-time selection lookup contract", () => {
 
     expect(relationshipOptions).toContain("for (const edge of edgeMap.values())");
     expect(relationshipOptions).toContain("if (result.length >= 5) break;");
+    expect(relationshipOptions).not.toContain(".map(");
+    expect(relationshipOptions).not.toContain(".filter(");
     expect(relationshipOptions).not.toContain("Array.from(");
 
     expect(nodeOptions).toContain("for (const node of nodeInstanceMap.values())");
     expect(nodeOptions).toContain("if (result.length >= 8) break;");
+    expect(nodeOptions).not.toContain(".map(");
+    expect(nodeOptions).not.toContain(".filter(");
     expect(nodeOptions).not.toContain("Array.from(");
   });
 });

@@ -614,7 +614,8 @@ async def json_formatter_handler(params: Dict[str, Any]) -> Dict[str, str]:
             ensure_ascii=False,
             allow_nan=False,
         )
-    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
+        formatted.encode("utf-8")
+    except (json.JSONDecodeError, ValueError, RecursionError, UnicodeEncodeError) as exc:
         raise ValueError("Invalid JSON string") from exc
     return {"formatted_json": formatted}
 

@@ -24,9 +24,22 @@ class FakeRetrySession:
 
     async def execute(self, query):
         self.executed_query = query
+        query_params = query.compile().params
+        due_before = next(
+            (
+                value
+                for value in query_params.values()
+                if isinstance(value, datetime.datetime)
+            ),
+            None,
+        )
         pending_items = [
-            item for item in self.due_items if item.retry_state == "pending"
+            item
+            for item in self.due_items
+            if item.retry_state == "pending"
+            and (due_before is None or item.next_retry_at <= due_before)
         ]
+        pending_items.sort(key=lambda item: item.next_retry_at)
         limit = query._limit_clause.value if query._limit_clause is not None else None
         if limit is not None:
             pending_items = pending_items[:limit]
@@ -302,7 +315,9 @@ async def test_process_due_provider_writeback_retries_reschedules_transient_fail
         max_attempts=3,
     )
 
+    assert summary["processed"] == 1
     assert summary["rescheduled"] == 1
+    assert summary["failed_exhausted"] == 0
     assert retry_item.retry_state == "pending"
     assert retry_item.attempt_count == 2
     assert retry_item.last_error_code == "runner_response_timeout"

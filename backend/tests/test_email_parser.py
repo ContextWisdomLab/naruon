@@ -428,13 +428,27 @@ Test."""
         # Missing date
         parsed1 = parse_eml(temp_path1)
         assert isinstance(parsed1["date"], datetime.datetime)
+        assert parsed1["date_evidence"] == "missing"
 
         # Malformed date
         parsed2 = parse_eml(temp_path2)
         assert isinstance(parsed2["date"], datetime.datetime)
+        assert parsed2["date_evidence"] == "invalid"
     finally:
         os.unlink(temp_path1)
         os.unlink(temp_path2)
+
+
+def test_present_date_that_parses_to_none_is_invalid(monkeypatch):
+    monkeypatch.setattr(
+        "services.email_parser.parsedate_to_datetime", lambda _value: None
+    )
+    parsed = parse_eml_bytes(
+        b"Date: present-but-unparseable\r\n"
+        b"From: sender@example.com\r\n\r\nBody"
+    )
+
+    assert parsed["date_evidence"] == "invalid"
 
 
 def test_parse_eml_unknown_timezone_date_is_timezone_aware():
@@ -464,6 +478,23 @@ Test."""
         os.unlink(temp_path)
 
 
+def test_parse_eml_records_message_id_provenance():
+    embedded = parse_eml_bytes(
+        b"Message-ID: <embedded@example.com>\r\n"
+        b"From: sender@example.com\r\n"
+        b"To: owner@example.com\r\n"
+        b"Date: Mon, 27 Apr 2026 10:00:00 +0000\r\n"
+        b"Subject: Embedded\r\n\r\nBody"
+    )
+    missing = parse_eml_bytes(
+        b"From: sender@example.com\r\n"
+        b"To: owner@example.com\r\n"
+        b"Date: Mon, 27 Apr 2026 10:00:00 +0000\r\n"
+        b"Subject: Missing\r\n\r\nBody"
+    )
+
+    assert embedded["message_id_evidence"] == "embedded"
+    assert missing["message_id_evidence"] == "missing"
 def test_parse_eml_io_error():
     with pytest.raises(EmailParseError):
         parse_eml("/path/to/nonexistent/file.eml")

@@ -194,7 +194,16 @@ def _message_id_for(parsed: EmailData, content: bytes) -> str:
     )
 
 
-def _email_fingerprint(parsed: EmailData, persisted_date: datetime.datetime) -> str:
+def _email_fingerprint(
+    parsed: EmailData, persisted_date: datetime.datetime
+) -> str | None:
+    if parsed.get("date_evidence") != "parsed":
+        return None
+    if not all(
+        isinstance(parsed.get(field), str) and parsed[field].strip()
+        for field in ("sender", "subject", "recipients", "body")
+    ):
+        return None
     strong_fingerprint = strong_email_fingerprint(
         sender=parsed.get("sender"),
         subject=parsed.get("subject"),
@@ -217,16 +226,16 @@ async def _find_existing_email(
     user_id: str,
     organization_id: str,
     message_id: str,
-    fingerprint: str,
+    fingerprint: str | None,
 ) -> Email | None:
     message_lookup_values = {message_id, f"<{message_id}>"}
+    duplicate_conditions = [Email.message_id.in_(message_lookup_values)]
+    if fingerprint is not None:
+        duplicate_conditions.append(Email.fingerprint == fingerprint)
     result = await session.execute(
         select(Email).where(
             *Email.owner_filters(user_id, organization_id),
-            or_(
-                Email.message_id.in_(message_lookup_values),
-                Email.fingerprint == fingerprint,
-            ),
+            or_(*duplicate_conditions),
         )
     )
     return result.scalar_one_or_none()
@@ -352,7 +361,7 @@ def _build_email_object(
     organization_id: str,
     message_id: str,
     thread_id: str | None,
-    fingerprint: str,
+    fingerprint: str | None,
     persisted_date: datetime.datetime,
     attachment_payloads: list[dict],
     fitted_embeddings: list[list[float]],
@@ -370,6 +379,8 @@ def _build_email_object(
         in_reply_to=parsed.get("in_reply_to"),
         references=parsed.get("references"),
         date=persisted_date,
+        date_evidence=parsed.get("date_evidence"),
+        message_id_evidence=parsed.get("message_id_evidence"),
         body=parsed.get("body", ""),
         embedding=fitted_embeddings[0] if fitted_embeddings else _zero_embedding(),
     )
@@ -933,6 +944,11 @@ async def _import_single_eml(
     return EmailImportItemResult(
         filename=display_filename,
         status="imported",
+        reason_code=(
+            "dedupe_review_required"
+            if parsed.get("date_evidence") != "parsed"
+            else None
+        ),
         attachment_count=attachment_count,
     )
 

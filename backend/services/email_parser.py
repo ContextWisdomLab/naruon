@@ -23,6 +23,8 @@ class EmailData(TypedDict):
     in_reply_to: str | None
     references: str | None
     date: datetime.datetime
+    date_evidence: NotRequired[str]
+    message_id_evidence: NotRequired[str]
     body: str
     body_content_type: NotRequired[str]
     body_parse_content: NotRequired[str]
@@ -152,14 +154,17 @@ def _extract_body_and_attachments(msg: Message) -> tuple[str, str, list[dict]]:
     return html_body, "text/html" if html_body else "text/plain", attachments
 
 
-def _extract_date(msg: Message) -> datetime.datetime:
+def _extract_date(msg: Message) -> tuple[datetime.datetime, str]:
     date_header = msg.get("Date")
     parsed_date = None
+    evidence = "missing"
     if date_header:
         try:
             parsed_date = parsedate_to_datetime(date_header)
+            evidence = "parsed" if parsed_date is not None else "invalid"
         except (TypeError, ValueError):
             parsed_date = None
+            evidence = "invalid"
 
     if not parsed_date:
         parsed_date = datetime.datetime.now(datetime.timezone.utc)
@@ -171,7 +176,7 @@ def _extract_date(msg: Message) -> datetime.datetime:
         # instant when stored in a timestamptz column. Treat the unknown zone as
         # UTC so the returned value is always timezone-aware.
         parsed_date = parsed_date.replace(tzinfo=datetime.timezone.utc)
-    return parsed_date
+    return parsed_date, evidence
 
 
 def _extract_thread_id(msg: Message, message_id: str) -> str | None:
@@ -193,7 +198,7 @@ def _extract_thread_id(msg: Message, message_id: str) -> str | None:
 
 def _message_to_email_data(msg: Message) -> EmailData:
     body, body_content_type, attachments = _extract_body_and_attachments(msg)
-    parsed_date = _extract_date(msg)
+    parsed_date, date_evidence = _extract_date(msg)
     message_id = _sanitize_nul(msg.get("Message-ID", ""))
     thread_id = _extract_thread_id(msg, message_id)
 
@@ -217,6 +222,8 @@ def _message_to_email_data(msg: Message) -> EmailData:
             _sanitize_nul(msg.get("References", "")) if msg.get("References") else None
         ),
         "date": parsed_date,
+        "date_evidence": date_evidence,
+        "message_id_evidence": "embedded" if message_id else "missing",
         "body": _sanitize_display_text(body),
         "body_content_type": body_content_type,
         "body_parse_content": _sanitize_nul(body),

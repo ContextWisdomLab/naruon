@@ -452,3 +452,20 @@ def test_merge_revision_reconciles_newsdom_document_and_carddav_heads():
     assert "op.create_table(" not in revision_text
     assert "op.add_column(" not in revision_text
     assert "op.drop_column(" not in revision_text
+
+
+def test_email_metadata_provenance_revision_persists_nullable_evidence_columns():
+    revision_path = (
+        BACKEND_ROOT
+        / "alembic"
+        / "versions"
+        / "email_metadata_provenance_1086.py"
+    )
+    revision_text = revision_path.read_text()
+
+    assert 'revision = "email_metadata_provenance_1086"' in revision_text
+    assert 'down_revision = "0017_merge_newsdom_carddav_heads"' in revision_text
+    assert '"email_records"' in revision_text
+    assert '"date_evidence"' in revision_text
+    assert '"message_id_evidence"' in revision_text
+    assert "nullable=True" in revision_text

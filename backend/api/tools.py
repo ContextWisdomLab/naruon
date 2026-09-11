@@ -112,7 +112,7 @@ class ToolUpdate(BaseModel):
     parameters: Optional[Dict[str, Any]] = Field(
         default=None, description="도구 실행에 필요한 파라미터 스키마"
     )
-    is_active: Optional[bool] = Field(default=None, description="도구의 활성화 여부")
+    is_active: Optional[bool] = Field(default=True, description="도구의 활성화 여부")
     webhook_url: Optional[str] = Field(
         default=None, description="도구 실행을 위한 외부 웹훅 URL"
     )
@@ -582,6 +582,21 @@ def _reject_non_finite_json_constant(value: str) -> None:
     raise ValueError(f"non-finite JSON number is not permitted: {value}")
 
 
+class _JsonNumberLexeme(str):
+    """Preserve a validated JSON number token without binary-float coercion."""
+
+
+def _preserve_json_integer(value: str) -> _JsonNumberLexeme:
+    """Preserve an integer token while retaining Python's digit-limit defense."""
+    int(value)
+    return _JsonNumberLexeme(value)
+
+
+def _preserve_json_real(value: str) -> _JsonNumberLexeme:
+    """Preserve a fractional or exponent-form JSON number exactly as received."""
+    return _JsonNumberLexeme(value)
+
+
 def _reject_duplicate_json_object_pairs(
     pairs: list[tuple[str, Any]],
 ) -> dict[str, Any]:
@@ -596,7 +611,45 @@ def _reject_duplicate_json_object_pairs(
     return parsed
 
 
+def _format_json_value(value: Any, *, depth: int = 0) -> str:
+    """Pretty-print decoded JSON without changing validated number lexemes."""
+    indentation = "  " * depth
+    child_indentation = "  " * (depth + 1)
+
+    if isinstance(value, _JsonNumberLexeme):
+        return str(value)
+    if value is None:
+        return "null"
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, list):
+        if not value:
+            return "[]"
+        rendered_items = [
+            f"{child_indentation}{_format_json_value(item, depth=depth + 1)}"
+            for item in value
+        ]
+        return "[\n" + ",\n".join(rendered_items) + f"\n{indentation}]"
+    if isinstance(value, dict):
+        if not value:
+            return "{}"
+        rendered_members = []
+        for name, item in value.items():
+            encoded_name = json.dumps(name, ensure_ascii=False)
+            rendered_members.append(
+                f"{child_indentation}{encoded_name}: "
+                f"{_format_json_value(item, depth=depth + 1)}"
+            )
+        return "{\n" + ",\n".join(rendered_members) + f"\n{indentation}}}"
+    raise TypeError(f"unsupported decoded JSON value: {type(value).__name__}")
+
+
 async def json_formatter_handler(params: Dict[str, Any]) -> Dict[str, str]:
+    """Validate and pretty-print JSON without silently changing numeric values."""
     text = params.get("json_string", "")
     if len(text) > ANALYSIS_TEXT_MAX_CHARS:
         raise ValueError(
@@ -605,15 +658,12 @@ async def json_formatter_handler(params: Dict[str, Any]) -> Dict[str, str]:
     try:
         parsed = json.loads(
             text,
+            parse_float=_preserve_json_real,
+            parse_int=_preserve_json_integer,
             parse_constant=_reject_non_finite_json_constant,
             object_pairs_hook=_reject_duplicate_json_object_pairs,
         )
-        formatted = json.dumps(
-            parsed,
-            indent=2,
-            ensure_ascii=False,
-            allow_nan=False,
-        )
+        formatted = _format_json_value(parsed)
         formatted.encode("utf-8")
     except (json.JSONDecodeError, ValueError, RecursionError, UnicodeEncodeError) as exc:
         raise ValueError("Invalid JSON string") from exc

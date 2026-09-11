@@ -53,6 +53,7 @@ async def test_json_formatter_execute_contract_fails_closed(non_finite_literal):
     [
         '{"id":1,"id":2}',
         '{"outer":{"name":"first","name":"second"}}',
+        r'{"a":1,"\u0061":2}',
     ],
 )
 async def test_json_formatter_rejects_duplicate_object_member_names(duplicate_json):

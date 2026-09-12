@@ -33,17 +33,43 @@ PROVIDER_WRITEBACK_RETRY_SUMMARY_KEYS = (
 ProviderWritebackDispatch = Callable[..., Awaitable[dict[str, Any]]]
 
 
+def _due_retry_query(current_time: datetime.datetime, batch_limit: int):
+    """Build the row-locking query used to claim provider retry work."""
+    if batch_limit <= 0:
+        raise ValueError("batch_limit must be positive")
+    return (
+        select(ProviderWritebackRetryItem)
+        .where(
+            ProviderWritebackRetryItem.retry_state == "pending",
+            ProviderWritebackRetryItem.next_retry_at <= current_time,
+        )
+        .order_by(ProviderWritebackRetryItem.next_retry_at.asc())
+        .with_for_update(skip_locked=True)
+        .limit(batch_limit)
+    )
+
+
 class ProviderWritebackRetryWorker:
     def __init__(
         self,
         dispatch_command: ProviderWritebackDispatch,
         *,
         interval_seconds: int = 60,
+        retry_delay_seconds: int = 300,
         batch_limit: int = 25,
         max_attempts: int = 3,
     ):
+        if interval_seconds <= 0:
+            raise ValueError("interval_seconds must be positive")
+        if retry_delay_seconds < 0:
+            raise ValueError("retry_delay_seconds must not be negative")
+        if batch_limit <= 0:
+            raise ValueError("batch_limit must be positive")
+        if max_attempts <= 0:
+            raise ValueError("max_attempts must be positive")
         self.dispatch_command = dispatch_command
         self.interval_seconds = interval_seconds
+        self.retry_delay_seconds = retry_delay_seconds
         self.batch_limit = batch_limit
         self.max_attempts = max_attempts
         self._task = None
@@ -92,7 +118,7 @@ class ProviderWritebackRetryWorker:
                 db,
                 self.dispatch_command,
                 batch_limit=self.batch_limit,
-                retry_delay_seconds=self.interval_seconds,
+                retry_delay_seconds=self.retry_delay_seconds,
                 max_attempts=self.max_attempts,
             )
 
@@ -121,6 +147,8 @@ async def schedule_provider_writeback_retry(
 ) -> str | None:
     if not is_retryable_provider_writeback_failure(command, error_code):
         return None
+    if retry_delay_seconds < 0:
+        raise ValueError("retry_delay_seconds must not be negative")
 
     now = datetime.datetime.now(datetime.timezone.utc)
     retry_item = ProviderWritebackRetryItem(
@@ -175,74 +203,77 @@ async def process_due_provider_writeback_retries(
     retry_delay_seconds: int = 300,
     max_attempts: int = 3,
 ) -> dict[str, int]:
-    current_time = now or datetime.datetime.now(datetime.timezone.utc)
-    result = await db.execute(
-        select(ProviderWritebackRetryItem)
-        .where(
-            ProviderWritebackRetryItem.retry_state == "pending",
-            ProviderWritebackRetryItem.next_retry_at <= current_time,
-        )
-        .order_by(ProviderWritebackRetryItem.next_retry_at.asc())
-        .limit(batch_limit)
-    )
-    retry_items = list(result.scalars().all())
-    summary = {key: 0 for key in PROVIDER_WRITEBACK_RETRY_SUMMARY_KEYS}
-    if not retry_items:
-        return summary
+    if batch_limit <= 0:
+        raise ValueError("batch_limit must be positive")
+    if retry_delay_seconds < 0:
+        raise ValueError("retry_delay_seconds must not be negative")
+    if max_attempts <= 0:
+        raise ValueError("max_attempts must be positive")
 
-    for retry_item in retry_items:
+    current_time = now or datetime.datetime.now(datetime.timezone.utc)
+    summary = {key: 0 for key in PROVIDER_WRITEBACK_RETRY_SUMMARY_KEYS}
+
+    for _ in range(batch_limit):
+        result = await db.execute(_due_retry_query(current_time, 1))
+        retry_items = list(result.scalars().all())
+        if not retry_items:
+            break
+
+        retry_item = retry_items[0]
         summary["processed"] += 1
         if retry_item.attempt_count >= max_attempts:
             _mark_retry_exhausted(retry_item, current_time)
             summary["failed_exhausted"] += 1
-            continue
-
-        command = _deserialize_retry_command(retry_item)
-        if command is None:
-            _mark_retry_permanent_failure(
-                retry_item,
-                current_time,
-                "invalid_retry_payload",
-            )
-            summary["failed_permanent"] += 1
-            continue
-
-        retry_item.attempt_count += 1
-        retry_item.retry_state = "running"
-        retry_item.updated_at = current_time
-        dispatch_result = await dispatch_command(
-            retry_item.organization_id,
-            retry_item.workspace_id,
-            command,
-            schedule_retry=False,
-        )
-        if dispatch_result.get("provider_write_executed") is True:
-            retry_item.retry_state = "succeeded"
-            retry_item.updated_at = current_time
-            summary["succeeded"] += 1
-            continue
-
-        error_code = _dispatch_error_code(dispatch_result)
-        retry_item.last_error_code = error_code
-        retry_item.updated_at = current_time
-        if is_retryable_provider_writeback_failure(command, error_code):
-            if retry_item.attempt_count >= max_attempts:
-                _mark_retry_exhausted(retry_item, current_time, error_code)
-                summary["failed_exhausted"] += 1
-            else:
-                retry_item.retry_state = "pending"
-                retry_item.next_retry_at = current_time + datetime.timedelta(
-                    seconds=_retry_delay_seconds(
-                        retry_delay_seconds,
-                        retry_item.attempt_count,
-                    )
-                )
-                summary["rescheduled"] += 1
         else:
-            _mark_retry_permanent_failure(retry_item, current_time, error_code)
-            summary["failed_permanent"] += 1
+            command = _deserialize_retry_command(retry_item)
+            if command is None:
+                _mark_retry_permanent_failure(
+                    retry_item,
+                    current_time,
+                    "invalid_retry_payload",
+                )
+                summary["failed_permanent"] += 1
+            else:
+                retry_item.attempt_count += 1
+                retry_item.retry_state = "running"
+                retry_item.updated_at = current_time
+                dispatch_result = await dispatch_command(
+                    retry_item.organization_id,
+                    retry_item.workspace_id,
+                    command,
+                    schedule_retry=False,
+                )
+                if dispatch_result.get("provider_write_executed") is True:
+                    retry_item.retry_state = "succeeded"
+                    retry_item.updated_at = current_time
+                    summary["succeeded"] += 1
+                else:
+                    error_code = _dispatch_error_code(dispatch_result)
+                    retry_item.last_error_code = error_code
+                    retry_item.updated_at = current_time
+                    if is_retryable_provider_writeback_failure(command, error_code):
+                        if retry_item.attempt_count >= max_attempts:
+                            _mark_retry_exhausted(retry_item, current_time, error_code)
+                            summary["failed_exhausted"] += 1
+                        else:
+                            retry_item.retry_state = "pending"
+                            retry_item.next_retry_at = current_time + datetime.timedelta(
+                                seconds=_retry_delay_seconds(
+                                    retry_delay_seconds,
+                                    retry_item.attempt_count,
+                                )
+                            )
+                            summary["rescheduled"] += 1
+                    else:
+                        _mark_retry_permanent_failure(
+                            retry_item,
+                            current_time,
+                            error_code,
+                        )
+                        summary["failed_permanent"] += 1
 
-    await db.commit()
+        await db.commit()
+
     return summary
 
 

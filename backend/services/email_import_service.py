@@ -147,13 +147,6 @@ def _canonical_upload_filename(filename: str | None) -> str | None:
     name = Path(decoded.replace("\\", "/")).name.strip()
     if not name or name in {".", ".."}:
         return None
-
-    # Sentinel: Block dangerous double extensions to prevent bypasses,
-    # avoiding .js/.com which appear in legitimate embedded emails.
-    for part in name.split("."):
-        if f".{part.lower()}" in {".exe", ".sh", ".bat", ".cmd", ".msi", ".ps1", ".vbs"}:
-            return None
-
     return name
 
 

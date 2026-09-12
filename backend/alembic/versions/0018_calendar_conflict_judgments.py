@@ -5,7 +5,7 @@ Revises: 0017_merge_newsdom_carddav_heads
 Create Date: 2026-08-30 00:00:00.000000
 """
 
-from alembic import context, op
+from alembic import op
 import sqlalchemy as sa
 
 revision = "0018_calendar_conflict_judgments"
@@ -17,7 +17,7 @@ _CORRECTION_TABLE = "calendar_conflict_corrections"
 
 def _online_inspector():
     """Return a live schema inspector only when Alembic has a database bind."""
-    if context.is_offline_mode():
+    if op.get_context().as_sql:
         return None
     return sa.inspect(op.get_bind())
 

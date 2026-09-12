@@ -41,6 +41,9 @@ def test_backend_ci_provisions_migrated_pgvector_database() -> None:
     assert environment.get("DATABASE_URL") == (
         "postgresql+asyncpg://test:test@localhost:5432/test_db"
     )
+    assert "AUTH_SESSION_HMAC_SECRET" not in environment, (
+        "CI runtime auth material must be generated per job, not committed as a fixture"
+    )
 
     steps = backend.get("steps")
     assert isinstance(steps, list)
@@ -49,6 +52,15 @@ def test_backend_ci_provisions_migrated_pgvector_database() -> None:
         for step in steps
         if isinstance(step, dict) and isinstance(step.get("name"), str)
     }
+    runtime_secret = named_steps.get("Generate ephemeral CI runtime secret")
+    assert isinstance(runtime_secret, dict), (
+        "backend CI must generate auth material before importing runtime settings"
+    )
+    runtime_secret_script = str(runtime_secret.get("run", ""))
+    assert "secrets.token_urlsafe(48)" in runtime_secret_script
+    assert "AUTH_SESSION_HMAC_SECRET" in runtime_secret_script
+    assert "GITHUB_ENV" in runtime_secret_script
+
     migration = named_steps.get("Run database migrations")
     assert isinstance(migration, dict), "backend CI must migrate before pytest"
     assert "python scripts/migrate_db.py" in str(migration.get("run", ""))
@@ -56,6 +68,6 @@ def test_backend_ci_provisions_migrated_pgvector_database() -> None:
     step_names = [
         step.get("name") for step in steps if isinstance(step, dict) and step.get("name")
     ]
-    assert step_names.index("Run database migrations") < step_names.index(
-        "Run backend tests"
-    )
+    assert step_names.index("Generate ephemeral CI runtime secret") < step_names.index(
+        "Run database migrations"
+    ) < step_names.index("Run backend tests")

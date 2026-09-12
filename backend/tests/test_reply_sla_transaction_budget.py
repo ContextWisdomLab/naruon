@@ -405,3 +405,56 @@ async def test_completed_existing_task_is_not_reopened_or_committed(database):
     assert original.title == "old title"
     assert database.savepoints == 0
     assert database.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_unique_failure_without_visible_winner_retains_domain_conflict(
+    database, monkeypatch
+):
+    mail = seed_mail(database, 1)[0]
+    seed_task(database, mail)
+    expose_conflict_waves(monkeypatch, [set()])
+    with pytest.raises(service.ReplySlaTaskConflict):
+        await service._process_fallback_escalation(
+            database, "alice", "org-a", [mail], NOW
+        )
+    assert database.rollbacks == 1
+    assert database.commits == 0
+    assert database.savepoints == 1
+    assert not database.session.in_transaction()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("driver_code", "expected_exception"),
+    [
+        (None, service.ReplySlaTaskConflict),
+        ("23505", service.ReplySlaTaskConflict),
+        ("23503", IntegrityError),
+        ("23502", IntegrityError),
+        ("23514", IntegrityError),
+    ],
+)
+async def test_unresolved_conflict_mapping_uses_driver_codes_not_error_text(
+    database, monkeypatch, driver_code, expected_exception
+):
+    mail = seed_mail(database, 1)[0]
+    driver_error = Exception("same localized message for every constraint")
+    if driver_code is not None:
+        driver_error.sqlstate = driver_code
+    failure = IntegrityError("insert", {}, driver_error)
+
+    async def fail_flush():
+        raise failure
+
+    monkeypatch.setattr(database, "flush", fail_flush)
+    with pytest.raises(expected_exception) as captured:
+        await service._process_fallback_escalation(
+            database, "alice", "org-a", [mail], NOW
+        )
+    if expected_exception is IntegrityError:
+        assert captured.value is failure
+    assert database.rollbacks == 1
+    assert database.commits == 0
+    assert database.savepoints == 1
+    assert not database.session.in_transaction()

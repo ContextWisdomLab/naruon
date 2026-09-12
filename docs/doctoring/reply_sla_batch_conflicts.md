@@ -37,8 +37,11 @@ attempts and reconciles visible duplicate winners with one read per failed batch
 It never switches to per-task savepoints or expunges already-detached inserts.
 A successful recovery commits once. If contention continues beyond the budget,
 roll back all local updates and raise the existing `ReplySlaTaskConflict`, which
-the endpoint already maps to HTTP 409. Non-duplicate integrity errors and errors
-before SAVEPOINT creation are re-raised after cleanup, not masked by recovery.
+the endpoint already maps to HTTP 409. Driver-classified non-unique integrity errors and errors before SAVEPOINT
+creation are re-raised after cleanup, not masked by recovery. Unresolved unique
+conflicts, including those whose winner is no longer visible, retain HTTP 409.
+Untyped IntegrityError retains that existing API conflict mapping; it is not
+evidence that the underlying failure was necessarily a unique violation.
 
 Three attempts is an explicit bounded-contention policy, not an empirically
 optimal value. Under sustained races the request may return 409 where the old
@@ -73,7 +76,7 @@ because the full backend dependencies and PostgreSQL are unavailable locally.
   not a test receipt for the complete #1486 head.
 - A separate RED test exposed `PendingRollbackError` after pre-savepoint flush
   failure; the guard now preserves the original integrity error after rollback.
-- Final candidate: 17 passed, zero failures/skips, with warnings treated as errors.
+- Initial candidate: 17 passed, zero failures/skips, with warnings treated as errors.
   Includes batch limits, complete rollback, FK errors, pre-savepoint errors,
   one-query reload, source deletion/owner changes, null scope, result order,
   stable task identity, and completed-task preservation.
@@ -86,8 +89,9 @@ python -m pytest -q -W error tests/test_reply_sla_transaction_budget.py
 python -m pytest -q -W error tests/test_tasks_api.py tests/test_reply_tracking_service.py
 ```
 
-The second command, real async PostgreSQL race/migration tests, full backend CI,
-and independent review were not executed by this local receipt. Before protected
+The second command and real async PostgreSQL race/migration tests were not
+executed by this local receipt. Hosted full-backend results are recorded below;
+independent review and applicable required checks remain necessary. Before protected
 integration, require those applicable checks on the unchanged candidate head;
 exercise real uniqueness races, contention exhaustion with no partial writes,
 source deletion between rollback and reload, and authoritative same-ID responses.
@@ -98,3 +102,33 @@ these tests as a production speedup benchmark.
 
 - [SQLAlchemy 2.0: Rolling Back](https://docs.sqlalchemy.org/en/20/orm/session_basics.html#rolling-back).
 - [SQLAlchemy 2.0: Using SAVEPOINT](https://docs.sqlalchemy.org/en/20/orm/session_transaction.html#using-savepoint).
+
+
+## Hosted regression and corrective follow-up
+
+Application CI `34683084207`, backend job `103525188148`, tested synthetic merge
+`31acc9ae09d92d54258fcc2721f42d6728405e1e` (initial head
+`a980e6bc2c1cd571ef267a85a7930a8438faf1b9` into the develop commit above).
+Python 3.14.7 / SQLAlchemy 2.0.51 lint passed; full tests returned **1 failed,
+1823 passed, 32 skipped**. The failure was our regression in
+`test_reply_sla_escalation_conflict_returns_machine_readable_detail`: no visible
+winner was incorrectly treated as proof of a non-duplicate failure, leaking an
+IntegrityError instead of preserving the existing domain conflict / HTTP 409.
+The pre-existing API assertion was not removed or weakened.
+
+Additional RED coverage reproduced the same defect with a real SQLite unique
+constraint and no visible winner, an untyped driver error, and SQLSTATE 23505
+(3 failed / 20 passed before the correction). The correction distinguishes
+non-unique errors using PostgreSQL SQLSTATE or SQLite symbolic driver codes,
+never localized text, and preserves unresolved-conflict mapping. The corrected
+local suite passes **23 tests**, with no failures or skips and warnings treated
+as errors. SQLSTATE tests use injected driver diagnostics; they are not a live
+PostgreSQL execution receipt. Subsequent hosted CI is reported on the PR.
+
+Security Scan `34683084178`, job `103525212031`, scanned exact initial head and
+failed on three findings in inherited `frontend/pnpm-lock.yaml`: next
+CVE-2026-75604 / GHSA-2xp9-vwfh-vxw4 and sharp GHSA-rgj7-g3m4-5g8c. These files
+are unchanged by this repair; remediation belongs to canonical frontend
+security owner #1623. Inherited does not mean safe. No ignore or gate exception
+is introduced, and integration remains blocked until the applicable security
+owner repair and required checks are verified on the resulting candidate.

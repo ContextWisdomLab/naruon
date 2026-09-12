@@ -160,6 +160,22 @@ async def _process_bulk_escalation(
     return created_count, escalated_tasks
 
 
+def _is_non_unique_constraint_failure(error: IntegrityError) -> bool:
+    sqlstate = getattr(error.orig, "sqlstate", None) or getattr(
+        error.orig, "pgcode", None
+    )
+    if sqlstate is not None:
+        return sqlstate != "23505"
+    sqlite_errorname = getattr(error.orig, "sqlite_errorname", None)
+    if sqlite_errorname is not None:
+        return sqlite_errorname not in {
+            "SQLITE_CONSTRAINT_UNIQUE", "SQLITE_CONSTRAINT_PRIMARYKEY"
+        }
+    # Untyped IntegrityError retains the endpoint's existing conflict contract;
+    # never infer a constraint category from localized exception text.
+    return False
+
+
 async def _process_fallback_escalation(
     db: AsyncSession,
     user_id: str,
@@ -195,10 +211,13 @@ async def _process_fallback_escalation(
                 for _, _, task in pending:
                     db.add(task)
                 await db.flush()
-        except IntegrityError:
+        except IntegrityError as error:
             if not savepoint_started:
                 # begin_nested() flushes existing dirty work before establishing
                 # the savepoint; that failure needs an outer rollback first.
+                await db.rollback()
+                raise
+            if _is_non_unique_constraint_failure(error):
                 await db.rollback()
                 raise
             # SAVEPOINT rollback already detaches its pending inserts. Reconcile
@@ -219,10 +238,12 @@ async def _process_fallback_escalation(
                     _update_task_for_escalation(winner, email, now)
                     entries[index] = (email, winner)
             if len(remaining) == len(pending):
-                # No visible duplicate explains this failure (e.g. FK or NOT
-                # NULL). Preserve the database error instead of retrying rows.
+                # A unique-conflict winner can disappear or remain invisible to
+                # this snapshot. Preserve HTTP 409, without per-row retries.
                 await db.rollback()
-                raise
+                raise ReplySlaTaskConflict(
+                    "reply_sla_task_conflict: no visible duplicate winner"
+                ) from error
             pending = remaining
         else:
             created_count = len(pending)

@@ -13,6 +13,9 @@ govern implementation.
 | [ADR-0002](0002-fitted-topic-artifact-consumption.md) | Conditionally consume only a versioned fitted topic artifact through a fail-closed adapter | Proposed | Target `PLANNED`; runtime `BLOCKED-UPSTREAM` |
 | [ADR-0003](0003-separate-topic-measurement-from-agenda-generation.md) | Keep statistical measurement separate from agenda generation | Proposed | Target and future capability `PLANNED`; no implementation authorization |
 | [ADR-0004](0004-status-weighted-calendar-conflicts.md) | Evaluate CalDAV VEVENT overlaps by occupying status; cancelled does not occupy | Accepted | `ACCEPTED-NARUON-POLICY`; advisory evaluate API only |
+| [ADR-0018](0018-keyverse-credential-resolution-port.md) | Stage Keyverse credential consumption behind a value-free, fail-closed application port | Proposed | Consumer seam only; production cutover remains `BLOCKED-UPSTREAM` until immutable Keyverse workload release |
+
+ADR-0018 intentionally leaves room for ADR numbers already proposed on parallel open branches. It must be reconciled against protected `develop` after those stacks land; its number does not imply that absent ADR-0005 through ADR-0017 are accepted on this branch.
 
 The complete topic-intelligence requirements, architecture, contract, UML,
 conceptual ERD, security, test, and operability graph is indexed at

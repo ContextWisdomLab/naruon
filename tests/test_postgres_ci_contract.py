@@ -64,6 +64,12 @@ def test_backend_ci_provisions_migrated_pgvector_database() -> None:
     assert "secrets.token_urlsafe(48)" in runtime_secret_script
     assert "AUTH_SESSION_HMAC_SECRET" in runtime_secret_script
     assert "GITHUB_ENV" in runtime_secret_script
+    assert 'print(f"::add-mask::{value}")' in runtime_secret_script, (
+        "generated runtime auth material must be masked before later steps expose env"
+    )
+    assert runtime_secret_script.index("::add-mask::") < runtime_secret_script.index(
+        "GITHUB_ENV"
+    )
 
     migration = named_steps.get("Run database migrations")
     assert isinstance(migration, dict), "backend CI must migrate before pytest"

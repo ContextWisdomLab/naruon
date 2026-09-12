@@ -601,6 +601,20 @@ def test_scorecard_sarif_normalizer_rejects_escape_links_and_large_input(
     assert module.main([str(normalizer), str(expected)]) == 65
 
 
+def test_agents_entry_points_to_current_product_and_governance_sources() -> None:
+    agents = read_repo_text("AGENTS.md")
+
+    assert "<!-- CWL-ENTRY -->" in agents
+    assert "docs/architecture/naruon-product-spec.md" in agents
+    assert "docs/product-technical-gap-baseline.md" in agents
+    assert "ContextualWisdomLab/projects/1" in agents
+    assert "ContextualWisdomLab/naruon/issues/1428" in agents
+    assert "ContextualWisdomLab/naruon/pull/1436" in agents
+    assert "docs/agent-github-project-protocol.md" in agents
+    assert "docs/product-goal-directive.md" in agents
+    assert "not private agent memory" in agents
+
+
 def test_review_automation_uses_central_required_workflows_without_local_copies() -> (
     None
 ):

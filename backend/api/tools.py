@@ -1,4 +1,5 @@
 import base64
+import datetime
 import hashlib
 import inspect
 import json
@@ -552,6 +553,46 @@ registry.register(
 )
 
 
+_DATE_CALCULATOR_DATE_PATTERN = re.compile(r"\A\d{4}-\d{2}-\d{2}\Z")
+_DATE_CALCULATOR_ERROR_PREFIX = "Invalid parameters for date calculator: "
+
+
+async def date_calculator_handler(params: Dict[str, Any]) -> Dict[str, str]:
+    """Return a calendar date after applying a whole-day offset."""
+    base_date_str = params.get("base_date", "")
+    if _DATE_CALCULATOR_DATE_PATTERN.fullmatch(base_date_str) is None:
+        raise ValueError(f"{_DATE_CALCULATOR_ERROR_PREFIX}base_date must use YYYY-MM-DD")
+
+    try:
+        base_date = datetime.date.fromisoformat(base_date_str)
+    except ValueError:
+        raise ValueError(
+            f"{_DATE_CALCULATOR_ERROR_PREFIX}base_date must be a valid calendar date"
+        ) from None
+
+    try:
+        days_to_add = int(params.get("days_to_add", 0))
+        target_date = base_date + datetime.timedelta(days=days_to_add)
+    except (OverflowError, ValueError):
+        raise ValueError(
+            f"{_DATE_CALCULATOR_ERROR_PREFIX}date calculation is outside the supported calendar range"
+        ) from None
+
+    return {"result_date": target_date.isoformat()}
+
+
+registry.register(
+    ToolInfo(
+        code="date_calculator",
+        name="날짜 계산기 (Date Calculator)",
+        description="기준 날짜(YYYY-MM-DD)로부터 입력받은 일 수(days)만큼 더하거나 뺀 날짜를 계산합니다.",
+        category="유틸리티",
+        parameters={"base_date": "string", "days_to_add": "integer"},
+    ),
+    date_calculator_handler,
+)
+
+
 async def text_analyzer_handler(params: Dict[str, Any]) -> Dict[str, int]:
     text = params.get("text", "")
     char_count = len(text)
@@ -706,6 +747,8 @@ _KEYWORD_STOPWORDS = frozenset(
         "합니다",
     }
 )
+
+
 def _normalize_analysis_text(value: str) -> str:
     """Normalize user text for deterministic, multilingual rule matching."""
     if len(value) > ANALYSIS_TEXT_MAX_CHARS:
@@ -767,7 +810,6 @@ registry.register(
     ),
     uuid_v4_generator_handler,
 )
-
 
 
 @router.get("/tools", response_model=list[ToolInfo])

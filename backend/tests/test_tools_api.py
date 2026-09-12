@@ -1211,3 +1211,21 @@ def test_execute_analysis_tool_rejects_oversized_text():
             f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"
         ),
     }
+
+@pytest.mark.asyncio
+async def test_date_calculator_handler_success():
+    from api.tools import date_calculator_handler
+    result = await date_calculator_handler({"base_date": "2023-10-01", "days_to_add": "10"})
+    assert result["result_date"] == "2023-10-11"
+
+    result2 = await date_calculator_handler({"base_date": "2023-10-01", "days_to_add": -10})
+    assert result2["result_date"] == "2023-09-21"
+
+@pytest.mark.asyncio
+async def test_date_calculator_handler_error():
+    from api.tools import date_calculator_handler
+    with pytest.raises(ValueError, match="Invalid parameters for date calculator"):
+        await date_calculator_handler({"base_date": "invalid-date", "days_to_add": "10"})
+
+    with pytest.raises(ValueError, match="Invalid parameters for date calculator"):
+        await date_calculator_handler({"base_date": "2023-10-01", "days_to_add": "abc"})

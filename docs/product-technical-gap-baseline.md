@@ -158,18 +158,6 @@ Windows-separator traversal protection passed 130 focused parser/import tests.
 All three have recreated hosted Checks and remain normal protected-merge
 candidates; no hosted pass or merge is claimed.
 
-**Exact-head maintenance ledger (2026-09-12):** PR #1623 now has exact head
-`54871419193734918e79c89b54c65761f04ae095`. A current CodeRabbit P1 finding
-showed that the frontend dependency-floor test accepted a lockfile whose
-peer-qualified Vitest snapshot existed but whose importer-resolved base
-`packages` record was absent. The regression test now removes that exact base
-record while retaining another compliant version, so the importer contract
-fails closed. The focused suite passed 19 tests in 24.35 seconds from
-`backend` after its project-local frozen environment was synchronized. An
-earlier missing `pgvector` import came from invoking the test outside that
-environment and is not source-test evidence. Hosted Checks, a qualifying
-current-head review, protected merge, and deployment remain unverified.
-
 The protected-branch SHA in this header identifies the baseline's observation
 point. The inventory's `Base-SHA` column is captured independently for each PR
 at its scan time, so an older `develop` SHA in a row is expected snapshot

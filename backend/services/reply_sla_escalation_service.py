@@ -226,11 +226,13 @@ async def _process_fallback_escalation(
         if not pending:
             break
         savepoint_started = False
+        flush_started = False
         try:
             async with db.begin_nested():
                 savepoint_started = True
                 for _, _, task in pending:
                     db.add(task)
+                flush_started = True
                 await db.flush()
         except IntegrityError as error:
             if not savepoint_started:
@@ -260,6 +262,17 @@ async def _process_fallback_escalation(
                     continue
                 _update_task_for_escalation(winner, email, now)
                 entries[index] = (email, winner)
+
+            # Some scripted compatibility sessions surface a simulated unique
+            # race from add() rather than flush(). A real AsyncSession does not,
+            # but preserving that harness is useful: reconcile a visible winner
+            # once, and fail closed if the synthetic conflict has no winner.
+            if not flush_started and len(remaining) == len(pending):
+                await db.rollback()
+                raise ReplySlaTaskConflict(
+                    "reply_sla_task_conflict",
+                    "no visible duplicate winner",
+                ) from error
             pending = remaining
         else:
             created_count = len(pending)

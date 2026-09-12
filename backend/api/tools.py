@@ -173,16 +173,22 @@ class ToolRegistry:
         if unexpected_keys:
             raise ValueError("Unexpected tool parameter")
 
-        validated: Dict[str, Any] = {}
-        for key, descriptor in schema.items():
-            if key not in params:
+        validated_parameters: Dict[str, Any] = {}
+        for parameter_name, parameter_descriptor in schema.items():
+            if parameter_name in params:
+                parameter_value = params[parameter_name]
+            elif (
+                isinstance(parameter_descriptor, dict)
+                and "default" in parameter_descriptor
+            ):
+                parameter_value = parameter_descriptor["default"]
+            else:
                 raise ValueError("Missing required tool parameter")
-            value = params[key]
-            expected_type = _parameter_type_name(descriptor)
-            if not _parameter_matches_type(value, expected_type):
+            expected_type = _parameter_type_name(parameter_descriptor)
+            if not _parameter_matches_type(parameter_value, expected_type):
                 raise ValueError("Invalid tool parameter type")
-            validated[key] = value
-        return validated
+            validated_parameters[parameter_name] = parameter_value
+        return validated_parameters
 
 
 registry = ToolRegistry()
@@ -706,6 +712,8 @@ _KEYWORD_STOPWORDS = frozenset(
         "합니다",
     }
 )
+
+
 def _normalize_analysis_text(value: str) -> str:
     """Normalize user text for deterministic, multilingual rule matching."""
     if len(value) > ANALYSIS_TEXT_MAX_CHARS:
@@ -769,22 +777,40 @@ registry.register(
 )
 
 
+_URL_PATTERN = re.compile(
+    r"https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+(?<![.,!?])",
+    re.IGNORECASE,
+)
 
 
-_URL_PATTERN = re.compile(r"https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+(?<![.,!?])", re.IGNORECASE)
+def _strip_unmatched_url_closers(extracted_url: str) -> str:
+    """Remove terminal unmatched brackets while preserving balanced URL syntax."""
+    delimiter_pairs = {")": "(", "]": "["}
+    while extracted_url and extracted_url[-1] in delimiter_pairs:
+        closing_delimiter = extracted_url[-1]
+        opening_delimiter = delimiter_pairs[closing_delimiter]
+        if extracted_url.count(closing_delimiter) <= extracted_url.count(
+            opening_delimiter
+        ):
+            break
+        extracted_url = extracted_url[:-1]
+    return extracted_url
 
-async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
-    text = params.get("text", "")
-    urls = _URL_PATTERN.findall(text)
 
-    seen = set()
-    deduped_urls = []
-    for u in urls:
-        if u not in seen:
-            seen.add(u)
-            deduped_urls.append(u)
+async def url_extractor_handler(tool_parameters: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract distinct HTTP(S) URLs from workspace text in encounter order."""
+    source_text = tool_parameters.get("text", "")
+    extracted_urls = _URL_PATTERN.findall(source_text)
 
-    return {"urls": deduped_urls, "url_count": len(deduped_urls)}
+    seen_urls = set()
+    deduplicated_urls = []
+    for extracted_url in extracted_urls:
+        normalized_url = _strip_unmatched_url_closers(extracted_url)
+        if normalized_url not in seen_urls:
+            seen_urls.add(normalized_url)
+            deduplicated_urls.append(normalized_url)
+
+    return {"urls": deduplicated_urls, "url_count": len(deduplicated_urls)}
 
 
 registry.register(
@@ -799,24 +825,25 @@ registry.register(
 )
 
 
-async def hash_generator_handler(params: Dict[str, Any]) -> Dict[str, str]:
-    text = params.get("text", "")
-    algorithm = params.get("algorithm", "sha256")
-    if not algorithm:
-        algorithm = "sha256"
-    algorithm = algorithm.lower()
+async def hash_generator_handler(tool_parameters: Dict[str, Any]) -> Dict[str, str]:
+    """Generate a supported SHA digest for workspace text."""
+    source_text = tool_parameters.get("text", "")
+    digest_algorithm = tool_parameters.get("algorithm", "sha256")
+    if not digest_algorithm:
+        digest_algorithm = "sha256"
+    digest_algorithm = digest_algorithm.lower()
 
-    encoded_text = text.encode("utf-8")
-    if algorithm == "sha256":
-        h = hashlib.sha256(encoded_text).hexdigest()
-    elif algorithm == "sha384":
-        h = hashlib.sha384(encoded_text).hexdigest()
-    elif algorithm == "sha512":
-        h = hashlib.sha512(encoded_text).hexdigest()
+    encoded_text = source_text.encode("utf-8")
+    if digest_algorithm == "sha256":
+        hash_digest = hashlib.sha256(encoded_text).hexdigest()
+    elif digest_algorithm == "sha384":
+        hash_digest = hashlib.sha384(encoded_text).hexdigest()
+    elif digest_algorithm == "sha512":
+        hash_digest = hashlib.sha512(encoded_text).hexdigest()
     else:
         raise ValueError("Unsupported algorithm. Supported: sha256, sha384, sha512")
 
-    return {"hash": h, "algorithm": algorithm}
+    return {"hash": hash_digest, "algorithm": digest_algorithm}
 
 
 registry.register(
@@ -825,29 +852,41 @@ registry.register(
         name="해시 생성기 (Hash Generator)",
         description="입력된 텍스트를 지정된 해시 알고리즘(SHA-256, SHA-384, SHA-512)으로 변환합니다.",
         category="유틸리티",
-        parameters={"text": "string", "algorithm": {"type": "string", "default": "sha256"}},
+        parameters={
+            "text": "string",
+            "algorithm": {"type": "string", "default": "sha256"},
+        },
     ),
     hash_generator_handler,
 )
 
 
-async def json_validator_handler(params: Dict[str, Any]) -> Dict[str, Any]:
-    json_string = params.get("json_string", "")
+def _reject_non_standard_json_constant(constant_name: str) -> None:
+    """Reject JavaScript numeric constants that RFC 8259 excludes from JSON."""
+    raise ValueError(f"Non-standard JSON constant: {constant_name}")
+
+
+async def json_validator_handler(tool_parameters: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and format an RFC 8259 JSON document."""
+    json_document = tool_parameters.get("json_string", "")
     try:
-        parsed = json.loads(json_string)
-        formatted = json.dumps(parsed, indent=2, ensure_ascii=False)
+        parsed_json = json.loads(
+            json_document,
+            parse_constant=_reject_non_standard_json_constant,
+        )
+        formatted_json = json.dumps(parsed_json, indent=2, ensure_ascii=False)
         return {
             "is_valid": True,
-            "parsed": parsed,
-            "formatted_json": formatted,
-            "error_message": None
+            "parsed": parsed_json,
+            "formatted_json": formatted_json,
+            "error_message": None,
         }
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, ValueError) as validation_error:
         return {
             "is_valid": False,
             "parsed": None,
             "formatted_json": None,
-            "error_message": str(e)
+            "error_message": str(validation_error),
         }
 
 
@@ -864,7 +903,6 @@ registry.register(
 
 
 @router.get("/tools", response_model=list[ToolInfo])
-
 def get_tools() -> list[ToolInfo]:
     """
     Naruon AI 이메일 워크스페이스에서 사용할 수 있는 분석 및 실행 도구 목록을 반환합니다.

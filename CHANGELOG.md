@@ -3,9 +3,9 @@
 - CI Trivy 파일시스템 보안 스캐너가 감지한 `next` 및 `sharp` 패키지의 심각한 보안 취약점(CVE-2026-75604, GHSA-rgj7-g3m4-5g8c 등)을 해결하기 위해, `frontend/package.json`에서 해당 의존성들을 안전한 최신 버전으로 업데이트했습니다.
 ### Added
 - `backend/api/tools.py`에 다음 3개의 도구를 추가하고 등록했습니다.
-  - `url_extractor_handler`: 텍스트 내에서 URL 추출 (안전한 정규표현식 적용 및 중복 제거)
-  - `hash_generator_handler`: 입력 텍스트를 지정된 해시 알고리즘(SHA-256, SHA-384, SHA-512)으로 변환 (Bandit B303 오탐지 방지를 위해 안전한 알고리즘 제공)
-  - `json_validator_handler`: JSON 문자열을 파싱하여 유효성 검사 및 포맷팅 수행
+  - `url_extractor_handler`: 균형 잡힌 URL 괄호와 IPv6 대괄호는 보존하고 문장 끝의 짝 없는 닫힘 기호만 제거한 뒤 중복 URL을 제거합니다.
+  - `hash_generator_handler`: 선언된 SHA-256 기본값을 parameter validation 전에 적용하고 SHA-256/SHA-384/SHA-512 digest를 생성합니다.
+  - `json_validator_handler`: RFC 8259가 허용하지 않는 `NaN`, `Infinity`, `-Infinity`를 거부하면서 JSON 문자열을 검증·포맷팅합니다.
 - 추가된 도구들에 대해 100% 테스트 커버리지를 보장하는 개별 테스트를 `backend/tests/test_tools_api.py`에 작성했습니다.
 - 긴 이메일·첨부 본문을 의미 단위 청크로 임베딩한 뒤 기존 email/attachment 벡터 계약으로 평균화하고, 청크 요청·벡터 누적을 제한된 창으로 처리합니다. OpenAI `text-embedding-3-*`에는 저장 차원(`1536`)을 직접 요청하도록 보강했습니다. 합성 메일 fixture 5건(70청크)과 provider 요청 계약으로 1,536차원 벡터 경로를 검증했으며, 실행 시 선택한 임베딩 제공자에 본문·파싱된 첨부 텍스트를 전송할 수 있습니다. 회사 기밀 데이터는 fixture·commit·PR·log에 포함하지 않습니다.
 - EmailDetail 테스트가 지원하지 않는 스레드 병합/분리 버튼을 `textContent`뿐 아니라 `aria-label`과 `title` 접근 가능 이름으로도 검출하도록 바꿔, 아이콘 전용 버튼 회귀를 놓치지 않습니다.

@@ -377,8 +377,10 @@ async def create_reply_sla_escalation_tasks(
         created_count, escalated_tasks = await _process_bulk_escalation(
             db, user_id, organization_id, overdue_replies, now
         )
-    except IntegrityError:
+    except IntegrityError as error:
         await db.rollback()
+        if _is_non_unique_constraint_failure(error):
+            raise
         # Real SQLAlchemy rollback expires mapped source rows. Scripted unit
         # sessions that do not model expiration retain their in-memory fixtures;
         # production takes the workspace-scoped one-query reload path.

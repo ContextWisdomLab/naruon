@@ -84,6 +84,7 @@ jobs:
           import secrets
 
           value = "Ci9!" + secrets.token_urlsafe(48)
+          print(f"::add-mask::{value}")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
               env_file.write(f"AUTH_SESSION_HMAC_SECRET={value}\n")
           PY

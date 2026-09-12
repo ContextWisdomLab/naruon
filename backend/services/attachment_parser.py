@@ -29,6 +29,7 @@ _MAGIC_BYTE_SIGNATURES: tuple[tuple[bytes, str], ...] = (
     (b"GIF87a", "image/gif"),
     (b"GIF89a", "image/gif"),
     (b"PK\x03\x04", "application/zip"),
+    (b"PK\x05\x06", "application/zip"),
 )
 # Substrings of MIME types whose files are legitimately ZIP containers under
 # the hood (OOXML Office documents, OpenDocument formats, EPUB, JAR). Sniffing

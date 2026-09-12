@@ -1376,14 +1376,17 @@ test('renders API-backed context search sender DAG and reply tracking', async ({
     expect(ontologyHeaders[headerName]).toBeUndefined();
   }
 
-  await expect(page.getByRole('heading', { name: '맥락 검색' })).toBeAttached();
+  await expect(page.getByRole('heading', { name: '맥락 검색', exact: true })).toBeAttached();
   await expect(page.getByRole('heading', { name: 'Q2 출시 계획 및 우선순위 조정' }).first()).toBeVisible();
-  await expect(page.getByText('thread-q2').first()).toBeVisible();
+  await expect(page.getByText('메일 흐름 연결됨').first()).toBeVisible();
   await expect(page.getByText('답장 2건').first()).toBeVisible();
   await expect(page.getByText('관계 맥락과 타임라인')).toBeVisible();
-  await expect(page.getByText('발신자 DAG (Ontology)')).toBeVisible();
-  await expect(page.getByText('track_reply_and_tasks')).toBeVisible();
-  await expect(page.getByText('source=<q2@example.com> / thread=thread-q2')).toBeVisible();
+  await expect(page.getByText('발신자 관계')).toBeVisible();
+  await expect(page.getByText('답장과 후속 작업을 확인합니다.')).toBeVisible();
+  await expect(page.getByText('답장 여부와 이어서 할 일을 놓치지 않도록 제안했습니다.')).toBeVisible();
+  await expect(page.getByText('Same-domain sender; preserve reply and task follow-up.')).toHaveCount(0);
+  await expect(page.getByText('track_reply_and_tasks')).toHaveCount(0);
+  await expect(page.getByText('source=<q2@example.com> / thread=thread-q2')).toHaveCount(0);
   await expect(page.getByText('김지현 PM').first()).toBeVisible();
   const desktopOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(desktopOverflow).toBeLessThanOrEqual(1);
@@ -1392,7 +1395,7 @@ test('renders API-backed context search sender DAG and reply tracking', async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/search');
   await expect(page.getByRole('heading', { name: 'Q2 출시 계획 및 우선순위 조정' }).first()).toBeVisible();
-  await expect(page.getByText('thread-q2').first()).toBeVisible();
+  await expect(page.getByText('메일 흐름 연결됨').first()).toBeVisible();
   const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(mobileOverflow).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath('search-dag-reply-mobile.png'), fullPage: false });
@@ -1419,9 +1422,9 @@ test('renders API-backed context search sender DAG and reply tracking', async ({
   });
   expect(detailScrollMetrics.maxScroll).toBeGreaterThan(0);
   expect(detailScrollMetrics.after).toBeGreaterThan(detailScrollMetrics.before);
-  await page.getByText('발신자 DAG (Ontology)').scrollIntoViewIfNeeded();
-  await expect(page.getByText('track_reply_and_tasks')).toBeVisible();
-  await page.getByText('track_reply_and_tasks').scrollIntoViewIfNeeded();
+  await page.getByText('발신자 관계').scrollIntoViewIfNeeded();
+  await expect(page.getByText('답장과 후속 작업을 확인합니다.')).toBeVisible();
+  await page.getByText('답장과 후속 작업을 확인합니다.').scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath('search-dag-reply-mobile-dag.png'), fullPage: false });
   await page.getByText('관계 이해').scrollIntoViewIfNeeded();
   await expect(page.getByText('관계 이해')).toBeVisible();

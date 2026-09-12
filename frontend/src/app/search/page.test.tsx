@@ -121,7 +121,7 @@ describe("SearchPage", () => {
               parent_sender_email: "user@naruon.ai",
               source_message_id: "<q2@example.com>",
               source_thread_id: "thread-q2",
-              relationship_type: "colleague",
+              relationship_type: "Colleague",
               confidence_score: 0.85,
               next_action: "track_reply_and_tasks",
               action_reason:
@@ -158,16 +158,18 @@ describe("SearchPage", () => {
     await flushAsyncWork();
 
     expect(container.textContent).toContain("Q2 출시 계획 및 우선순위 조정");
-    expect(container.textContent).toContain("thread-q2");
+    expect(container.textContent).toContain("메일 흐름 연결됨");
+    expect(container.textContent).not.toContain("thread-q2");
     expect(container.textContent).toContain("답장 3건");
     expect(container.textContent).toContain("신뢰도 87%");
     expect(container.textContent).toContain("증거 바인딩");
     expect(container.textContent).toContain("맥락 정보");
     expect(container.textContent).toContain("메일 열기");
     expect(container.textContent).toContain("관계 맥락과 타임라인");
-    expect(container.textContent).toContain("발신자 DAG");
-    expect(container.textContent).toContain("track_reply_and_tasks");
-    expect(container.textContent).toContain("source=<q2@example.com>");
+    expect(container.textContent).toContain("발신자 관계");
+    expect(container.textContent).toContain("답장과 후속 작업을 확인합니다.");
+    expect(container.textContent).not.toContain("track_reply_and_tasks");
+    expect(container.textContent).not.toContain("<q2@example.com>");
     expect(container.querySelector("#search-detail-tab-context")?.getAttribute("aria-controls")).toBe("search-detail-panel-context");
     expect(container.querySelector("#search-detail-panel-context")?.getAttribute("role")).toBe("tabpanel");
 
@@ -315,7 +317,7 @@ describe("SearchPage", () => {
             parent_sender_email: null,
             source_message_id: "<capture@example.com>",
             source_thread_id: "thread-capture",
-            relationship_type: "colleague",
+            relationship_type: "Colleague",
             confidence_score: 0.85,
             next_action: "track_reply_and_tasks",
             action_reason:
@@ -376,10 +378,11 @@ describe("SearchPage", () => {
       expect(captureHeaders[headerName]).toBeUndefined();
     }
     expect(container.textContent).toContain("minjae@naruon.ai");
-    expect(container.textContent).toContain("track_reply_and_tasks");
-    expect(container.textContent).toContain(
-      "source=<capture@example.com> / thread=thread-capture",
-    );
+    expect(container.textContent).toContain("답장과 후속 작업을 확인합니다.");
+    expect(container.textContent).toContain("업무 관계");
+    expect(container.textContent).not.toContain("track_reply_and_tasks");
+    expect(container.textContent).not.toContain("<capture@example.com>");
+    expect(container.textContent).not.toContain("thread-capture");
   });
 
   it("renders a fail-closed error state when the search API rejects the query", async () => {

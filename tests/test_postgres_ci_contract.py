@@ -7,6 +7,10 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_CI = REPO_ROOT / ".github" / "workflows" / "app-ci.yml"
+PGVECTOR_CI_IMAGE = (
+    "pgvector/pgvector:pg16@"
+    "sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b"
+)
 
 
 def _workflow() -> dict[str, object]:
@@ -26,7 +30,7 @@ def test_backend_ci_provisions_migrated_pgvector_database() -> None:
     assert isinstance(services, dict), "backend CI must provision PostgreSQL"
     postgres = services.get("postgres")
     assert isinstance(postgres, dict), "backend CI must declare a postgres service"
-    assert postgres.get("image") == "pgvector/pgvector:pg16"
+    assert postgres.get("image") == PGVECTOR_CI_IMAGE
     assert postgres.get("env") == {
         "POSTGRES_USER": "test",
         "POSTGRES_PASSWORD": "test",

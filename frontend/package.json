@@ -22,7 +22,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.27.0",
-    "next": "16.2.12",
+    "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-resizable-panels": "^4.12.2",
@@ -50,7 +50,9 @@
     "brace-expansion": "5.0.9",
     "postcss": "8.5.24",
     "undici": "8.9.0",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "next": "16.3.4",
+    "sharp": "0.35.1"
   },
   "resolutions": {
     "brace-expansion": "5.0.9",

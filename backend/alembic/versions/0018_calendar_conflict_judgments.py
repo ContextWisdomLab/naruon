@@ -5,7 +5,7 @@ Revises: 0017_merge_newsdom_carddav_heads
 Create Date: 2026-08-30 00:00:00.000000
 """
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 revision = "0018_calendar_conflict_judgments"
@@ -15,9 +15,20 @@ _JUDGMENT_TABLE = "calendar_conflict_judgments"
 _CORRECTION_TABLE = "calendar_conflict_corrections"
 
 
+def _is_offline_mode() -> bool:
+    """Detect SQL-only execution without requiring an EnvironmentContext proxy."""
+    try:
+        return bool(context.is_offline_mode())
+    except (AttributeError, NameError):
+        # Focused migration tests invoke upgrade/downgrade with an Operations
+        # proxy but no Alembic EnvironmentContext. That path is online and
+        # supplies either a real or deliberately mocked bind.
+        return False
+
+
 def _online_inspector():
     """Return a live schema inspector only when Alembic has a database bind."""
-    if op.get_context().as_sql:
+    if _is_offline_mode():
         return None
     return sa.inspect(op.get_bind())
 

@@ -5,7 +5,7 @@ Revises: 0017_merge_newsdom_carddav_heads
 Create Date: 2026-08-30 00:00:00.000000
 """
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 revision = "0018_calendar_conflict_judgments"
@@ -15,11 +15,17 @@ _JUDGMENT_TABLE = "calendar_conflict_judgments"
 _CORRECTION_TABLE = "calendar_conflict_corrections"
 
 
-def upgrade() -> None:
-    connection = op.get_bind()
-    inspector = sa.inspect(connection)
+def _online_inspector():
+    """Return a live schema inspector only when Alembic has a database bind."""
+    if context.is_offline_mode():
+        return None
+    return sa.inspect(op.get_bind())
 
-    if not inspector.has_table(_JUDGMENT_TABLE):
+
+def upgrade() -> None:
+    inspector = _online_inspector()
+
+    if inspector is None or not inspector.has_table(_JUDGMENT_TABLE):
         op.create_table(
             _JUDGMENT_TABLE,
             sa.Column("calendar_conflict_judgment_id", sa.Integer(), nullable=False),
@@ -44,7 +50,7 @@ def upgrade() -> None:
             ),
         )
 
-    if not inspector.has_table(_CORRECTION_TABLE):
+    if inspector is None or not inspector.has_table(_CORRECTION_TABLE):
         op.create_table(
             _CORRECTION_TABLE,
             sa.Column("calendar_conflict_correction_id", sa.Integer(), nullable=False),
@@ -57,6 +63,8 @@ def upgrade() -> None:
             sa.Column("correction_action", sa.String(length=64), nullable=False),
             sa.Column("before_json", sa.JSON(), nullable=False),
             sa.Column("after_json", sa.JSON(), nullable=False),
+            # 0018 intentionally records the historical column name; 0021
+            # performs the released schema transition to correction_rationale.
             sa.Column("rationale", sa.Text(), nullable=True),
             sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
             sa.ForeignKeyConstraint(
@@ -80,11 +88,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    connection = op.get_bind()
-    inspector = sa.inspect(connection)
+    inspector = _online_inspector()
 
     for table_name in (_CORRECTION_TABLE, _JUDGMENT_TABLE):
-        if inspector.has_table(table_name):
+        if inspector is None or inspector.has_table(table_name):
             for index_name, _column_names in reversed(
                 _calendar_conflict_indexes()[table_name]
             ):

@@ -5,7 +5,7 @@ Revises: 0020_email_workspace_scope
 Create Date: 2026-09-01 00:00:00.000000
 """
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 revision = "0021_calendar_rationale"
@@ -15,8 +15,15 @@ _CORRECTION_TABLE = "calendar_conflict_corrections"
 
 
 def upgrade() -> None:
-    connection = op.get_bind()
-    inspector = sa.inspect(connection)
+    if context.is_offline_mode():
+        op.alter_column(
+            _CORRECTION_TABLE,
+            "rationale",
+            new_column_name="correction_rationale",
+        )
+        return
+
+    inspector = sa.inspect(op.get_bind())
     if not inspector.has_table(_CORRECTION_TABLE):
         return
 
@@ -30,8 +37,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    connection = op.get_bind()
-    inspector = sa.inspect(connection)
+    if context.is_offline_mode():
+        op.alter_column(
+            _CORRECTION_TABLE,
+            "correction_rationale",
+            new_column_name="rationale",
+        )
+        return
+
+    inspector = sa.inspect(op.get_bind())
     if not inspector.has_table(_CORRECTION_TABLE):
         return
 

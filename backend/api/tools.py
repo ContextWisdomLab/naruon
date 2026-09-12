@@ -149,34 +149,38 @@ class ToolRegistry:
     def get(self, code: str) -> Optional[ToolInfo]:
         return self._tools.get(code)
 
-    async def invoke_tool(self, code: str, params: Dict[str, Any]) -> Any:
-        handler = self._handlers.get(code)
-        if not handler:
-            raise ValueError(f"No handler registered for tool {code}")
-        result = handler(self._validate_parameters(code, params))
-        if inspect.isawaitable(result):
-            return await result
-        return result
+    async def invoke_tool(self, tool_code: str, tool_parameters: Dict[str, Any]) -> Any:
+        tool_handler = self._handlers.get(tool_code)
+        if not tool_handler:
+            raise ValueError(f"No handler registered for tool {tool_code}")
+        handler_result = tool_handler(
+            self._validate_parameters(tool_code, tool_parameters)
+        )
+        if inspect.isawaitable(handler_result):
+            return await handler_result
+        return handler_result
 
-    def _validate_parameters(self, code: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        if not isinstance(params, dict):
+    def _validate_parameters(
+        self, tool_code: str, tool_parameters: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        if not isinstance(tool_parameters, dict):
             raise ValueError("Tool parameters must be an object")
 
-        tool_info = self._tools.get(code)
-        schema = tool_info.parameters if tool_info else None
-        if not schema:
-            if params:
+        tool_info = self._tools.get(tool_code)
+        parameter_schema = tool_info.parameters if tool_info else None
+        if not parameter_schema:
+            if tool_parameters:
                 raise ValueError("Tool does not accept parameters")
             return {}
 
-        unexpected_keys = set(params) - set(schema)
-        if unexpected_keys:
+        unexpected_parameters = set(tool_parameters) - set(parameter_schema)
+        if unexpected_parameters:
             raise ValueError("Unexpected tool parameter")
 
         validated_parameters: Dict[str, Any] = {}
-        for parameter_name, parameter_descriptor in schema.items():
-            if parameter_name in params:
-                parameter_value = params[parameter_name]
+        for parameter_name, parameter_descriptor in parameter_schema.items():
+            if parameter_name in tool_parameters:
+                parameter_value = tool_parameters[parameter_name]
             elif (
                 isinstance(parameter_descriptor, dict)
                 and "default" in parameter_descriptor
@@ -787,11 +791,18 @@ def _strip_unmatched_url_closers(extracted_url: str) -> str:
     """Remove terminal unmatched brackets while preserving balanced URL syntax."""
     delimiter_pairs = {")": "(", "]": "["}
     while extracted_url and extracted_url[-1] in delimiter_pairs:
-        closing_delimiter = extracted_url[-1]
-        opening_delimiter = delimiter_pairs[closing_delimiter]
-        if extracted_url.count(closing_delimiter) <= extracted_url.count(
-            opening_delimiter
-        ):
+        unmatched_terminal = False
+        opening_delimiters: list[str] = []
+        for character_index, url_character in enumerate(extracted_url):
+            if url_character in delimiter_pairs.values():
+                opening_delimiters.append(url_character)
+            elif url_character in delimiter_pairs:
+                expected_opener = delimiter_pairs[url_character]
+                if opening_delimiters and opening_delimiters[-1] == expected_opener:
+                    opening_delimiters.pop()
+                elif character_index == len(extracted_url) - 1:
+                    unmatched_terminal = True
+        if not unmatched_terminal:
             break
         extracted_url = extracted_url[:-1]
     return extracted_url

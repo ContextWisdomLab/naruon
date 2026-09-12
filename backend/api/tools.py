@@ -20,7 +20,7 @@ from core.url_validation import (
 )
 from services.llm_provider_urls import build_pinned_https_async_client
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SerializerFunctionWrapHandler, model_serializer
 
 router = APIRouter(prefix="/api", tags=["tools"])
 logger = logging.getLogger(__name__)
@@ -125,9 +125,24 @@ class ExecuteRequest(BaseModel):
 
 
 class ExecuteResponse(BaseModel):
+    """Stable public envelope returned by tool execution endpoints."""
+
     status: str = Field(..., description="실행 상태 (예: success, failed)")
     result: Any = Field(..., description="실행 결과 데이터")
     message: Optional[str] = Field(default=None, description="결과 메시지")
+    error_code: Optional[str] = Field(
+        default=None, description="예상된 실패의 안정적인 기계 판독 오류 코드"
+    )
+
+    @model_serializer(mode="wrap")
+    def _serialize_response(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        """Omit an absent error code while preserving legacy null result fields."""
+        payload = handler(self)
+        if self.error_code is None:
+            payload.pop("error_code", None)
+        return payload
 
 
 class ToolRegistry:
@@ -706,6 +721,8 @@ _KEYWORD_STOPWORDS = frozenset(
         "합니다",
     }
 )
+
+
 def _normalize_analysis_text(value: str) -> str:
     """Normalize user text for deterministic, multilingual rule matching."""
     if len(value) > ANALYSIS_TEXT_MAX_CHARS:
@@ -767,7 +784,6 @@ registry.register(
     ),
     uuid_v4_generator_handler,
 )
-
 
 
 @router.get("/tools", response_model=list[ToolInfo])
@@ -889,4 +905,5 @@ async def execute_tool(code: str, request: ExecuteRequest) -> ExecuteResponse:
             status="failed",
             result=None,
             message=_safe_tool_failure_message(e),
+            error_code=getattr(e, "error_code", None),
         )

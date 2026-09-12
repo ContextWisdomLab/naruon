@@ -600,9 +600,7 @@ def test_reply_sla_escalation_conflict_returns_machine_readable_detail(auth_clie
 def test_reply_sla_escalation_preserves_specific_conflict_code(
     auth_client, monkeypatch
 ):
-    async def raise_batch_retry_exhaustion(
-        database_session, **escalation_options
-    ):
+    async def raise_batch_retry_exhaustion(database_session, **escalation_options):
         raise tasks_api.ReplySlaTaskConflict(
             "reply_sla_batch_retry_exhausted",
             "batch retry budget exhausted",

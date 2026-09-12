@@ -125,6 +125,15 @@ local suite passes **23 tests**, with no failures or skips and warnings treated
 as errors. SQLSTATE tests use injected driver diagnostics; they are not a live
 PostgreSQL execution receipt. Subsequent hosted CI is reported on the PR.
 
+The follow-up contract separates each conflict's machine-readable code from its
+explanatory text. `ReplySlaTaskConflict.error_code` distinguishes the generic
+unresolved duplicate race, exhausted batch retry budget, and unavailable scoped
+source email. The API preserves that code in its HTTP 409 envelope while keeping
+the existing customer-safe message. Reality RED produced **5 failed / 18 passed**
+in the transaction suite and a separate API failure where the endpoint replaced
+the specific code with the generic one. The corrected focused suites pass **23**
+transaction tests and **2** API conflict-envelope tests.
+
 Security Scan `34683084178`, job `103525212031`, scanned exact initial head and
 failed on three findings in inherited `frontend/pnpm-lock.yaml`: next
 CVE-2026-75604 / GHSA-2xp9-vwfh-vxw4 and sharp GHSA-rgj7-g3m4-5g8c. These files

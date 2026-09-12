@@ -16,7 +16,12 @@ REPLY_SLA_MAX_BATCH_ATTEMPTS = 3
 
 
 class ReplySlaTaskConflict(Exception):
-    pass
+    """Reply-SLA conflict with a stable machine-readable code."""
+
+    def __init__(self, error_code: str, message: str) -> None:
+        """Create a conflict whose code is independent of explanatory text."""
+        super().__init__(message)
+        self.error_code = error_code
 
 
 @dataclass(frozen=True)
@@ -242,7 +247,8 @@ async def _process_fallback_escalation(
                 # this snapshot. Preserve HTTP 409, without per-row retries.
                 await db.rollback()
                 raise ReplySlaTaskConflict(
-                    "reply_sla_task_conflict: no visible duplicate winner"
+                    "reply_sla_task_conflict",
+                    "no visible duplicate winner",
                 ) from error
             pending = remaining
         else:
@@ -255,7 +261,8 @@ async def _process_fallback_escalation(
         # earlier write locks. The API already maps this domain error to 409.
         await db.rollback()
         raise ReplySlaTaskConflict(
-            "reply_sla_task_conflict: batch retry budget exhausted"
+            "reply_sla_batch_retry_exhausted",
+            "batch retry budget exhausted",
         )
 
     escalated_tasks = [(task, email.message_id) for email, task in entries]
@@ -287,7 +294,8 @@ async def _reload_overdue_replies(
     if any(email_id not in by_email_id for email_id in email_ids):
         await db.rollback()
         raise ReplySlaTaskConflict(
-            "reply_sla_task_conflict: source email no longer available"
+            "reply_sla_source_email_unavailable",
+            "source email no longer available",
         )
     return [by_email_id[email_id] for email_id in email_ids]
 

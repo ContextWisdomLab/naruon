@@ -387,9 +387,7 @@ async def test_reload_fails_closed_when_source_no_longer_in_scope(database, chan
     with pytest.raises(
         service.ReplySlaTaskConflict, match="source email"
     ) as conflict_error:
-        await service._reload_overdue_replies(
-            database, "alice", "org-a", [mail_id]
-        )
+        await service._reload_overdue_replies(database, "alice", "org-a", [mail_id])
     assert conflict_error.value.error_code == "reply_sla_source_email_unavailable"
     assert database.rollbacks == 1
     assert database.commits == 0

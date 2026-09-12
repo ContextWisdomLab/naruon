@@ -1,5 +1,38 @@
 # Naruon Product and Technical Gap Baseline
 
+## 2026-09-12 dependency and tool-contract succession
+
+[#1623](https://github.com/ContextualWisdomLab/naruon/pull/1623) remains the
+canonical frontend dependency-security owner. RED
+`8175f7f04a8624a681a509eb8b446c7a3ff7bd5d` raised the Nano ID 3.x security
+floor to `3.3.19`; GREEN
+`9d6d1e09e1ad52e57a1a3162c9984cceea4b2cb8` synchronizes the workspace
+override, package and snapshot lock records, regression contract, and
+CHANGELOG. Exact tree `d99f83fc482ba948271f45ae2f7251036dd190ad`
+passed **21** focused security contracts, the full backend (**1,826 passed / 33
+skipped**), frontend (**51 files / 437 tests**), frozen install, ESLint,
+TypeScript, and the 16-route production build. Hosted Application CI, Security,
+Semgrep, and Bandit are GREEN; Docker is still running, CodeQL is queued, and
+the moved head has no qualifying independent approval. The owner therefore
+remains Draft and is not merge-authorized.
+
+[#1672](https://github.com/ContextualWisdomLab/naruon/pull/1672) is now stacked
+on that exact owner rather than carrying a second dependency diff. Its exact
+head `f826fde79b107794a7391788c30545875cc5083f` has tree
+`9f655a2b21e8beca74f2ab7efa955129522c5e3c`; concurrent security commit
+`5f480d641b49ed3dff585881806e75aa1f926046` remains a merge parent. Review
+repair RED `7d883377` / `8c79903b` to GREEN `8660aff5` / `119f46cf` applies
+descriptor defaults before validation, rejects non-standard JSON constants,
+and strips only unmatched terminal URL closers with ordered delimiter pairing.
+All three review threads are resolved. The final tree passed **94** focused
+tool/security tests, the full backend (**1,835 passed / 33 skipped**), frontend
+(**51 files / 437 tests**), frozen install, ESLint, TypeScript, and the 16-route
+build. Its hosted exact-head workflows are queued. URL extraction (#1496),
+hash generation (#1538), and strict JSON formatting/validation (#1659) remain
+overlapping Proposed owner lanes, so #1672 stays Draft until each unique delta
+has verified owner adoption; review repair is not DDD ownership or merge
+evidence.
+
 ## 2026-09-12 frontend security owner single-writer repair
 
 [#1623](https://github.com/ContextualWisdomLab/naruon/pull/1623) remains the
@@ -75,7 +108,7 @@ reuse predecessor approvals or checks.
 | [#1590](https://github.com/ContextualWisdomLab/naruon/pull/1590) repeatedly acquired provider/model fixture changes outside its URL-extraction responsibility | [#1418](https://github.com/ContextualWisdomLab/naruon/pull/1418) remains the canonical Naruon URL/contact-hygiene owner and already carries the valid hostname and scheme delta | #1590 preserved all intervening ancestry and restored verified tree `24480909a7e8b8e5c707b52c976d820018389a77` at exact head `9d545440f556a3aa24213d690ab62bd45bfc6bdf`; #1418 is open/Draft and mergeable at `a4a4da69ff9df89bac9d0a00e7473f35685be567`. Completion requires fresh exact-head checks, independent approval, ordinary protected integration of #1418, and succession verification before retiring #1590. |
 | Required Noema review lacked a terminal verdict after consumer-owned preflight selected the free gateway route | [contextual-orchestrator#1106](https://github.com/ContextualWisdomLab/contextual-orchestrator/issues/1106) owns free-pool admission/routing; [.github#2042](https://github.com/ContextualWisdomLab/.github/issues/2042) owns removal of the temporary leaf routing bridge after an immutable owner release; [.github#2035](https://github.com/ContextualWisdomLab/.github/pull/2035) remains only the review-publication repair | The freshest #2035 exact-head evidence is run `34183702988`, job `102003278065`: HTTP 429 after 322.5 seconds with `orchestrator/free`, caller attempts=1, served model `deepseek-ai/deepseek-v4-flash-0731`. Keep the review fail closed with no paid, local, or direct-provider bypass; completion requires immutable owner release, consumer version bump and bridge deletion, then exact-head contract/security/review GREEN. |
 
-**Baseline version:** 1.7
+**Baseline version:** 1.8
 **Observed on:** 2026-09-12 (Asia/Seoul)
 **Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@042b0c70531b229af3acbd0421a2f23098d848b3`
 **Observed product version:** `0.14.4`  

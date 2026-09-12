@@ -8,7 +8,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_LOCK = REPO_ROOT / "frontend" / "pnpm-lock.yaml"
-PATCHED_NANOID_VERSION = "3.3.18"
+PATCHED_NANOID_VERSION = "3.3.19"
 
 
 def test_frontend_lock_resolves_only_patched_nanoid_3x() -> None:

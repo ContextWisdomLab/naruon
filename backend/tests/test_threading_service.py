@@ -155,6 +155,7 @@ async def test_existing_thread_lookup_is_scoped_to_owner_and_organization():
     query_text = str(session.queries[-1]).lower()
     assert "email_records.user_id" in query_text
     assert "email_records.organization_id" in query_text
+    assert "email_records.workspace_id" in query_text
 
 
 def test_normalize_message_id_strips_brackets_and_outer_whitespace():

@@ -1009,6 +1009,28 @@ def test_execute_url_extractor_preserves_balanced_delimiters():
     ]
 
 
+def test_execute_url_extractor_preserves_paired_terminal_delimiters():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/url_extractor/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={
+                "parameters": {
+                    "text": (
+                        "Keep https://example.com/)foo(bar) and "
+                        "http://example.com/]foo[bar]."
+                    )
+                }
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result"]["urls"] == [
+        "https://example.com/)foo(bar)",
+        "http://example.com/]foo[bar]",
+    ]
+
+
 def test_execute_hash_generator():
     with TestClient(app) as client:
         response = client.post(

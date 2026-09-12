@@ -678,6 +678,10 @@ in this repo.
   backend/tests/test_release_governance.py backend/tests/test_runtime_config_api.py
   -q`, `corepack pnpm@11.5.3 --dir frontend test --runInBand` when frontend
   behavior changes, and a Docker build of the affected image.
+- A pnpm importer entry is only valid when both records it names exist: the
+  base-version key in `packages` and the complete peer-qualified key in
+  `snapshots`. Security-floor tests must reject a lock that retains another
+  compliant version while dropping the importer's own base package record.
 - GHCR publishing evidence for the combined `naruon` image must include the
   exact image name, tag, local image ID, push result, and registry verification
   from GitHub Packages or an equivalent manifest/API query. Publish the package

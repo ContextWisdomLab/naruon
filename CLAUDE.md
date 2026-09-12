@@ -55,6 +55,11 @@ pnpm run dev
 npm run test:e2e -- tests/e2e/dashboard-branding.spec.ts   # Playwright (set LIVE_BASE_URL for live stacks)
 ```
 
+For pnpm security-floor checks, bind each root importer to its base-version
+`packages` entry and its complete peer-qualified `snapshots` entry. A different
+patched version elsewhere in the lockfile is not evidence for the importer's
+declared resolution.
+
 ### Whole-repo verification
 
 ```bash

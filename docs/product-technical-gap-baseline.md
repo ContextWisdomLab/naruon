@@ -12,9 +12,13 @@ CHANGELOG. Exact tree `d99f83fc482ba948271f45ae2f7251036dd190ad`
 passed **21** focused security contracts, the full backend (**1,826 passed / 33
 skipped**), frontend (**51 files / 437 tests**), frozen install, ESLint,
 TypeScript, and the 16-route production build. Hosted Application CI, Security,
-Semgrep, and Bandit are GREEN; Docker is still running, CodeQL is queued, and
-the moved head has no qualifying independent approval. The owner therefore
-remains Draft and is not merge-authorized.
+Semgrep, and Bandit are GREEN; Docker is still running. CodeQL run
+`34695440148` failed its first admission because every shard read the
+authenticated exact-head verdict as pending; dispatch succeeded and explicitly
+owns rerunning those exact failed jobs after terminal publication. This is
+workflow orchestration state rather than a SARIF source finding. The moved head
+has no qualifying independent approval, so the owner remains Draft and is not
+merge-authorized.
 
 [#1672](https://github.com/ContextualWisdomLab/naruon/pull/1672) is now stacked
 on that exact owner rather than carrying a second dependency diff. Its exact

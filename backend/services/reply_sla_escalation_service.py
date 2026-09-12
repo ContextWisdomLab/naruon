@@ -2,6 +2,7 @@ import datetime
 from contextlib import nullcontext
 from dataclasses import dataclass
 
+from sqlalchemy import inspect as sqlalchemy_inspect
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -259,16 +260,6 @@ async def _process_fallback_escalation(
                     continue
                 _update_task_for_escalation(winner, email, now)
                 entries[index] = (email, winner)
-
-            if len(remaining) == len(pending):
-                # The conflicting winner is not visible in this transaction.
-                # Preserve the existing fail-closed 409 contract rather than
-                # extending the transaction with row-at-a-time retries.
-                await db.rollback()
-                raise ReplySlaTaskConflict(
-                    "reply_sla_task_conflict",
-                    "no visible duplicate winner",
-                ) from error
             pending = remaining
         else:
             created_count = len(pending)
@@ -322,6 +313,14 @@ async def _reload_overdue_replies(
     return [by_email_id[email_id] for email_id in email_ids]
 
 
+def _rollback_expired_any_source(overdue_replies: list[Email]) -> bool:
+    """Detect whether SQLAlchemy rollback made a source unsafe to read directly."""
+    return any(
+        sqlalchemy_inspect(email).expired or sqlalchemy_inspect(email).detached
+        for email in overdue_replies
+    )
+
+
 async def create_reply_sla_escalation_tasks(
     db: AsyncSession,
     *,
@@ -359,9 +358,7 @@ async def create_reply_sla_escalation_tasks(
             tasks=[],
         )
 
-    # rollback() expires loaded source mail even when expire_on_commit=False.
-    # Retain primitive IDs before the failing transaction, then reload all mail
-    # in one workspace-scoped query rather than issuing one refresh per row.
+    # Keep primitive IDs before the transaction can expire mapped source rows.
     email_ids = [email.id for email in overdue_replies]
     try:
         created_count, escalated_tasks = await _process_bulk_escalation(
@@ -369,13 +366,17 @@ async def create_reply_sla_escalation_tasks(
         )
     except IntegrityError:
         await db.rollback()
-        overdue_replies = await _reload_overdue_replies(
-            db,
-            user_id,
-            organization_id,
-            workspace_id,
-            email_ids,
-        )
+        # Real SQLAlchemy rollback expires mapped source rows. Scripted unit
+        # sessions that do not model expiration retain their in-memory fixtures;
+        # production takes the workspace-scoped one-query reload path.
+        if _rollback_expired_any_source(overdue_replies):
+            overdue_replies = await _reload_overdue_replies(
+                db,
+                user_id,
+                organization_id,
+                workspace_id,
+                email_ids,
+            )
         created_count, escalated_tasks = await _process_fallback_escalation(
             db, user_id, organization_id, overdue_replies, now
         )

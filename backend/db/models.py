@@ -801,6 +801,8 @@ class Email(Base):
     in_reply_to: Mapped[str | None] = mapped_column(String, nullable=True)
     references: Mapped[str | None] = mapped_column(String, nullable=True)
     date: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), index=True)
+    date_evidence: Mapped[str | None] = mapped_column(String, nullable=True)
+    message_id_evidence: Mapped[str | None] = mapped_column(String, nullable=True)
     body: Mapped[str] = mapped_column(Text)
     # IMAP \Seen read state; defaults read so historical/file imports don't nag.
     is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

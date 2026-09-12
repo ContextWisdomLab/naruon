@@ -1,5 +1,12 @@
 from pathlib import Path
 
+import pytest
+import asyncpg
+from sqlalchemy import inspect
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from core.config import settings
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -452,3 +459,46 @@ def test_merge_revision_reconciles_newsdom_document_and_carddav_heads():
     assert "op.create_table(" not in revision_text
     assert "op.add_column(" not in revision_text
     assert "op.drop_column(" not in revision_text
+
+
+def test_email_metadata_provenance_revision_persists_nullable_evidence_columns():
+    revision_path = (
+        BACKEND_ROOT
+        / "alembic"
+        / "versions"
+        / "email_metadata_provenance_1086.py"
+    )
+    revision_text = revision_path.read_text()
+
+    assert 'revision = "email_metadata_provenance_1086"' in revision_text
+    assert 'down_revision = "0017_merge_newsdom_carddav_heads"' in revision_text
+    assert '"email_records"' in revision_text
+    assert '"date_evidence"' in revision_text
+    assert '"message_id_evidence"' in revision_text
+    assert "nullable=True" in revision_text
+
+
+@pytest.mark.asyncio
+@pytest.mark.postgres
+async def test_email_metadata_provenance_columns_exist_in_live_postgres_schema():
+    database_url = getattr(settings, "DATABASE_URL", None)
+    if not database_url or not database_url.startswith("postgresql"):
+        pytest.skip("PostgreSQL smoke path unavailable: DATABASE_URL is not set")
+
+    engine = create_async_engine(database_url)
+    try:
+        try:
+            connection = await engine.connect()
+        except (asyncpg.PostgresError, OSError, OperationalError) as exc:
+            pytest.skip(f"PostgreSQL smoke path unavailable: {type(exc).__name__}")
+        async with connection:
+            columns = await connection.run_sync(
+                lambda sync_connection: {
+                    column["name"]
+                    for column in inspect(sync_connection).get_columns("email_records")
+                }
+            )
+    finally:
+        await engine.dispose()
+
+    assert {"date_evidence", "message_id_evidence"} <= columns

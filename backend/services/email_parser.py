@@ -23,6 +23,8 @@ class EmailData(TypedDict):
     in_reply_to: str | None
     references: str | None
     date: datetime.datetime
+    date_evidence: NotRequired[str]
+    message_id_evidence: NotRequired[str]
     body: str
     body_content_type: NotRequired[str]
     body_parse_content: NotRequired[str]
@@ -44,6 +46,11 @@ def _sanitize_display_text(text: str) -> str:
 # that force a quoted-string, and the characters escaped inside one.
 _ADDRESS_SPECIALS_RE = re.compile(r'[()<>@,;:\\".\[\]]')
 _ADDRESS_QUOTED_ESCAPE_RE = re.compile(r'["\\]')
+# RFC 5322 date-time always carries a zone. The obsolete grammar also admits
+# alphabetic zones; unknown ones have the same comparison semantics as -0000.
+_RFC5322_TRAILING_ZONE_RE = re.compile(
+    r"(?:[+-]\d{4}|[A-Za-z]{1,5})(?:\s*\([^)]*\))?\s*$"
+)
 
 
 def _format_display_address(display_name: str, address: str) -> str:
@@ -152,26 +159,30 @@ def _extract_body_and_attachments(msg: Message) -> tuple[str, str, list[dict]]:
     return html_body, "text/html" if html_body else "text/plain", attachments
 
 
-def _extract_date(msg: Message) -> datetime.datetime:
+def _extract_date(msg: Message) -> tuple[datetime.datetime, str]:
     date_header = msg.get("Date")
     parsed_date = None
+    evidence = "missing"
     if date_header:
         try:
             parsed_date = parsedate_to_datetime(date_header)
+            evidence = "parsed" if parsed_date is not None else "invalid"
         except (TypeError, ValueError):
             parsed_date = None
+            evidence = "invalid"
 
     if not parsed_date:
         parsed_date = datetime.datetime.now(datetime.timezone.utc)
     elif parsed_date.tzinfo is None:
-        # RFC 5322 section 3.3: a "-0000" zone means the time zone is unknown,
-        # for which parsedate_to_datetime returns a naive datetime. Every other
-        # branch here yields a timezone-aware datetime, and mixing naive with
-        # aware datetimes raises TypeError on comparison/sorting and misbinds the
-        # instant when stored in a timestamptz column. Treat the unknown zone as
-        # UTC so the returned value is always timezone-aware.
-        parsed_date = parsed_date.replace(tzinfo=datetime.timezone.utc)
-    return parsed_date
+        # parsedate_to_datetime returns naive values both for RFC 5322 -0000 /
+        # unknown obsolete zones and for non-conforming Date values that omit a
+        # zone entirely. Only the former carries a standards-defined instant.
+        if _RFC5322_TRAILING_ZONE_RE.search(str(date_header)):
+            parsed_date = parsed_date.replace(tzinfo=datetime.timezone.utc)
+        else:
+            evidence = "invalid"
+            parsed_date = datetime.datetime.now(datetime.timezone.utc)
+    return parsed_date, evidence
 
 
 def _extract_thread_id(msg: Message, message_id: str) -> str | None:
@@ -193,7 +204,7 @@ def _extract_thread_id(msg: Message, message_id: str) -> str | None:
 
 def _message_to_email_data(msg: Message) -> EmailData:
     body, body_content_type, attachments = _extract_body_and_attachments(msg)
-    parsed_date = _extract_date(msg)
+    parsed_date, date_evidence = _extract_date(msg)
     message_id = _sanitize_nul(msg.get("Message-ID", ""))
     thread_id = _extract_thread_id(msg, message_id)
 
@@ -217,6 +228,8 @@ def _message_to_email_data(msg: Message) -> EmailData:
             _sanitize_nul(msg.get("References", "")) if msg.get("References") else None
         ),
         "date": parsed_date,
+        "date_evidence": date_evidence,
+        "message_id_evidence": "embedded" if message_id else "missing",
         "body": _sanitize_display_text(body),
         "body_content_type": body_content_type,
         "body_parse_content": _sanitize_nul(body),

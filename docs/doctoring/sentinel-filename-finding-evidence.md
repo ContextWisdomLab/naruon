@@ -26,6 +26,10 @@ Minimal repair `4192b4ee29b219deb646d553d10e3eb766fb64de` changes only the stale
 
 Ordinary ancestry PR #1668 then merged exact #1623 `17a7618eda2b212b691f08fa936e042b34258fc9` into the branch. PR #1667 is stacked on that owner; dependency source is not copied into this lane.
 
+The first exact-range review after retarget found that the filename-evidence test used disconnected keywords and could pass despite contradictory guidance. `7d0bdf0a04ac5d889f0c396799fed3faa04b4e8b` repaired that by asserting the complete causal consumer/sink rule and its preserved upload boundaries.
+
+A second exact-range review found the remaining SMTP regression was still vacuous: it separately searched for `chr(10)`, `chr(13)`, and `mode="before"`, so the lesson could drop `@field_validator`, omit one of the required fields, or negate rejection while retaining those tokens. RED `11e5bdc0dcecd0bd56b8247a93bae913ef1ba8a3` requires one complete normalized policy clause. Causal guidance repair `ca9ef9a624af344e9bb19654b8f68a4315246f15` explicitly requires `@field_validator`, `mode="before"`, rejection of both CR/LF code points, and all four user-controlled fields (`to`, `subject`, `in_reply_to`, `references`). Test-harness child `934caabb1dc3399935479660716359d41c7c7380` strips Markdown code-span backticks during normalization so the regression tests policy semantics rather than Markdown punctuation.
+
 ## Decision
 
 Sentinel may record filename patterns as observations, but severity and remediation must follow a reproduced causal path. For an embedded extension, acceptable exploit evidence includes at least one product-relevant boundary such as:
@@ -45,6 +49,7 @@ If no such sink is reproduced, Sentinel must not manufacture a HIGH/CRITICAL fin
 - Replacing the terminal-format allowlist with a blocklist was rejected because denylisting selected “dangerous” strings is incomplete and duplicates product policy already expressed by supported email-import formats.
 - Removing filename checks entirely was rejected because traversal, control characters, terminal suffix validation, storage naming, MIME/content validation, and consumer semantics remain distinct security boundaries.
 - Disabling or reducing Sentinel cadence was rejected because the defect was evidence quality, not the existence of recurring security review.
+- Keeping token-by-token SMTP assertions was rejected because disconnected keywords do not prove the required validator, rejection semantics, and protected field set remain one normative contract.
 
 ## Acceptance boundary
 
@@ -57,7 +62,11 @@ If no such sink is reproduced, Sentinel must not manufacture a HIGH/CRITICAL fin
 - Withdrawn generated finding: `ContextualWisdomLab/naruon#1661`
 - Protected authority inspected: `develop@042b0c70531b229af3acbd0421a2f23098d848b3`
 - Governance RED: `f2124eb7e688bda40b448d627fd3e8f9a99e92cf`
-- Sentinel causal fix: `4192b4ee29b219deb646d553d10e3eb766fb64de`
+- Initial Sentinel causal fix: `4192b4ee29b219deb646d553d10e3eb766fb64de`
+- First review-regression hardening: `7d0bdf0a04ac5d889f0c396799fed3faa04b4e8b`
+- SMTP complete-clause RED: `11e5bdc0dcecd0bd56b8247a93bae913ef1ba8a3`
+- SMTP guidance repair: `ca9ef9a624af344e9bb19654b8f68a4315246f15`
+- Markdown-normalization harness repair: `934caabb1dc3399935479660716359d41c7c7380`
 - Canonical frontend dependency/security owner: `ContextualWisdomLab/naruon#1623@17a7618eda2b212b691f08fa936e042b34258fc9`
 - Parent-adoption merge: `61aec6b70cc310cb6d59d763190b68d3795fb7d9`
 

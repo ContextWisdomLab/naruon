@@ -12,12 +12,16 @@ from services.text_safety import contains_html_markup
 from services.threading_service import normalize_message_id
 
 REPLY_SLA_SOURCE_TYPE = "reply_sla"
+REPLY_SLA_MAX_BATCH_ATTEMPTS = 3
 
 
 class ReplySlaTaskConflict(Exception):
     """Report a concurrent source-task conflict that cannot be reconciled."""
 
-    pass
+    def __init__(self, error_code: str, message: str) -> None:
+        """Create a conflict with stable classification independent of prose."""
+        super().__init__(message)
+        self.error_code = error_code
 
 
 @dataclass(frozen=True)
@@ -174,6 +178,24 @@ async def _process_bulk_escalation(
     return created_count, escalated_tasks
 
 
+def _is_non_unique_constraint_failure(error: IntegrityError) -> bool:
+    """Classify known driver constraint codes without parsing localized prose."""
+    sqlstate = getattr(error.orig, "sqlstate", None) or getattr(
+        error.orig, "pgcode", None
+    )
+    if sqlstate is not None:
+        return sqlstate != "23505"
+    sqlite_errorname = getattr(error.orig, "sqlite_errorname", None)
+    if sqlite_errorname is not None:
+        return sqlite_errorname not in {
+            "SQLITE_CONSTRAINT_UNIQUE",
+            "SQLITE_CONSTRAINT_PRIMARYKEY",
+        }
+    # Untyped IntegrityError retains the established conflict contract. Do not
+    # infer a constraint category from provider- or locale-specific text.
+    return False
+
+
 async def _process_fallback_escalation(
     db: AsyncSession,
     user_id: str,
@@ -181,106 +203,123 @@ async def _process_fallback_escalation(
     overdue_replies: list[Email],
     now: datetime.datetime,
 ) -> tuple[int, list[tuple[TicketTask, str | None]]]:
-    """Reconcile competing inserts with batched then individual savepoints."""
+    """Bound contention recovery without per-row SAVEPOINT retries."""
     email_ids = [email.id for email in overdue_replies]
     existing_tasks_by_email = await _fetch_existing_tasks_by_email(
         db, user_id, organization_id, email_ids
     )
-
-    created_count = 0
-    escalated_tasks: list[tuple[TicketTask, str | None]] = []
-
-    fallback_entries: list[tuple[Email, TicketTask | None]] = []
-    conflicted_email_ids: list[int] = []
-    new_tasks: list[tuple[int, Email, TicketTask]] = []
+    entries: list[tuple[Email, TicketTask]] = []
+    pending: list[tuple[int, Email, TicketTask]] = []
 
     for email in overdue_replies:
-        if email.id in existing_tasks_by_email:
-            task = existing_tasks_by_email[email.id]
-            _update_task_for_escalation(task, email, now)
-        else:
+        task = existing_tasks_by_email.get(email.id)
+        if task is None:
             task = _create_task_for_escalation(user_id, organization_id, email)
-            new_tasks.append((len(fallback_entries), email, task))
-        fallback_entries.append((email, task))
+            pending.append((len(entries), email, task))
+        else:
+            _update_task_for_escalation(task, email, now)
+        entries.append((email, task))
 
-    if new_tasks:
+    created_count = 0
+    for _ in range(REPLY_SLA_MAX_BATCH_ATTEMPTS):
+        if not pending:
+            break
+        savepoint_started = False
         try:
             async with db.begin_nested():
-                for _, _, task in new_tasks:
+                savepoint_started = True
+                for _, _, task in pending:
                     db.add(task)
                 await db.flush()
-            created_count += len(new_tasks)
-        except IntegrityError:
-            # OPTIMIZATION: A concurrent process likely created some of these tasks.
-            # We fetch all currently existing tasks for our `new_tasks` list,
-            # filter them out, and bulk insert the truly new ones.
-            current_email_ids = [email.id for _, email, _ in new_tasks]
+        except IntegrityError as error:
+            if not savepoint_started:
+                # AsyncSession.begin_nested() flushes dirty state before the
+                # SAVEPOINT exists. A pre-savepoint failure poisons the outer
+                # transaction and must not be treated as a uniqueness race.
+                await db.rollback()
+                raise
+            if _is_non_unique_constraint_failure(error):
+                await db.rollback()
+                raise
+
+            # SAVEPOINT rollback already detaches failed inserts. Read visible
+            # winners in one owner-scoped query and retry only the remainder.
             with getattr(db, "no_autoflush", nullcontext()):
-                currently_existing = await _fetch_existing_tasks_by_email(
-                    db, user_id, organization_id, current_email_ids
+                winners = await _fetch_existing_tasks_by_email(
+                    db,
+                    user_id,
+                    organization_id,
+                    [email.id for _, email, _ in pending],
                 )
+            remaining: list[tuple[int, Email, TicketTask]] = []
+            for index, email, task in pending:
+                winner = winners.get(email.id)
+                if winner is None:
+                    remaining.append((index, email, task))
+                    continue
+                _update_task_for_escalation(winner, email, now)
+                entries[index] = (email, winner)
 
-            remaining_tasks = []
-            for index, email, task in new_tasks:
-                if email.id in currently_existing:
-                    # We know this one conflicted.
-                    conflicted_email_ids.append(email.id)
-                    fallback_entries[index] = (email, None)
-                else:
-                    remaining_tasks.append((index, email, task))
+            if len(remaining) == len(pending):
+                # The conflicting winner is not visible in this transaction.
+                # Preserve the existing fail-closed 409 contract rather than
+                # extending the transaction with row-at-a-time retries.
+                await db.rollback()
+                raise ReplySlaTaskConflict(
+                    "reply_sla_task_conflict",
+                    "no visible duplicate winner",
+                ) from error
+            pending = remaining
+        else:
+            created_count = len(pending)
+            pending = []
+            break
 
-            if remaining_tasks:
-                # Highly likely the remaining tasks can now be bulk inserted.
-                try:
-                    async with db.begin_nested():
-                        for _, _, task in remaining_tasks:
-                            db.add(task)
-                        await db.flush()
-                    created_count += len(remaining_tasks)
-                except IntegrityError:
-                    # Rare extreme concurrency: fallback to individual inserts.
-                    for index, email, task in remaining_tasks:
-                        task_or_none: TicketTask | None = task
-                        try:
-                            async with db.begin_nested():
-                                db.add(task)
-                                await db.flush()
-                            created_count += 1
-                        except IntegrityError:
-                            conflicted_email_ids.append(email.id)
-                            task_or_none = None
-                        fallback_entries[index] = (email, task_or_none)
-
-    if conflicted_email_ids:
-        conflicted_tasks_by_email = await _fetch_existing_tasks_by_email(
-            db, user_id, organization_id, conflicted_email_ids
+    if pending:
+        # Sustained contention is bounded by batch attempts. Rolling back here
+        # also reverts updates to pre-existing tasks, so no partial write leaks.
+        await db.rollback()
+        raise ReplySlaTaskConflict(
+            "reply_sla_batch_retry_exhausted",
+            "batch retry budget exhausted",
         )
 
-        for index, (email, task) in enumerate(fallback_entries):
-            if task is not None or email.id not in conflicted_email_ids:
-                continue
-            task = conflicted_tasks_by_email.get(email.id)
-            if task is None:
-                raise ReplySlaTaskConflict(
-                    "reply_sla_task_conflict: "
-                    f"user_id={user_id!r} organization_id={organization_id!r} "
-                    f"scoped_email_key={email.id!r}"
-                ) from None
-
-            _update_task_for_escalation(task, email, now)
-            fallback_entries[index] = (email, task)
-
-    escalated_tasks.extend(
-        (task, email.message_id) for email, task in fallback_entries if task is not None
-    )
-
-    if created_count > 0 or any(t.status != "done" for t, _ in escalated_tasks):
+    escalated_tasks = [(task, email.message_id) for email, task in entries]
+    if created_count > 0 or any(task.status != "done" for task, _ in escalated_tasks):
         await db.commit()
         await _refresh_escalated_tasks(
             db, user_id, organization_id, email_ids, escalated_tasks
         )
 
     return created_count, escalated_tasks
+
+
+async def _reload_overdue_replies(
+    db: AsyncSession,
+    user_id: str,
+    organization_id: str | None,
+    workspace_id: str,
+    email_ids: list[int],
+) -> list[Email]:
+    """Reload rollback-expired source mail in one workspace-scoped query."""
+    result = await db.execute(
+        select(Email)
+        .where(
+            Email.user_id == user_id,
+            Email.organization_id == organization_id,
+            Email.workspace_id == workspace_id,
+            Email.id.in_(email_ids),
+        )
+        .execution_options(populate_existing=True)
+    )
+    by_email_id = {email.id: email for email in result.scalars().all()}
+    if any(email_id not in by_email_id for email_id in email_ids):
+        await db.rollback()
+        raise ReplySlaTaskConflict(
+            "reply_sla_source_email_unavailable",
+            "source email no longer available in the authorized workspace",
+        )
+    return [by_email_id[email_id] for email_id in email_ids]
 
 
 async def create_reply_sla_escalation_tasks(
@@ -320,15 +359,23 @@ async def create_reply_sla_escalation_tasks(
             tasks=[],
         )
 
+    # rollback() expires loaded source mail even when expire_on_commit=False.
+    # Retain primitive IDs before the failing transaction, then reload all mail
+    # in one workspace-scoped query rather than issuing one refresh per row.
+    email_ids = [email.id for email in overdue_replies]
     try:
         created_count, escalated_tasks = await _process_bulk_escalation(
             db, user_id, organization_id, overdue_replies, now
         )
     except IntegrityError:
         await db.rollback()
-        # Rollback expires loaded mail even when expire_on_commit is disabled.
-        for email in overdue_replies:
-            await db.refresh(email)
+        overdue_replies = await _reload_overdue_replies(
+            db,
+            user_id,
+            organization_id,
+            workspace_id,
+            email_ids,
+        )
         created_count, escalated_tasks = await _process_fallback_escalation(
             db, user_id, organization_id, overdue_replies, now
         )

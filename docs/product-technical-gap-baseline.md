@@ -1,8 +1,138 @@
 # Naruon Product and Technical Gap Baseline
 
-**Baseline version:** 1.2
-**Observed on:** 2026-08-26 (Asia/Seoul)
-**Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@e5e99b4e3bb081b92c602358878856536030e2ca`
+## 2026-09-12 current owner and stacked-delivery evidence
+
+[#1623](https://github.com/ContextualWisdomLab/naruon/pull/1623) remains the
+canonical frontend dependency-security owner. RED
+`8175f7f04a8624a681a509eb8b446c7a3ff7bd5d` raised the Nano ID 3.x security
+floor to `3.3.19`; GREEN
+`9d6d1e09e1ad52e57a1a3162c9984cceea4b2cb8` synchronizes the workspace
+override, package and snapshot lock records, regression contract, and
+CHANGELOG. Exact tree `d99f83fc482ba948271f45ae2f7251036dd190ad`
+passed **21** focused security contracts, the full backend (**1,826 passed / 33
+skipped**), frontend (**51 files / 437 tests**), frozen install, ESLint,
+TypeScript, and the 16-route production build. Hosted Application CI, Security,
+Semgrep, Bandit, and Docker are GREEN. CodeQL run
+`34695440148` failed its first admission because every shard read the
+authenticated exact-head verdict as pending; dispatch succeeded and explicitly
+owns rerunning those exact failed jobs after terminal publication. This is
+workflow orchestration state rather than a SARIF source finding. The moved head
+has no qualifying independent approval, so the owner remains Draft and is not
+merge-authorized.
+
+[#1672](https://github.com/ContextualWisdomLab/naruon/pull/1672) is now stacked
+on that exact owner rather than carrying a second dependency diff. Its exact
+head `f826fde79b107794a7391788c30545875cc5083f` has tree
+`9f655a2b21e8beca74f2ab7efa955129522c5e3c`; concurrent security commit
+`5f480d641b49ed3dff585881806e75aa1f926046` remains a merge parent. Review
+repair RED `7d883377` / `8c79903b` to GREEN `8660aff5` / `119f46cf` applies
+descriptor defaults before validation, rejects non-standard JSON constants,
+and strips only unmatched terminal URL closers with ordered delimiter pairing.
+All three review threads are resolved. The final tree passed **94** focused
+tool/security tests, the full backend (**1,835 passed / 33 skipped**), frontend
+(**51 files / 437 tests**), frozen install, ESLint, TypeScript, and the 16-route
+build. Its exact-head Application CI, Security, Semgrep, Bandit, and Docker
+workflows are GREEN. CodeQL run `34695737370` is terminal RED and remains an
+owner-orchestration gate rather than positive source evidence. URL extraction (#1496),
+hash generation (#1538), and strict JSON formatting/validation (#1659) remain
+overlapping Proposed owner lanes, so #1672 stays Draft until each unique delta
+has verified owner adoption; review repair is not DDD ownership or merge
+evidence.
+
+The following live lanes refine the delivery gap without moving their product
+truth into this ledger:
+
+| Live owner lane | Exact topology and validated delta | Current delivery boundary |
+| --- | --- | --- |
+| [#1662](https://github.com/ContextualWisdomLab/naruon/pull/1662) NetworkGraph | base `#1623@17a7618`, head `d82e722dbf1b8b485d533056409bd91689a03b5f`; three-file bounded-prefix traversal and regression scope | Draft and currently non-mergeable; no exact-head PR workflow run. The source-level CodeRabbit review is not a formal current-head approval. |
+| [#1659](https://github.com/ContextualWisdomLab/naruon/pull/1659) strict JSON formatter | base `#1623@17a7618`, head `fbcbd5444241cd025b21d96faa8ca8130c983da9`; RED `0845687e` to causal output-budget fix `cea8b279` plus code-current doctoring | Draft; no exact-head PR workflow run or qualifying current-head approval. The stale parent must be ordinary-restacked before merge. |
+| [#1667](https://github.com/ContextualWisdomLab/naruon/pull/1667) Sentinel guidance | base `#1623@17a7618`, head `695c242d241dd3a4c03046b44486ce93ef59af6f`; sink-backed filename-finding guidance, regression, and doctoring only | Draft and currently non-mergeable; no exact-head PR workflow run or qualifying approval. The stale parent must be ordinary-restacked before merge. |
+| [#1587](https://github.com/ContextualWisdomLab/naruon/pull/1587) local stacked-PR CI | base `develop@042b0c7`, head `17c0a5c9198eeda95f6a7d86f6a35a8b05abe774`; stale release-governance assertions were repaired after a real hosted RED | Application CI, Bandit, Docker, and Semgrep are GREEN; Security and CodeQL remain terminal RED. Draft and not merge-authorized. |
+| [#1600](https://github.com/ContextualWisdomLab/naruon/pull/1600) full-product evidence | base `#1587@17c0a5c`, head `d23a6899a62162a766a00b16a80441c9bcdc969a`; six-file child retains source-head-bound product evidence | Application CI, Bandit, and Docker materialized and are GREEN on the stacked base. Missing same-head Security/CodeQL/review evidence keeps the lane Draft. |
+
+These rows also expose a reusable failure mode: children based on predecessor
+`#1623@17a7618` do not inherit the repaired dependency owner
+`#1623@9d6d1e0`. Ordinary restacking and new exact-base/head evidence are
+required; predecessor execution and approvals do not transfer.
+
+## 2026-09-12 frontend security owner single-writer repair
+
+[#1623](https://github.com/ContextualWisdomLab/naruon/pull/1623) remains the
+canonical frontend dependency-security owner. Concurrent commit `4e66036b`
+wrote its maintenance evidence into this ledger from the dependency branch and
+identified predecessor `5487141...` as its current head. That was both a
+single-writer violation and stale exact-head evidence.
+
+Non-force repair `d8327d4904f38588b6b6883338aafb575256a19b` restores the
+protected-`develop` ledger blob on #1623 while preserving every dependency and
+regression-test commit in ancestry. Its resulting tree is
+`5d80c6927cac1678a31e7fbab24e68a0d541fef0`; the PR comparison contains seven
+intended owner paths and no longer includes this ledger. Focused frontend
+security contracts pass **20 tests** with warnings as errors, and exact-head
+Application CI, CodeQL, Security, Semgrep, Bandit and Docker runs were recreated
+after the repair. They and a qualifying independent review remain pending, so
+no merge or release is claimed.
+
+## 2026-09-12 Reply-SLA conflict-code evidence
+
+This observation records the current candidate from
+[#1670](https://github.com/ContextualWisdomLab/naruon/pull/1670) without
+transferring predecessor Checks or claiming protected integration. Exact head
+`e17bbc27040ddeb4e1de6e12815f5aa74a5c9672` has tree
+`820fc29c93f3ba23518d18c9619c9dc93776db10`, byte-matched to the locally
+verified tree.
+
+| Observed product/technical gap | Canonical owner action | Current status and required evidence |
+| --- | --- | --- |
+| Reply-SLA contention reasons existed only in exception prose while the HTTP 409 boundary independently returned one generic code | #1670 now carries stable `ReplySlaTaskConflict.error_code` values for unresolved duplicate races, exhausted batch retry budgets, and source emails that leave the caller's scope; the API preserves the specific code while retaining customer-safe explanatory copy | RED commits `fc68fa5` and `df1ff2d` produced **5 failed / 18 passed** and a separate API failure; GREEN `346c293` plus complete-CHANGELOG restoration `e17bbc2` passes **23** transaction tests with warnings as errors and **47 passed / 1 skipped** across Tasks API and reply tracking. Scoped Ruff, compileall, diff checks and exact tree comparison pass. Exact-head hosted checks, real async PostgreSQL qualification and independent approval remain required. Inherited Trivy findings remain owned by [#1623](https://github.com/ContextualWisdomLab/naruon/pull/1623); no ignore or gate weakening is included. |
+
+## 2026-09-08 visual evidence: smoke success is not product acceptance
+
+This observation supplements the historical inventory below. PR
+[#1599](https://github.com/ContextualWisdomLab/naruon/pull/1599) built source
+`877f0d5c1b96c3ac212ecc86630afb75532f5880` and ran the same implementation
+through test descendant `af4df216b3533ebb82dab9d361b415ddb941fa24`.
+The production build and mocked browser smoke exited zero across ten routes at
+1440×1024 and 390×844, and all twenty PNGs were directly inspected. The
+[inspection receipt](https://github.com/ContextualWisdomLab/naruon/pull/1599#issuecomment-5578964200)
+records scope and observed defects. It does not prove live provider writes,
+real backend contracts, every locale, deployment, or complete accessibility.
+PR #1600 then retained the same ten-route desktop evidence from hosted
+Application CI run `34189161122` for exact head `d30f0b7c`. Direct inspection
+confirmed that artifact creation succeeded while the customer-facing defects
+below remained visible; a green smoke job is therefore evidence availability,
+not visual acceptance.
+
+| Observed customer gap | Canonical owner action | Acceptance evidence still required |
+| --- | --- | --- |
+| Home exposed English skip-link and `source-linked` | #1578 owns customer status copy; #1601 owns keyboard navigation copy | Merge both successors normally, then repeat keyboard-focused desktop/mobile inspection on the deployed product |
+| Search displayed raw source/thread identifiers, `sender_context`, `reply_count`, API/Ontology labels, and machine action codes | [PR #1603](https://github.com/ContextualWisdomLab/naruon/pull/1603) retains scoped identifiers in requests/state while replacing visible plumbing with relationship, action, and mail-flow outcomes; exact head `462b134acf858061019d3ffe37b7b3d60e6f7e74` normalizes production `Colleague` casing, translates all four production action codes, and fails closed to neutral customer copy for unknown values | Full Vitest passed 51 files / 447 tests; scoped ESLint, TypeScript, diff checks, Application CI, Bandit, Docker validation, Security, Semgrep, coverage evidence/source, Strix, and GitHub Advanced Security CodeQL are GREEN. Required compatibility CodeQL remains failed on the central terminal-verdict ordering defect tracked by `.github#1929`; OpenCode and Noema are failed, no qualifying current-head formal approval or durable responsive-browser inspection exists, and the UI Delivery Gate remains **FAIL** pending owner repair, protected merge, and deployed inspection |
+| Calendar, Data, Security, and Settings exposed intent/ETag, verifier commands/schema names, event codes, `signed-session`, RBAC/ABAC, and OIDC/provider plumbing | Each product surface must replace implementation vocabulary with outcomes and next actions while retaining evidence in authorized diagnostics | Rendered-copy tests, authorization tests, and responsive screenshots |
+| Mail toast and several route captures obscured or clipped primary navigation | Shared workspace layout must preserve navigation visibility while transient feedback is present | Desktop/mobile screenshots with active toast, sticky header, scroll, and keyboard focus |
+| Mobile Search, Projects, and Settings placed content behind sticky headers | Reproduce scrolling and keyboard focus before selecting a layout repair | Focused controls and relevant text remain visible and reachable at 390×844 |
+
+The screenshot-failure RED at `af4df216` returned a diagnostic text path as
+successful screenshot evidence. PR #1599 successor `9bb0dc7e` now throws the
+capture error, leaves no false PNG, closes the page, and retains late browser
+error detection; its focused suite passed 16/16. PR #1600 separately owns
+source-head-bound artifact retention. Both remain Proposed until current-head
+hosted checks and independent review finish. Unknown `/api/**` mocks can still
+default to HTTP 200 `{ok: true}` and remain a separate reality-gap repair.
+
+## 2026-09-09 owner succession and review-gateway evidence
+
+These rows integrate the incoming #1611 observations into this single-writer
+baseline. They bind each gap to its actual bounded-context owner and do not
+reuse predecessor approvals or checks.
+
+| Observed responsibility gap | Canonical owner action | Current status and required evidence |
+| --- | --- | --- |
+| [#1590](https://github.com/ContextualWisdomLab/naruon/pull/1590) repeatedly acquired provider/model fixture changes outside its URL-extraction responsibility | [#1418](https://github.com/ContextualWisdomLab/naruon/pull/1418) remains the canonical Naruon URL/contact-hygiene owner and already carries the valid hostname and scheme delta | #1590 preserved all intervening ancestry and restored verified tree `24480909a7e8b8e5c707b52c976d820018389a77` at exact head `9d545440f556a3aa24213d690ab62bd45bfc6bdf`; #1418 is open/Draft and mergeable at `a4a4da69ff9df89bac9d0a00e7473f35685be567`. Completion requires fresh exact-head checks, independent approval, ordinary protected integration of #1418, and succession verification before retiring #1590. |
+| Required Noema review lacked a terminal verdict after consumer-owned preflight selected the free gateway route | [contextual-orchestrator#1106](https://github.com/ContextualWisdomLab/contextual-orchestrator/issues/1106) owns free-pool admission/routing; [.github#2042](https://github.com/ContextualWisdomLab/.github/issues/2042) owns removal of the temporary leaf routing bridge after an immutable owner release; [.github#2035](https://github.com/ContextualWisdomLab/.github/pull/2035) remains only the review-publication repair | The freshest #2035 exact-head evidence is run `34183702988`, job `102003278065`: HTTP 429 after 322.5 seconds with `orchestrator/free`, caller attempts=1, served model `deepseek-ai/deepseek-v4-flash-0731`. Keep the review fail closed with no paid, local, or direct-provider bypass; completion requires immutable owner release, consumer version bump and bridge deletion, then exact-head contract/security/review GREEN. |
+
+**Baseline version:** 1.9
+**Observed on:** 2026-09-12 (Asia/Seoul)
+**Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@042b0c70531b229af3acbd0421a2f23098d848b3`
 **Observed product version:** `0.14.4`  
 **Canonical completion issue:** [#1428](https://github.com/ContextualWisdomLab/naruon/issues/1428)
 

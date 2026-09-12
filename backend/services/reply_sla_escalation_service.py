@@ -12,6 +12,7 @@ from services.text_safety import contains_html_markup
 from services.threading_service import normalize_message_id
 
 REPLY_SLA_SOURCE_TYPE = "reply_sla"
+REPLY_SLA_MAX_BATCH_ATTEMPTS = 3
 
 
 class ReplySlaTaskConflict(Exception):
@@ -166,109 +167,108 @@ async def _process_fallback_escalation(
     overdue_replies: list[Email],
     now: datetime.datetime,
 ) -> tuple[int, list[tuple[TicketTask, str | None]]]:
+    """Bound contention recovery without committing a partially reconciled batch."""
     email_ids = [email.id for email in overdue_replies]
     existing_tasks_by_email = await _fetch_existing_tasks_by_email(
         db, user_id, organization_id, email_ids
     )
-
-    created_count = 0
-    escalated_tasks: list[tuple[TicketTask, str | None]] = []
-
-    fallback_entries: list[tuple[Email, TicketTask | None]] = []
-    conflicted_email_ids: list[int] = []
-    new_tasks: list[tuple[int, Email, TicketTask]] = []
+    entries: list[tuple[Email, TicketTask]] = []
+    pending: list[tuple[int, Email, TicketTask]] = []
 
     for email in overdue_replies:
-        if email.id in existing_tasks_by_email:
-            task = existing_tasks_by_email[email.id]
-            _update_task_for_escalation(task, email, now)
-        else:
+        task = existing_tasks_by_email.get(email.id)
+        if task is None:
             task = _create_task_for_escalation(user_id, organization_id, email)
-            new_tasks.append((len(fallback_entries), email, task))
-        fallback_entries.append((email, task))
+            pending.append((len(entries), email, task))
+        else:
+            _update_task_for_escalation(task, email, now)
+        entries.append((email, task))
 
-    if new_tasks:
+    created_count = 0
+    for _ in range(REPLY_SLA_MAX_BATCH_ATTEMPTS):
+        if not pending:
+            break
+        savepoint_started = False
         try:
             async with db.begin_nested():
-                for _, _, task in new_tasks:
+                savepoint_started = True
+                for _, _, task in pending:
                     db.add(task)
                 await db.flush()
-            created_count += len(new_tasks)
         except IntegrityError:
-            # OPTIMIZATION: A concurrent process likely created some of these tasks.
-            # We fetch all currently existing tasks for our `new_tasks` list,
-            # filter them out, and bulk insert the truly new ones.
-            current_email_ids = [email.id for _, email, _ in new_tasks]
+            if not savepoint_started:
+                # begin_nested() flushes existing dirty work before establishing
+                # the savepoint; that failure needs an outer rollback first.
+                await db.rollback()
+                raise
+            # SAVEPOINT rollback already detaches its pending inserts. Reconcile
+            # winners in one read; expunging those transient objects is invalid.
             with getattr(db, "no_autoflush", nullcontext()):
-                currently_existing = await _fetch_existing_tasks_by_email(
-                    db, user_id, organization_id, current_email_ids
+                winners = await _fetch_existing_tasks_by_email(
+                    db,
+                    user_id,
+                    organization_id,
+                    [email.id for _, email, _ in pending],
                 )
-
-            remaining_tasks = []
-            for index, email, task in new_tasks:
-                if email.id in currently_existing:
-                    # We know this one conflicted.
-                    conflicted_email_ids.append(email.id)
-                    fallback_entries[index] = (email, None)
-                    if hasattr(db, "expunge"):
-                        db.expunge(task)
+            remaining = []
+            for index, email, task in pending:
+                winner = winners.get(email.id)
+                if winner is None:
+                    remaining.append((index, email, task))
                 else:
-                    remaining_tasks.append((index, email, task))
+                    _update_task_for_escalation(winner, email, now)
+                    entries[index] = (email, winner)
+            if len(remaining) == len(pending):
+                # No visible duplicate explains this failure (e.g. FK or NOT
+                # NULL). Preserve the database error instead of retrying rows.
+                await db.rollback()
+                raise
+            pending = remaining
+        else:
+            created_count = len(pending)
+            pending = []
+            break
 
-            if remaining_tasks:
-                # Highly likely the remaining tasks can now be bulk inserted.
-                try:
-                    async with db.begin_nested():
-                        for _, _, task in remaining_tasks:
-                            db.add(task)
-                        await db.flush()
-                    created_count += len(remaining_tasks)
-                except IntegrityError:
-                    # Rare extreme concurrency: fallback to individual inserts.
-                    for index, email, task in remaining_tasks:
-                        task_or_none: TicketTask | None = task
-                        try:
-                            async with db.begin_nested():
-                                db.add(task)
-                                await db.flush()
-                            created_count += 1
-                        except IntegrityError:
-                            conflicted_email_ids.append(email.id)
-                            task_or_none = None
-                            if hasattr(db, "expunge"):
-                                db.expunge(task)
-                        fallback_entries[index] = (email, task_or_none)
-
-    if conflicted_email_ids:
-        conflicted_tasks_by_email = await _fetch_existing_tasks_by_email(
-            db, user_id, organization_id, conflicted_email_ids
+    if pending:
+        # Do not turn sustained contention into N savepoints while retaining
+        # earlier write locks. The API already maps this domain error to 409.
+        await db.rollback()
+        raise ReplySlaTaskConflict(
+            "reply_sla_task_conflict: batch retry budget exhausted"
         )
 
-        for index, (email, task) in enumerate(fallback_entries):
-            if task is not None or email.id not in conflicted_email_ids:
-                continue
-            task = conflicted_tasks_by_email.get(email.id)
-            if task is None:
-                raise ReplySlaTaskConflict(
-                    "reply_sla_task_conflict: "
-                    f"user_id={user_id!r} organization_id={organization_id!r} "
-                    f"scoped_email_key={email.id!r}"
-                ) from None
-
-            _update_task_for_escalation(task, email, now)
-            fallback_entries[index] = (email, task)
-
-    escalated_tasks.extend(
-        (task, email.message_id) for email, task in fallback_entries if task is not None
-    )
-
-    if created_count > 0 or any(t.status != "done" for t, _ in escalated_tasks):
+    escalated_tasks = [(task, email.message_id) for email, task in entries]
+    if created_count > 0 or any(task.status != "done" for task, _ in escalated_tasks):
         await db.commit()
         await _refresh_escalated_tasks(
             db, user_id, organization_id, email_ids, escalated_tasks
         )
-
     return created_count, escalated_tasks
+
+
+async def _reload_overdue_replies(
+    db: AsyncSession,
+    user_id: str,
+    organization_id: str | None,
+    email_ids: list[int],
+) -> list[Email]:
+    """Reload expired inputs in one owner-scoped query, preserving their order."""
+    result = await db.execute(
+        select(Email)
+        .where(
+            Email.user_id == user_id,
+            Email.organization_id == organization_id,
+            Email.id.in_(email_ids),
+        )
+        .execution_options(populate_existing=True)
+    )
+    by_email_id = {email.id: email for email in result.scalars().all()}
+    if any(email_id not in by_email_id for email_id in email_ids):
+        await db.rollback()
+        raise ReplySlaTaskConflict(
+            "reply_sla_task_conflict: source email no longer available"
+        )
+    return [by_email_id[email_id] for email_id in email_ids]
 
 
 async def create_reply_sla_escalation_tasks(
@@ -302,12 +302,17 @@ async def create_reply_sla_escalation_tasks(
             tasks=[],
         )
 
+    # rollback() expires even primary keys, regardless of expire_on_commit.
+    email_ids = [email.id for email in overdue_replies]
     try:
         created_count, escalated_tasks = await _process_bulk_escalation(
             db, user_id, organization_id, overdue_replies, now
         )
     except IntegrityError:
         await db.rollback()
+        overdue_replies = await _reload_overdue_replies(
+            db, user_id, organization_id, email_ids
+        )
         created_count, escalated_tasks = await _process_fallback_escalation(
             db, user_id, organization_id, overdue_replies, now
         )

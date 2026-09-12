@@ -611,42 +611,75 @@ def _reject_duplicate_json_object_pairs(
     return parsed
 
 
-def _format_json_value(value: Any, *, depth: int = 0) -> str:
+class _JsonSizeLimiter:
+    def __init__(self, limit: int):
+        self.limit = limit
+        self.current = 0
+
+    def add(self, chars: int):
+        self.current += chars
+        if self.current > self.limit:
+            raise ValueError(f"Formatted JSON must not exceed {self.limit} characters")
+
+def _format_json_value(value: Any, *, depth: int = 0, limiter: Optional[_JsonSizeLimiter] = None) -> str:
     """Pretty-print decoded JSON without changing validated number lexemes."""
+    if limiter is None:  # pragma: no cover
+        limiter = _JsonSizeLimiter(float("inf"))
+
     indentation = "  " * depth
     child_indentation = "  " * (depth + 1)
+    nl = chr(10)
 
     if isinstance(value, _JsonNumberLexeme):
-        return str(value)
+        res = str(value)
+        limiter.add(len(res))
+        return res
     if value is None:
+        limiter.add(4)
         return "null"
     if value is True:
+        limiter.add(4)
         return "true"
     if value is False:
+        limiter.add(5)
         return "false"
     if isinstance(value, str):
-        return json.dumps(value, ensure_ascii=False)
+        res = json.dumps(value, ensure_ascii=False)
+        limiter.add(len(res))
+        return res
     if isinstance(value, list):
         if not value:
+            limiter.add(2)
             return "[]"
-        rendered_items = [
-            f"{child_indentation}{_format_json_value(item, depth=depth + 1)}"
-            for item in value
-        ]
-        return "[\n" + ",\n".join(rendered_items) + f"\n{indentation}]"
+        limiter.add(2)
+        rendered_items = []
+        for i, item in enumerate(value):
+            if i > 0:
+                limiter.add(2)
+            limiter.add(len(child_indentation))
+            rendered_items.append(
+                f"{child_indentation}{_format_json_value(item, depth=depth + 1, limiter=limiter)}"
+            )
+        limiter.add(1 + len(indentation) + 1)
+        return "[" + nl + ("," + nl).join(rendered_items) + nl + indentation + "]"
     if isinstance(value, dict):
         if not value:
+            limiter.add(2)
             return "{}"
+        limiter.add(2)
         rendered_members = []
-        for name, item in value.items():
+        for i, (name, item) in enumerate(value.items()):
+            if i > 0:
+                limiter.add(2)
             encoded_name = json.dumps(name, ensure_ascii=False)
+            limiter.add(len(child_indentation) + len(encoded_name) + 2)
             rendered_members.append(
                 f"{child_indentation}{encoded_name}: "
-                f"{_format_json_value(item, depth=depth + 1)}"
+                f"{_format_json_value(item, depth=depth + 1, limiter=limiter)}"
             )
-        return "{\n" + ",\n".join(rendered_members) + f"\n{indentation}}}"
-    raise TypeError(f"unsupported decoded JSON value: {type(value).__name__}")
-
+        limiter.add(1 + len(indentation) + 1)
+        return "{" + nl + ("," + nl).join(rendered_members) + nl + indentation + "}"
+    raise TypeError(f"unsupported decoded JSON value: {type(value).__name__}")  # pragma: no cover
 
 async def json_formatter_handler(params: Dict[str, Any]) -> Dict[str, str]:
     """Validate and pretty-print JSON without silently changing numeric values."""
@@ -663,9 +696,14 @@ async def json_formatter_handler(params: Dict[str, Any]) -> Dict[str, str]:
             parse_constant=_reject_non_finite_json_constant,
             object_pairs_hook=_reject_duplicate_json_object_pairs,
         )
-        formatted = _format_json_value(parsed)
+        limiter = _JsonSizeLimiter(ANALYSIS_TEXT_MAX_CHARS)
+        formatted = _format_json_value(parsed, limiter=limiter)
         formatted.encode("utf-8")
-    except (json.JSONDecodeError, ValueError, RecursionError, UnicodeEncodeError) as exc:
+    except ValueError as exc:
+        if str(exc).startswith("Formatted JSON must not exceed"):
+            raise
+        raise ValueError("Invalid JSON string") from exc
+    except (json.JSONDecodeError, RecursionError, UnicodeEncodeError) as exc:
         raise ValueError("Invalid JSON string") from exc
     return {"formatted_json": formatted}
 

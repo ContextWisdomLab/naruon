@@ -303,30 +303,54 @@ async def test_email_workspace_migration_real_postgres_smoke(
     either catalog shape without relying on that assumption."""
     engine = create_async_engine(settings.DATABASE_URL)
     try:
-        async with engine.begin() as conn:
-
-            def _setup(sync_conn):
-                _setup_pre_0020_email_records(
-                    sync_conn,
-                    legacy_identity_as_constraint=legacy_identity_as_constraint,
+        async with engine.connect() as probe_conn:
+            original_email_records_oid = (
+                await probe_conn.execute(
+                    text(
+                        "SELECT oid FROM pg_class "
+                        "WHERE oid = to_regclass('email_records')"
+                    )
                 )
+            ).scalar_one_or_none()
+        assert original_email_records_oid is not None
 
-            await conn.run_sync(_setup)
-            await conn.run_sync(_run_0020_upgrade)
+        async with engine.connect() as conn:
+            transaction = await conn.begin()
+            try:
 
-            def _inspect(sync_conn):
-                insp = inspect(sync_conn)
-                return (
-                    {i["name"] for i in insp.get_indexes("email_records")},
-                    {c["name"] for c in insp.get_unique_constraints("email_records")},
+                def _setup(sync_conn):
+                    _setup_pre_0020_email_records(
+                        sync_conn,
+                        legacy_identity_as_constraint=legacy_identity_as_constraint,
+                    )
+
+                await conn.run_sync(_setup)
+                await conn.run_sync(_run_0020_upgrade)
+
+                def _inspect(sync_conn):
+                    insp = inspect(sync_conn)
+                    return (
+                        {i["name"] for i in insp.get_indexes("email_records")},
+                        {
+                            c["name"]
+                            for c in insp.get_unique_constraints("email_records")
+                        },
+                    )
+
+                index_names, constraint_names = await conn.run_sync(_inspect)
+            finally:
+                await transaction.rollback()
+
+        async with engine.connect() as probe_conn:
+            restored_email_records_oid = (
+                await probe_conn.execute(
+                    text(
+                        "SELECT oid FROM pg_class "
+                        "WHERE oid = to_regclass('email_records')"
+                    )
                 )
-
-            index_names, constraint_names = await conn.run_sync(_inspect)
-            await conn.run_sync(
-                lambda sync_conn: sync_conn.execute(
-                    text("DROP TABLE IF EXISTS email_records CASCADE")
-                )
-            )
+            ).scalar_one_or_none()
+        assert restored_email_records_oid == original_email_records_oid
     except (
         ConnectionRefusedError,
         OSError,

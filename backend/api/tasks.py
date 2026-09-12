@@ -158,11 +158,11 @@ async def create_reply_sla_escalations(
             overdue_hours=request.overdue_hours,
             limit=request.limit,
         )
-    except ReplySlaTaskConflict:
+    except ReplySlaTaskConflict as conflict_error:
         raise HTTPException(
             status_code=409,
             detail={
-                "error_code": "reply_sla_task_conflict",
+                "error_code": conflict_error.error_code,
                 "message": "Overdue reply follow-up task conflict",
             },
         ) from None

@@ -55,9 +55,11 @@ def test_sentinel_does_not_prescribe_an_arbitrary_embedded_extension_denylist() 
 
 
 def test_sentinel_retains_explicit_smtp_crlf_rejection() -> None:
-    """Correcting the filename false positive must not weaken real header injection controls."""
-    lesson = _email_upload_lesson()
+    """Require one complete SMTP rejection clause rather than disconnected keywords."""
+    lesson = _normalized_email_upload_lesson()
 
-    assert 'chr(10)' in lesson
-    assert 'chr(13)' in lesson
-    assert 'mode="before"' in lesson
+    assert (
+        "for smtp headers, use @field_validator with explicit mode=\"before\" checks that "
+        "reject chr(10) and chr(13) across user-controlled fields to, subject, in_reply_to, "
+        "and references" in lesson
+    )

@@ -555,9 +555,10 @@ class NewsdomRecognitionWorker:
         if self._attachment_sweep_count % FULL_RESCAN_EVERY_N_SWEEPS == 0:
             self._attachment_cursor = None
         rows = await self._load_pending_attachments(session)
+        batch_ids = [attachment.id for attachment in rows]
         processed_ids: set[int] = set()
         unresolved_ids: set[int] = set()
-        for attachment_id in [attachment.id for attachment in rows]:
+        for attachment_id in batch_ids:
             processed_ids.add(attachment_id)
             try:
                 attachment = await session.get(
@@ -590,8 +591,8 @@ class NewsdomRecognitionWorker:
                     exc_info=True,
                 )
                 unresolved_ids.add(attachment_id)
-        if rows:
-            highest_seen = max(attachment.id for attachment in rows)
+        if batch_ids:
+            highest_seen = max(batch_ids)
             self._attachment_cursor = (
                 highest_seen
                 if self._attachment_cursor is None

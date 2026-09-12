@@ -278,10 +278,15 @@ export default function NetworkGraph() {
   }, [nodes, edges, nodeMap, edgeMap]);
 
   const nodeLabels = useMemo(() => {
-    return nodes
-      .map((node) => String(node.label ?? node.id))
-      .filter(Boolean)
-      .slice(0, 5);
+    const labels: string[] = [];
+    for (const node of nodes) {
+      const label = String(node.label ?? node.id);
+      if (label) {
+        labels.push(label);
+        if (labels.length >= 5) break;
+      }
+    }
+    return labels;
   }, [nodes]);
 
   const firstEdge = edges[0] ?? null;

@@ -261,10 +261,11 @@ async def test_exhausted_batch_budget_rolls_back_all_local_updates(
     expose_conflict_waves(
         monkeypatch, [set(), {mails[0].id}, {mails[1].id}, {mails[2].id}]
     )
-    with pytest.raises(service.ReplySlaTaskConflict):
+    with pytest.raises(service.ReplySlaTaskConflict) as conflict_error:
         await service._process_fallback_escalation(
             database, "alice", "org-a", mails, NOW
         )
+    assert conflict_error.value.error_code == "reply_sla_batch_retry_exhausted"
     assert database.savepoints == 3
     assert database.commits == 0
     assert database.rollbacks == 1
@@ -383,10 +384,13 @@ async def test_reload_fails_closed_when_source_no_longer_in_scope(database, chan
     else:
         mail.organization_id = "org-b"
     database.session.commit()
-    with pytest.raises(service.ReplySlaTaskConflict, match="source email"):
+    with pytest.raises(
+        service.ReplySlaTaskConflict, match="source email"
+    ) as conflict_error:
         await service._reload_overdue_replies(
             database, "alice", "org-a", [mail_id]
         )
+    assert conflict_error.value.error_code == "reply_sla_source_email_unavailable"
     assert database.rollbacks == 1
     assert database.commits == 0
     assert not database.session.in_transaction()
@@ -414,10 +418,11 @@ async def test_unique_failure_without_visible_winner_retains_domain_conflict(
     mail = seed_mail(database, 1)[0]
     seed_task(database, mail)
     expose_conflict_waves(monkeypatch, [set()])
-    with pytest.raises(service.ReplySlaTaskConflict):
+    with pytest.raises(service.ReplySlaTaskConflict) as conflict_error:
         await service._process_fallback_escalation(
             database, "alice", "org-a", [mail], NOW
         )
+    assert conflict_error.value.error_code == "reply_sla_task_conflict"
     assert database.rollbacks == 1
     assert database.commits == 0
     assert database.savepoints == 1

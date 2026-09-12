@@ -14,6 +14,7 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 from sqlalchemy.exc import IntegrityError
 
+from api import tasks as tasks_api
 from api.auth import get_auth_context
 from core.config import settings
 from db.models import Email, TenantConfig, TicketTask
@@ -594,6 +595,34 @@ def test_reply_sla_escalation_conflict_returns_machine_readable_detail(auth_clie
             "message": "Overdue reply follow-up task conflict",
         }
     }
+
+
+def test_reply_sla_escalation_preserves_specific_conflict_code(
+    auth_client, monkeypatch
+):
+    async def raise_batch_retry_exhaustion(
+        database_session, **escalation_options
+    ):
+        raise tasks_api.ReplySlaTaskConflict(
+            "reply_sla_batch_retry_exhausted",
+            "batch retry budget exhausted",
+        )
+
+    monkeypatch.setattr(
+        tasks_api,
+        "create_reply_sla_escalation_tasks",
+        raise_batch_retry_exhaustion,
+    )
+
+    response = auth_client.post(
+        "/api/tasks/reply-sla-escalations",
+        json={"overdue_hours": 48},
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["error_code"] == (
+        "reply_sla_batch_retry_exhausted"
+    )
 
 
 def test_reply_sla_escalation_bulk_fetches_nested_conflicts(auth_client):

@@ -1,6 +1,6 @@
 ## [Unreleased]
 ### Fixed
-- CI Trivy 파일시스템 보안 스캐너가 감지한 `next` 및 `sharp` 패키지의 심각한 보안 취약점(CVE-2026-75604 등)을 해결하기 위해, `frontend/package.json`에서 해당 의존성들을 안전한 최신 버전으로 업데이트했습니다.
+- CI Trivy 파일시스템 보안 스캐너가 감지한 `next` 및 `sharp` 패키지의 심각한 보안 취약점(CVE-2026-75604, GHSA-rgj7-g3m4-5g8c 등)을 해결하기 위해, `frontend/package.json`에서 해당 의존성들을 안전한 최신 버전으로 업데이트했습니다.
 ### Added
 - `backend/api/tools.py`에 다음 3개의 도구를 추가하고 등록했습니다.
   - `url_extractor_handler`: 텍스트 내에서 URL 추출 (안전한 정규표현식 적용 및 중복 제거)

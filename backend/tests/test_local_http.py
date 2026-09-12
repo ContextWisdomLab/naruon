@@ -113,6 +113,7 @@ def test_local_request_target_preserves_safe_path_and_query() -> None:
         )
         == "/auth/session"
     )
+    assert validate_local_request_target("/api/literal%25") == "/api/literal%25"
 
 
 @pytest.mark.parametrize(
@@ -136,10 +137,34 @@ def test_local_request_target_rejects_raw_and_encoded_traversal(path: str) -> No
 @pytest.mark.parametrize(
     "path",
     [
+        "/api/%252e%252e%252fauth/session",
+        "/api/%25255cadmin",
+        "/api/%250Aadmin",
+    ],
+)
+def test_local_request_target_rejects_nested_encoded_unsafe_segments(path: str) -> None:
+    with pytest.raises(LocalHTTPValidationError, match="traversal|control characters"):
+        validate_local_request_target(path)
+
+
+def test_local_request_target_rejects_excessive_percent_encoding_depth() -> None:
+    nested = "%2e"
+    for _ in range(11):
+        nested = nested.replace("%", "%25")
+
+    with pytest.raises(LocalHTTPValidationError, match="excessive percent encoding"):
+        validate_local_request_target(f"/api/{nested}")
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
         "/api/%",
         "/api/%2",
         "/api/%GG",
         "/api/%FF",
+        "/api/%2525GG",
+        "/api/%252",
     ],
 )
 def test_local_request_target_rejects_invalid_percent_encoding(path: str) -> None:

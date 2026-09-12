@@ -1,6 +1,6 @@
 # Naruon Product and Technical Gap Baseline
 
-## 2026-09-12 dependency and tool-contract succession
+## 2026-09-12 current owner and stacked-delivery evidence
 
 [#1623](https://github.com/ContextualWisdomLab/naruon/pull/1623) remains the
 canonical frontend dependency-security owner. RED
@@ -12,7 +12,7 @@ CHANGELOG. Exact tree `d99f83fc482ba948271f45ae2f7251036dd190ad`
 passed **21** focused security contracts, the full backend (**1,826 passed / 33
 skipped**), frontend (**51 files / 437 tests**), frozen install, ESLint,
 TypeScript, and the 16-route production build. Hosted Application CI, Security,
-Semgrep, and Bandit are GREEN; Docker is still running. CodeQL run
+Semgrep, Bandit, and Docker are GREEN. CodeQL run
 `34695440148` failed its first admission because every shard read the
 authenticated exact-head verdict as pending; dispatch succeeded and explicitly
 owns rerunning those exact failed jobs after terminal publication. This is
@@ -31,11 +31,29 @@ and strips only unmatched terminal URL closers with ordered delimiter pairing.
 All three review threads are resolved. The final tree passed **94** focused
 tool/security tests, the full backend (**1,835 passed / 33 skipped**), frontend
 (**51 files / 437 tests**), frozen install, ESLint, TypeScript, and the 16-route
-build. Its hosted exact-head workflows are queued. URL extraction (#1496),
+build. Its exact-head Application CI, Security, Semgrep, Bandit, and Docker
+workflows are GREEN. CodeQL run `34695737370` is terminal RED and remains an
+owner-orchestration gate rather than positive source evidence. URL extraction (#1496),
 hash generation (#1538), and strict JSON formatting/validation (#1659) remain
 overlapping Proposed owner lanes, so #1672 stays Draft until each unique delta
 has verified owner adoption; review repair is not DDD ownership or merge
 evidence.
+
+The following live lanes refine the delivery gap without moving their product
+truth into this ledger:
+
+| Live owner lane | Exact topology and validated delta | Current delivery boundary |
+| --- | --- | --- |
+| [#1662](https://github.com/ContextualWisdomLab/naruon/pull/1662) NetworkGraph | base `#1623@17a7618`, head `d82e722dbf1b8b485d533056409bd91689a03b5f`; three-file bounded-prefix traversal and regression scope | Draft and currently non-mergeable; no exact-head PR workflow run. The source-level CodeRabbit review is not a formal current-head approval. |
+| [#1659](https://github.com/ContextualWisdomLab/naruon/pull/1659) strict JSON formatter | base `#1623@17a7618`, head `fbcbd5444241cd025b21d96faa8ca8130c983da9`; RED `0845687e` to causal output-budget fix `cea8b279` plus code-current doctoring | Draft; no exact-head PR workflow run or qualifying current-head approval. The stale parent must be ordinary-restacked before merge. |
+| [#1667](https://github.com/ContextualWisdomLab/naruon/pull/1667) Sentinel guidance | base `#1623@17a7618`, head `695c242d241dd3a4c03046b44486ce93ef59af6f`; sink-backed filename-finding guidance, regression, and doctoring only | Draft and currently non-mergeable; no exact-head PR workflow run or qualifying approval. The stale parent must be ordinary-restacked before merge. |
+| [#1587](https://github.com/ContextualWisdomLab/naruon/pull/1587) local stacked-PR CI | base `develop@042b0c7`, head `17c0a5c9198eeda95f6a7d86f6a35a8b05abe774`; stale release-governance assertions were repaired after a real hosted RED | Application CI, Bandit, Docker, and Semgrep are GREEN; Security and CodeQL remain terminal RED. Draft and not merge-authorized. |
+| [#1600](https://github.com/ContextualWisdomLab/naruon/pull/1600) full-product evidence | base `#1587@17c0a5c`, head `d23a6899a62162a766a00b16a80441c9bcdc969a`; six-file child retains source-head-bound product evidence | Application CI, Bandit, and Docker materialized and are GREEN on the stacked base. Missing same-head Security/CodeQL/review evidence keeps the lane Draft. |
+
+These rows also expose a reusable failure mode: children based on predecessor
+`#1623@17a7618` do not inherit the repaired dependency owner
+`#1623@9d6d1e0`. Ordinary restacking and new exact-base/head evidence are
+required; predecessor execution and approvals do not transfer.
 
 ## 2026-09-12 frontend security owner single-writer repair
 
@@ -112,7 +130,7 @@ reuse predecessor approvals or checks.
 | [#1590](https://github.com/ContextualWisdomLab/naruon/pull/1590) repeatedly acquired provider/model fixture changes outside its URL-extraction responsibility | [#1418](https://github.com/ContextualWisdomLab/naruon/pull/1418) remains the canonical Naruon URL/contact-hygiene owner and already carries the valid hostname and scheme delta | #1590 preserved all intervening ancestry and restored verified tree `24480909a7e8b8e5c707b52c976d820018389a77` at exact head `9d545440f556a3aa24213d690ab62bd45bfc6bdf`; #1418 is open/Draft and mergeable at `a4a4da69ff9df89bac9d0a00e7473f35685be567`. Completion requires fresh exact-head checks, independent approval, ordinary protected integration of #1418, and succession verification before retiring #1590. |
 | Required Noema review lacked a terminal verdict after consumer-owned preflight selected the free gateway route | [contextual-orchestrator#1106](https://github.com/ContextualWisdomLab/contextual-orchestrator/issues/1106) owns free-pool admission/routing; [.github#2042](https://github.com/ContextualWisdomLab/.github/issues/2042) owns removal of the temporary leaf routing bridge after an immutable owner release; [.github#2035](https://github.com/ContextualWisdomLab/.github/pull/2035) remains only the review-publication repair | The freshest #2035 exact-head evidence is run `34183702988`, job `102003278065`: HTTP 429 after 322.5 seconds with `orchestrator/free`, caller attempts=1, served model `deepseek-ai/deepseek-v4-flash-0731`. Keep the review fail closed with no paid, local, or direct-provider bypass; completion requires immutable owner release, consumer version bump and bridge deletion, then exact-head contract/security/review GREEN. |
 
-**Baseline version:** 1.8
+**Baseline version:** 1.9
 **Observed on:** 2026-09-12 (Asia/Seoul)
 **Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@042b0c70531b229af3acbd0421a2f23098d848b3`
 **Observed product version:** `0.14.4`  

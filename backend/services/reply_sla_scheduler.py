@@ -175,10 +175,12 @@ class ReplySlaScheduler:
         config_ids = result.scalars().all()
 
         for config_id in config_ids:
-            config = await session.get(TenantConfig, config_id)
-            if config is None:
-                continue
             try:
+                config = await session.get(
+                    TenantConfig, config_id, populate_existing=True
+                )
+                if config is None:
+                    continue
                 workspace_ids = await session.scalars(
                     select(Email.workspace_id)
                     .where(

@@ -984,6 +984,30 @@ def test_execute_url_extractor():
     assert data["result"]["url_count"] == 3
 
 
+def test_execute_url_extractor_preserves_balanced_delimiters():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/url_extractor/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={
+                "parameters": {
+                    "text": (
+                        "Keep https://example.com/a(b) and "
+                        "http://[2001:db8::1]/path, but trim "
+                        "https://example.org/report)]."
+                    )
+                }
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result"]["urls"] == [
+        "https://example.com/a(b)",
+        "http://[2001:db8::1]/path",
+        "https://example.org/report",
+    ]
+
+
 def test_execute_hash_generator():
     with TestClient(app) as client:
         response = client.post(
@@ -1057,6 +1081,21 @@ def test_execute_hash_generator():
     assert data4["result"]["hash"] == "9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca72323c3d99ba5c11d7c7acc6e14b8c5da0c4663475c2e5c3adef46f73bcdec043"
 
 
+def test_execute_hash_generator_applies_declared_algorithm_default():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/hash_generator/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"text": "hello"}},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result"] == {
+        "hash": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        "algorithm": "sha256",
+    }
+
+
 def test_execute_json_validator():
 
     # Valid JSON
@@ -1095,6 +1134,19 @@ def test_execute_json_validator():
     assert data["result"]["is_valid"] is False
     assert data["result"]["parsed"] is None
     assert data["result"]["error_message"] is not None
+
+
+@pytest.mark.parametrize("json_constant", ["NaN", "Infinity", "-Infinity"])
+def test_execute_json_validator_rejects_non_standard_constants(json_constant: str):
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/json_validator/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"json_string": f'{{"value": {json_constant}}}'}},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result"]["is_valid"] is False
 
 
 def test_is_safe_webhook_url_coverage():

@@ -17,29 +17,41 @@ def _email_upload_lesson() -> str:
     return section
 
 
-def test_sentinel_filename_findings_require_a_reproduced_sink() -> None:
-    """Do not classify embedded filename segments as exploits without a causal sink."""
-    lesson = _email_upload_lesson().lower()
+def _normalized_email_upload_lesson() -> str:
+    """Normalize whitespace and case so policy assertions survive Markdown wrapping."""
+    return " ".join(_email_upload_lesson().lower().split())
 
-    assert "embedded extension alone" in lesson
-    assert "consumer" in lesson or "sink" in lesson
-    assert "execution" in lesson
-    assert "mime" in lesson
-    assert "suffix stripping" in lesson
-    assert "shell" in lesson or "process" in lesson
-    assert "high/critical" in lesson
+
+def test_sentinel_filename_findings_require_a_reproduced_sink() -> None:
+    """Require the complete causal-evidence rule, not disconnected security keywords."""
+    lesson = _normalized_email_upload_lesson()
+
+    assert "an embedded extension alone is not evidence of executable upload" in lesson
+    assert (
+        "before classifying a filename finding as high/critical, reproduce a causal "
+        "consumer or sink path" in lesson
+    )
+    assert (
+        "such as execution, interpreter handoff, mime/content-type confusion, suffix "
+        "stripping or reinterpretation, unsafe shell/process use" in lesson
+    )
+    assert (
+        "do not introduce an embedded-extension denylist unless a sink-backed red "
+        "reproduces execution or reinterpretation through the actual consumer path" in lesson
+    )
 
 
 def test_sentinel_does_not_prescribe_an_arbitrary_embedded_extension_denylist() -> None:
     """Keep filename controls at canonical path, terminal suffix, and real sink boundaries."""
-    lesson = _email_upload_lesson().lower()
+    lesson = _normalized_email_upload_lesson()
 
     assert 'split(".")' not in lesson
     assert "reject if any segment matches" not in lesson
-    assert "terminal suffix" in lesson
-    assert "canonical" in lesson
-    assert "control" in lesson
-    assert "parser" in lesson
+    assert "preserve canonical path handling" in lesson
+    assert "bounded decoding" in lesson
+    assert "control-character rejection" in lesson
+    assert "terminal suffix validation" in lesson
+    assert "parser-only handling" in lesson
 
 
 def test_sentinel_retains_explicit_smtp_crlf_rejection() -> None:

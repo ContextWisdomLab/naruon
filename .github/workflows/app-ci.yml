@@ -77,6 +77,17 @@ jobs:
           cd backend
           python -m ruff check .
 
+      - name: Generate ephemeral CI runtime secret
+        run: |
+          python - <<'PY'
+          import os
+          import secrets
+
+          value = "Ci9!" + secrets.token_urlsafe(48)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"AUTH_SESSION_HMAC_SECRET={value}\n")
+          PY
+
       - name: Run database migrations
         run: |
           cd backend

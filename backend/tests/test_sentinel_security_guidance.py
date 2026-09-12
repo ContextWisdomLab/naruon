@@ -18,8 +18,8 @@ def _email_upload_lesson() -> str:
 
 
 def _normalized_email_upload_lesson() -> str:
-    """Normalize whitespace and case so policy assertions survive Markdown wrapping."""
-    return " ".join(_email_upload_lesson().lower().split())
+    """Normalize Markdown wrapping and case while preserving policy wording."""
+    return " ".join(_email_upload_lesson().lower().replace("`", "").split())
 
 
 def test_sentinel_filename_findings_require_a_reproduced_sink() -> None:

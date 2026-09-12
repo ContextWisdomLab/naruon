@@ -172,6 +172,114 @@ describe("WorkspaceHome Today dashboard", () => {
     expect(headers["X-Dev-Auth-Token"]).toBeUndefined();
   });
 
+  it("shows a retryable unavailable state without presenting failed data as empty", async () => {
+    vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    let primaryDataAvailable = false;
+    const primaryCalls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (
+        url.endsWith("/api/emails")
+        || url.endsWith("/api/emails/pending-replies?limit=3")
+        || url.endsWith("/api/tasks")
+      ) {
+        primaryCalls.push(url);
+        if (!primaryDataAvailable) return Promise.reject(new Error("backend unavailable"));
+        if (url.endsWith("/api/emails")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ emails: [{ id: 101, subject: "복구된 고객 메일", sender: "customer@example.com", date: "2026-05-17T09:00:00Z", snippet: "계약 확인" }] }),
+          });
+        }
+        return Promise.resolve({ ok: true, json: async () => url.endsWith("/api/tasks") ? [] : ({ emails: [] }) });
+      }
+      const sourceEvidenceResponse = emptySourceEvidenceResponse(url);
+      if (sourceEvidenceResponse) return sourceEvidenceResponse;
+      const calendarCandidateResponse = emptyCalendarCandidateSearchResponse(url);
+      if (calendarCandidateResponse) return calendarCandidateResponse;
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<WorkspaceHome forcedStartupView="dashboard" />);
+    });
+    await waitForCondition(() => container?.textContent?.includes("업무 현황을 모두 불러오지 못했습니다.") ?? false);
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("다시 시도");
+    expect(container.textContent).toContain("최근 메일을 확인하지 못했습니다.");
+    expect(container.textContent).not.toContain("수신된 메일이 없습니다.");
+
+    const callsBeforeRetry = primaryCalls.length;
+    primaryDataAvailable = true;
+    await act(async () => {
+      container?.querySelector<HTMLButtonElement>('[role="alert"] button')?.click();
+    });
+    await waitForCondition(() => primaryCalls.length === callsBeforeRetry + 3);
+    await waitForCondition(() => container?.querySelector('[role="alert"]') === null);
+
+    expect(container.textContent).toContain("복구된 고객 메일");
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("preserves project evidence when only calendar sources fail", async () => {
+    vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/calendar/writeback-sources")) {
+        return Promise.reject(new Error("calendar unavailable"));
+      }
+      if (url.endsWith("/api/webdav/folders")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ([{
+            folder_uid: "project-folder-1",
+            project_name: "계약 검토",
+            webdav_path: "/contracts",
+          }]),
+        });
+      }
+      if (url.endsWith("/api/emails")) {
+        return Promise.resolve({ ok: true, json: async () => ({ emails: [] }) });
+      }
+      if (url.endsWith("/api/emails/pending-replies?limit=3")) {
+        return Promise.resolve({ ok: true, json: async () => ({ emails: [] }) });
+      }
+      if (url.endsWith("/api/tasks")) {
+        return Promise.resolve({ ok: true, json: async () => ([]) });
+      }
+      const calendarCandidateResponse = emptyCalendarCandidateSearchResponse(url);
+      if (calendarCandidateResponse) return calendarCandidateResponse;
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<WorkspaceHome forcedStartupView="dashboard" />);
+    });
+    await waitForCondition(() => container?.textContent?.includes("일정 원본 목록 응답을 확인할 수 없습니다.") ?? false);
+
+    const metrics = container.querySelector<HTMLElement>('[aria-label="홈 지표"]');
+    expect(metrics?.textContent).toContain("일정 원본오류");
+    expect(metrics?.textContent).toContain("프로젝트 원본1");
+    expect(metrics?.textContent).not.toContain("프로젝트 원본오류");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("다시 시도");
+  });
+
   it("creates overdue reply follow-up tasks from the Today dashboard with signed headers", async () => {
     vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
       matches: false,

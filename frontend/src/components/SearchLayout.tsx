@@ -20,6 +20,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 
 import { apiClient } from "@/lib/api-client";
+import { isMailListItem } from '@/lib/mail-response';
 import {
   bucketSearchRank,
   bucketTextLength,
@@ -391,6 +392,7 @@ export function SearchLayout() {
       )
       .then((response) => {
         if (controller.signal.aborted) return;
+        if (!Array.isArray(response.results) || !response.results.every(isMailListItem)) throw new Error('Invalid search response');
         setResults(response.results);
         setActiveResultId(response.results[0]?.id ?? null);
         recordProductEvent("latency_guardrail_recorded", {

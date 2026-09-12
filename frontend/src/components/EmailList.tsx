@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle2, Loader2, Mail, MessagesSquare, Network, Search, Sparkles, X } from "lucide-react";
 import { formatEmailDate } from "@/lib/email-threading";
 import { toMailDisplayText } from "@/lib/mail-text";
+import { isMailListItem } from '@/lib/mail-response';
 
 interface EmailItem {
   id: number;
@@ -37,7 +38,12 @@ async function fetchFolderEmails(folder: MailFolder) {
   if (folderRequests.has(folder)) return folderRequests.get(folder)!;
 
   const request = apiClient.get<{ emails: EmailItem[] }>(folderEndpoint(folder))
-    .then((data) => data.emails || [])
+    .then((data) => {
+      if (!Array.isArray(data.emails) || !data.emails.every(isMailListItem)) {
+        throw new Error('메일 목록을 확인하지 못했습니다. 다시 조회하세요.');
+      }
+      return data.emails;
+    })
     .finally(() => {
       folderRequests.delete(folder);
     });
@@ -135,10 +141,13 @@ export function EmailList({
       } else {
         setIsSearching(true);
         const data = await apiClient.post<{ results: EmailItem[] }>('/api/search', { query });
-        setEmails(data.results || []);
+        if (!Array.isArray(data.results) || !data.results.every(isMailListItem)) {
+          throw new Error('메일 목록을 확인하지 못했습니다. 다시 조회하세요.');
+        }
+        setEmails(data.results);
       }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load emails");
+    } catch {
+      setError('메일 목록을 확인하지 못했습니다. 다시 조회하세요.');
     } finally {
       setLoading(false);
       setIsSearching(false);

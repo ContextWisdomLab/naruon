@@ -98,8 +98,8 @@ describe('mobile workspace API panels', () => {
     expect(container.textContent).toContain('일정 후보가 없습니다.');
   });
 
-  it('renders the search error state when the API fails', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ detail: 'failed' }, false)));
+  it.each([false, true])('renders the search error state for malformed or failed response (HTTP OK: %s)', async (httpOk) => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ results: [null] }, httpOk)));
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);

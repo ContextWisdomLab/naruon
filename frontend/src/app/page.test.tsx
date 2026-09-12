@@ -473,7 +473,7 @@ describe("Home workspace action bridge", () => {
     expect(fetch).toHaveBeenCalledWith("/api/search", expect.objectContaining({ method: "POST" }));
   });
 
-  it("shows startup dashboard empty states and ignores malformed API payloads", async () => {
+  it("shows an unavailable dashboard state for malformed API payloads", async () => {
     localStorage.setItem("naruon_startup_view", "dashboard");
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({
       ok: true,
@@ -486,11 +486,12 @@ describe("Home workspace action bridge", () => {
     await act(async () => {
       root?.render(<Home />);
     });
-    await waitForCondition(() => container?.textContent?.includes("수신된 메일이 없습니다.") ?? false);
+    await waitForCondition(() => Boolean(container?.querySelector('[role="alert"][aria-label="대시보드 데이터 상태"]')));
 
-    expect(container.textContent).toContain("수신된 메일이 없습니다.");
-    expect(container.textContent).toContain("답변 대기 중인 보낸 메일이 없습니다.");
-    expect(container.textContent).toContain("대기 작업이 없습니다.");
+    expect(container.textContent).toContain("업무 현황을 모두 불러오지 못했습니다.");
+    expect(container.textContent).not.toContain("수신된 메일이 없습니다.");
+    expect(container.textContent).not.toContain("답변 대기 중인 보낸 메일이 없습니다.");
+    expect(container.textContent).not.toContain("대기 작업이 없습니다.");
   });
 
   it("shows desktop calendar empty and error states from the search API", async () => {

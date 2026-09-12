@@ -44,6 +44,29 @@ describe("EmailList", () => {
     vi.unstubAllGlobals();
   });
 
+  it.each((['inbox', 'sent', 'search'] as const).flatMap((source) => [false, true].map((nullEnvelope) => ({ source, nullEnvelope }))))('rejects malformed $source data (null envelope: $nullEnvelope)', async ({ source, nullEnvelope }) => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve(jsonResponse(
+      String(input).endsWith('/api/search') ? (nullEnvelope ? null : { results: [null] })
+        : source === 'search' ? { emails: [] } : nullEnvelope ? null : { emails: [null] },
+    ))));
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(<EmailList onSelectEmail={vi.fn()} folder={source === 'sent' ? 'sent' : 'inbox'} />);
+    });
+    await flushAsyncWork();
+    if (source === 'search') {
+      const input = container.querySelector<HTMLInputElement>('#email-search')!;
+      await act(async () => setInputValue(input, 'example'));
+      await act(async () => input.closest('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+      await flushAsyncWork();
+    }
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('메일 목록을 확인하지 못했습니다.');
+    expect(container.querySelector('[role="alert"]')?.textContent).not.toMatch(/TypeError|Cannot read|emails|results/);
+    expect(container.textContent).not.toContain('메일이 없습니다');
+  });
+
   it("renders the branded dense inbox and selected thread state", async () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve(

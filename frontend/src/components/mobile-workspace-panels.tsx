@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import { apiClient } from '@/lib/api-client';
+import { isMailListItem } from '@/lib/mail-response';
 import { toSafeReactText } from '@/lib/safe-text';
 
 type MobileSearchResult = {
@@ -67,6 +68,7 @@ function MobileApiPanel({ copy }: { copy: MobilePanelCopy }) {
     void apiClient.post<MobileSearchResponse>('/api/search', { query: copy.query, limit: copy.limit }, { signal: controller.signal })
       .then((response) => {
         if (cancelled) return;
+        if (!Array.isArray(response.results) || !response.results.every(isMailListItem)) throw new Error('Invalid search response');
         setResults(response.results);
         setStatus(response.results.length > 0 ? 'success' : 'empty');
       })

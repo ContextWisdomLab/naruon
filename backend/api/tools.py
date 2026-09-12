@@ -770,7 +770,101 @@ registry.register(
 
 
 
+
+_URL_PATTERN = re.compile(r"https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+(?<![.,!?])", re.IGNORECASE)
+
+async def url_extractor_handler(params: Dict[str, Any]) -> Dict[str, Any]:
+    text = params.get("text", "")
+    urls = _URL_PATTERN.findall(text)
+
+    seen = set()
+    deduped_urls = []
+    for u in urls:
+        if u not in seen:
+            seen.add(u)
+            deduped_urls.append(u)
+
+    return {"urls": deduped_urls, "url_count": len(deduped_urls)}
+
+
+registry.register(
+    ToolInfo(
+        code="url_extractor",
+        name="URL 추출기 (URL Extractor)",
+        description="텍스트 본문에서 URL을 찾아 추출합니다.",
+        category="이메일 분석",
+        parameters={"text": "string"},
+    ),
+    url_extractor_handler,
+)
+
+
+async def hash_generator_handler(params: Dict[str, Any]) -> Dict[str, str]:
+    text = params.get("text", "")
+    algorithm = params.get("algorithm", "sha256")
+    if not algorithm:
+        algorithm = "sha256"
+    algorithm = algorithm.lower()
+
+    encoded_text = text.encode("utf-8")
+    if algorithm == "sha256":
+        h = hashlib.sha256(encoded_text).hexdigest()
+    elif algorithm == "sha384":
+        h = hashlib.sha384(encoded_text).hexdigest()
+    elif algorithm == "sha512":
+        h = hashlib.sha512(encoded_text).hexdigest()
+    else:
+        raise ValueError("Unsupported algorithm. Supported: sha256, sha384, sha512")
+
+    return {"hash": h, "algorithm": algorithm}
+
+
+registry.register(
+    ToolInfo(
+        code="hash_generator",
+        name="해시 생성기 (Hash Generator)",
+        description="입력된 텍스트를 지정된 해시 알고리즘(SHA-256, SHA-384, SHA-512)으로 변환합니다.",
+        category="유틸리티",
+        parameters={"text": "string", "algorithm": {"type": "string", "default": "sha256"}},
+    ),
+    hash_generator_handler,
+)
+
+
+async def json_validator_handler(params: Dict[str, Any]) -> Dict[str, Any]:
+    json_string = params.get("json_string", "")
+    try:
+        parsed = json.loads(json_string)
+        formatted = json.dumps(parsed, indent=2, ensure_ascii=False)
+        return {
+            "is_valid": True,
+            "parsed": parsed,
+            "formatted_json": formatted,
+            "error_message": None
+        }
+    except json.JSONDecodeError as e:
+        return {
+            "is_valid": False,
+            "parsed": None,
+            "formatted_json": None,
+            "error_message": str(e)
+        }
+
+
+registry.register(
+    ToolInfo(
+        code="json_validator",
+        name="JSON 검증기 (JSON Validator)",
+        description="주어진 JSON 문자열의 유효성을 검사하고, 유효한 경우 포맷팅된 결과를 반환합니다.",
+        category="유틸리티",
+        parameters={"json_string": "string"},
+    ),
+    json_validator_handler,
+)
+
+
 @router.get("/tools", response_model=list[ToolInfo])
+
 def get_tools() -> list[ToolInfo]:
     """
     Naruon AI 이메일 워크스페이스에서 사용할 수 있는 분석 및 실행 도구 목록을 반환합니다.

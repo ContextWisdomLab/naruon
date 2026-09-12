@@ -112,9 +112,7 @@ def test_get_tool_not_found():
     assert response.json() == {"detail": "Tool not found"}
 
 
-@pytest.mark.parametrize(
-    "tool_code", ["email_categorizer", "meeting_agenda_generator"]
-)
+@pytest.mark.parametrize("tool_code", ["email_categorizer", "meeting_agenda_generator"])
 def test_registry_omits_lexical_pseudo_topic_tools(tool_code):
     assert registry.get(tool_code) is None
 
@@ -964,7 +962,197 @@ def test_update_tool_unsafe_webhook():
         registry.unregister("unsafe_update_tool")
 
 
+def test_execute_url_extractor():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/url_extractor/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={
+                "parameters": {
+                    "text": "Visit https://example.com or http://test.org. Here is a dup: https://example.com. And with punctuation https://example.com/path, right? No URL here."
+                }
+            },
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    urls = data["result"]["urls"]
+    assert set(urls) == {
+        "https://example.com",
+        "http://test.org",
+        "https://example.com/path",
+    }
+    assert data["result"]["url_count"] == 3
+
+
+def test_execute_url_extractor_preserves_balanced_delimiters():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/url_extractor/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={
+                "parameters": {
+                    "text": (
+                        "Keep https://example.com/a(b) and "
+                        "http://[2001:db8::1]/path, but trim "
+                        "https://example.org/report)]."
+                    )
+                }
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result"]["urls"] == [
+        "https://example.com/a(b)",
+        "http://[2001:db8::1]/path",
+        "https://example.org/report",
+    ]
+
+
+def test_execute_url_extractor_preserves_paired_terminal_delimiters():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/url_extractor/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={
+                "parameters": {
+                    "text": (
+                        "Keep https://example.com/)foo(bar) and "
+                        "http://example.com/]foo[bar]."
+                    )
+                }
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result"]["urls"] == [
+        "https://example.com/)foo(bar)",
+        "http://example.com/]foo[bar]",
+    ]
+
+
+def test_execute_hash_generator():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/hash_generator/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"text": "hello", "algorithm": "sha256"}},
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    # echo -n "hello" | sha256sum -> 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+    assert (
+        data["result"]["hash"]
+        == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    )
+    assert data["result"]["algorithm"] == "sha256"
+
+    # Unsupported algorithm
+    with TestClient(app) as client:
+        response2 = client.post(
+            "/api/tools/hash_generator/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"text": "hello", "algorithm": "md5"}},
+        )
+    assert response2.status_code == 200
+    data2 = response2.json()
+    assert data2["status"] == "failed"
+    assert "Unsupported algorithm" in data2["message"]
+
+    # SHA384 algorithm
+    with TestClient(app) as client:
+        response3 = client.post(
+            "/api/tools/hash_generator/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"text": "hello", "algorithm": "sha384"}},
+        )
+    assert response3.status_code == 200
+    data3 = response3.json()
+    assert data3["status"] == "success"
+    assert (
+        data3["result"]["hash"]
+        == "59e1748777448c69de6b800d7a33bbfb9ff1b463e44354c3553bcdb9c666fa90125a3c79f90397bdf5f6a13de828684f"
+    )
+
+    # SHA512 algorithm
+    with TestClient(app) as client:
+        response4 = client.post(
+            "/api/tools/hash_generator/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"text": "hello", "algorithm": "sha512"}},
+        )
+    assert response4.status_code == 200
+    data4 = response4.json()
+    assert data4["status"] == "success"
+    assert (
+        data4["result"]["hash"]
+        == "9b71d224bd62f3785d96d46ad3ea3d73319bfbc2890caadae2dff72519673ca72323c3d99ba5c11d7c7acc6e14b8c5da0c4663475c2e5c3adef46f73bcdec043"
+    )
+
+
+def test_execute_hash_generator_applies_declared_algorithm_default():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/hash_generator/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"text": "hello"}},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result"] == {
+        "hash": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        "algorithm": "sha256",
+    }
+
+
+def test_execute_json_validator():
+
+    # Valid JSON
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/json_validator/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"json_string": '{"key": "value", "number": 123}'}},
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["result"]["is_valid"] is True
+    assert data["result"]["parsed"]["key"] == "value"
+    assert "value" in data["result"]["formatted_json"]
+    assert data["result"]["error_message"] is None
+
+    # Invalid JSON
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/json_validator/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"json_string": '{key: "value"}'}},
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["result"]["is_valid"] is False
+    assert data["result"]["parsed"] is None
+    assert data["result"]["error_message"] is not None
+
+
+@pytest.mark.parametrize("json_constant", ["NaN", "Infinity", "-Infinity"])
+def test_execute_json_validator_rejects_non_standard_constants(json_constant: str):
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/json_validator/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={"parameters": {"json_string": f'{{"value": {json_constant}}}'}},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result"]["is_valid"] is False
+
+
 def test_is_safe_webhook_url_coverage():
+
     from api.tools import is_safe_webhook_url
 
     with patch(

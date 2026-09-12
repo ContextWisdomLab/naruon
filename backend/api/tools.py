@@ -149,40 +149,50 @@ class ToolRegistry:
     def get(self, code: str) -> Optional[ToolInfo]:
         return self._tools.get(code)
 
-    async def invoke_tool(self, code: str, params: Dict[str, Any]) -> Any:
-        handler = self._handlers.get(code)
-        if not handler:
-            raise ValueError(f"No handler registered for tool {code}")
-        result = handler(self._validate_parameters(code, params))
-        if inspect.isawaitable(result):
-            return await result
-        return result
+    async def invoke_tool(self, tool_code: str, tool_parameters: Dict[str, Any]) -> Any:
+        tool_handler = self._handlers.get(tool_code)
+        if not tool_handler:
+            raise ValueError(f"No handler registered for tool {tool_code}")
+        handler_result = tool_handler(
+            self._validate_parameters(tool_code, tool_parameters)
+        )
+        if inspect.isawaitable(handler_result):
+            return await handler_result
+        return handler_result
 
-    def _validate_parameters(self, code: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        if not isinstance(params, dict):
+    def _validate_parameters(
+        self, tool_code: str, tool_parameters: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        if not isinstance(tool_parameters, dict):
             raise ValueError("Tool parameters must be an object")
 
-        tool_info = self._tools.get(code)
-        schema = tool_info.parameters if tool_info else None
-        if not schema:
-            if params:
+        tool_info = self._tools.get(tool_code)
+        parameter_schema = tool_info.parameters if tool_info else None
+        if not parameter_schema:
+            if tool_parameters:
                 raise ValueError("Tool does not accept parameters")
             return {}
 
-        unexpected_keys = set(params) - set(schema)
-        if unexpected_keys:
+        unexpected_parameters = set(tool_parameters) - set(parameter_schema)
+        if unexpected_parameters:
             raise ValueError("Unexpected tool parameter")
 
-        validated: Dict[str, Any] = {}
-        for key, descriptor in schema.items():
-            if key not in params:
+        validated_parameters: Dict[str, Any] = {}
+        for parameter_name, parameter_descriptor in parameter_schema.items():
+            if parameter_name in tool_parameters:
+                parameter_value = tool_parameters[parameter_name]
+            elif (
+                isinstance(parameter_descriptor, dict)
+                and "default" in parameter_descriptor
+            ):
+                parameter_value = parameter_descriptor["default"]
+            else:
                 raise ValueError("Missing required tool parameter")
-            value = params[key]
-            expected_type = _parameter_type_name(descriptor)
-            if not _parameter_matches_type(value, expected_type):
+            expected_type = _parameter_type_name(parameter_descriptor)
+            if not _parameter_matches_type(parameter_value, expected_type):
                 raise ValueError("Invalid tool parameter type")
-            validated[key] = value
-        return validated
+            validated_parameters[parameter_name] = parameter_value
+        return validated_parameters
 
 
 registry = ToolRegistry()
@@ -706,6 +716,8 @@ _KEYWORD_STOPWORDS = frozenset(
         "합니다",
     }
 )
+
+
 def _normalize_analysis_text(value: str) -> str:
     """Normalize user text for deterministic, multilingual rule matching."""
     if len(value) > ANALYSIS_TEXT_MAX_CHARS:
@@ -768,6 +780,137 @@ registry.register(
     uuid_v4_generator_handler,
 )
 
+
+_URL_PATTERN = re.compile(
+    r"https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+(?<![.,!?])",
+    re.IGNORECASE,
+)
+
+
+def _strip_unmatched_url_closers(extracted_url: str) -> str:
+    """Remove terminal unmatched brackets while preserving balanced URL syntax."""
+    delimiter_pairs = {")": "(", "]": "["}
+    while extracted_url and extracted_url[-1] in delimiter_pairs:
+        unmatched_terminal = False
+        opening_delimiters: list[str] = []
+        for character_index, url_character in enumerate(extracted_url):
+            if url_character in delimiter_pairs.values():
+                opening_delimiters.append(url_character)
+            elif url_character in delimiter_pairs:
+                expected_opener = delimiter_pairs[url_character]
+                if opening_delimiters and opening_delimiters[-1] == expected_opener:
+                    opening_delimiters.pop()
+                elif character_index == len(extracted_url) - 1:
+                    unmatched_terminal = True
+        if not unmatched_terminal:
+            break
+        extracted_url = extracted_url[:-1]
+    return extracted_url
+
+
+async def url_extractor_handler(tool_parameters: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract distinct HTTP(S) URLs from workspace text in encounter order."""
+    source_text = tool_parameters.get("text", "")
+    extracted_urls = _URL_PATTERN.findall(source_text)
+
+    seen_urls = set()
+    deduplicated_urls = []
+    for extracted_url in extracted_urls:
+        normalized_url = _strip_unmatched_url_closers(extracted_url)
+        if normalized_url not in seen_urls:
+            seen_urls.add(normalized_url)
+            deduplicated_urls.append(normalized_url)
+
+    return {"urls": deduplicated_urls, "url_count": len(deduplicated_urls)}
+
+
+registry.register(
+    ToolInfo(
+        code="url_extractor",
+        name="URL 추출기 (URL Extractor)",
+        description="텍스트 본문에서 URL을 찾아 추출합니다.",
+        category="이메일 분석",
+        parameters={"text": "string"},
+    ),
+    url_extractor_handler,
+)
+
+
+async def hash_generator_handler(tool_parameters: Dict[str, Any]) -> Dict[str, str]:
+    """Generate a supported SHA digest for workspace text."""
+    source_text = tool_parameters.get("text", "")
+    digest_algorithm = tool_parameters.get("algorithm", "sha256")
+    if not digest_algorithm:
+        digest_algorithm = "sha256"
+    digest_algorithm = digest_algorithm.lower()
+
+    encoded_text = source_text.encode("utf-8")
+    if digest_algorithm == "sha256":
+        hash_digest = hashlib.sha256(encoded_text).hexdigest()
+    elif digest_algorithm == "sha384":
+        hash_digest = hashlib.sha384(encoded_text).hexdigest()
+    elif digest_algorithm == "sha512":
+        hash_digest = hashlib.sha512(encoded_text).hexdigest()
+    else:
+        raise ValueError("Unsupported algorithm. Supported: sha256, sha384, sha512")
+
+    return {"hash": hash_digest, "algorithm": digest_algorithm}
+
+
+registry.register(
+    ToolInfo(
+        code="hash_generator",
+        name="해시 생성기 (Hash Generator)",
+        description="입력된 텍스트를 지정된 해시 알고리즘(SHA-256, SHA-384, SHA-512)으로 변환합니다.",
+        category="유틸리티",
+        parameters={
+            "text": "string",
+            "algorithm": {"type": "string", "default": "sha256"},
+        },
+    ),
+    hash_generator_handler,
+)
+
+
+def _reject_non_standard_json_constant(constant_name: str) -> None:
+    """Reject JavaScript numeric constants that RFC 8259 excludes from JSON."""
+    raise ValueError(f"Non-standard JSON constant: {constant_name}")
+
+
+async def json_validator_handler(tool_parameters: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and format an RFC 8259 JSON document."""
+    json_document = tool_parameters.get("json_string", "")
+    try:
+        parsed_json = json.loads(
+            json_document,
+            parse_constant=_reject_non_standard_json_constant,
+        )
+        formatted_json = json.dumps(parsed_json, indent=2, ensure_ascii=False)
+        return {
+            "is_valid": True,
+            "parsed": parsed_json,
+            "formatted_json": formatted_json,
+            "error_message": None,
+        }
+    except (json.JSONDecodeError, ValueError) as validation_error:
+        return {
+            "is_valid": False,
+            "parsed": None,
+            "formatted_json": None,
+            "error_message": str(validation_error),
+        }
+
+
+registry.register(
+    ToolInfo(
+        code="json_validator",
+        name="JSON 검증기 (JSON Validator)",
+        description="주어진 JSON 문자열의 유효성을 검사하고, 유효한 경우 포맷팅된 결과를 반환합니다.",
+        category="유틸리티",
+        parameters={"json_string": "string"},
+    ),
+    json_validator_handler,
+)
 
 
 @router.get("/tools", response_model=list[ToolInfo])

@@ -1,5 +1,18 @@
 # Naruon Product and Technical Gap Baseline
 
+## 2026-09-12 Reply-SLA conflict-code evidence
+
+This observation records the current candidate from
+[#1670](https://github.com/ContextualWisdomLab/naruon/pull/1670) without
+transferring predecessor Checks or claiming protected integration. Exact head
+`e17bbc27040ddeb4e1de6e12815f5aa74a5c9672` has tree
+`820fc29c93f3ba23518d18c9619c9dc93776db10`, byte-matched to the locally
+verified tree.
+
+| Observed product/technical gap | Canonical owner action | Current status and required evidence |
+| --- | --- | --- |
+| Reply-SLA contention reasons existed only in exception prose while the HTTP 409 boundary independently returned one generic code | #1670 now carries stable `ReplySlaTaskConflict.error_code` values for unresolved duplicate races, exhausted batch retry budgets, and source emails that leave the caller's scope; the API preserves the specific code while retaining customer-safe explanatory copy | RED commits `fc68fa5` and `df1ff2d` produced **5 failed / 18 passed** and a separate API failure; GREEN `346c293` plus complete-CHANGELOG restoration `e17bbc2` passes **23** transaction tests with warnings as errors and **47 passed / 1 skipped** across Tasks API and reply tracking. Scoped Ruff, compileall, diff checks and exact tree comparison pass. Exact-head hosted checks, real async PostgreSQL qualification and independent approval remain required. Inherited Trivy findings remain owned by [#1623](https://github.com/ContextualWisdomLab/naruon/pull/1623); no ignore or gate weakening is included. |
+
 ## 2026-09-08 visual evidence: smoke success is not product acceptance
 
 This observation supplements the historical inventory below. PR
@@ -44,8 +57,8 @@ reuse predecessor approvals or checks.
 | [#1590](https://github.com/ContextualWisdomLab/naruon/pull/1590) repeatedly acquired provider/model fixture changes outside its URL-extraction responsibility | [#1418](https://github.com/ContextualWisdomLab/naruon/pull/1418) remains the canonical Naruon URL/contact-hygiene owner and already carries the valid hostname and scheme delta | #1590 preserved all intervening ancestry and restored verified tree `24480909a7e8b8e5c707b52c976d820018389a77` at exact head `9d545440f556a3aa24213d690ab62bd45bfc6bdf`; #1418 is open/Draft and mergeable at `a4a4da69ff9df89bac9d0a00e7473f35685be567`. Completion requires fresh exact-head checks, independent approval, ordinary protected integration of #1418, and succession verification before retiring #1590. |
 | Required Noema review lacked a terminal verdict after consumer-owned preflight selected the free gateway route | [contextual-orchestrator#1106](https://github.com/ContextualWisdomLab/contextual-orchestrator/issues/1106) owns free-pool admission/routing; [.github#2042](https://github.com/ContextualWisdomLab/.github/issues/2042) owns removal of the temporary leaf routing bridge after an immutable owner release; [.github#2035](https://github.com/ContextualWisdomLab/.github/pull/2035) remains only the review-publication repair | The freshest #2035 exact-head evidence is run `34183702988`, job `102003278065`: HTTP 429 after 322.5 seconds with `orchestrator/free`, caller attempts=1, served model `deepseek-ai/deepseek-v4-flash-0731`. Keep the review fail closed with no paid, local, or direct-provider bypass; completion requires immutable owner release, consumer version bump and bridge deletion, then exact-head contract/security/review GREEN. |
 
-**Baseline version:** 1.5
-**Observed on:** 2026-09-09 (Asia/Seoul)
+**Baseline version:** 1.6
+**Observed on:** 2026-09-12 (Asia/Seoul)
 **Observed protected branch (current scan; row Base-SHA values remain historical):** `develop@042b0c70531b229af3acbd0421a2f23098d848b3`
 **Observed product version:** `0.14.4`  
 **Canonical completion issue:** [#1428](https://github.com/ContextualWisdomLab/naruon/issues/1428)

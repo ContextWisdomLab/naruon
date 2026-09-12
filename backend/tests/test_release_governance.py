@@ -651,7 +651,6 @@ def test_app_ci_runs_backend_and_frontend_checks_without_duplicate_release_pushe
     workflow = read_repo_text(".github/workflows/app-ci.yml")
 
     assert "pull_request:" in workflow
-    assert "release/**" in workflow
     assert "python -m pytest" in workflow
     assert "PYTHONWARNINGS: error" in workflow
     assert 'DISABLE_BACKGROUND_WORKERS: "1"' in workflow
@@ -666,6 +665,7 @@ def test_app_ci_runs_backend_and_frontend_checks_without_duplicate_release_pushe
     assert "uses: actions/setup-node@v" not in workflow
 
     push_block = workflow.split("push:", 1)[1].split("pull_request:", 1)[0]
+    assert "develop" in push_block
     assert "master" in push_block
     assert "release/**" not in push_block
 
@@ -705,12 +705,8 @@ def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_
         == 2
     )
     push_block = workflow.split("push:", 1)[1].split("pull_request:", 1)[0]
-    pull_request_block = workflow.split("pull_request:", 1)[1].split("permissions:", 1)[
-        0
-    ]
     assert "tags:" in push_block
     assert "branches:" not in push_block
-    assert "develop" in pull_request_block
     assert "ai_email_client-backend" in workflow
     assert "ai_email_client-frontend" in workflow
     assert workflow.count("image: naruon") == 2

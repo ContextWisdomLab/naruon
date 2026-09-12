@@ -9,7 +9,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_validator,
+)
 from pydantic_core import PydanticCustomError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
@@ -45,19 +52,31 @@ from services.calendar_conflict_policy import (
 MAX_PROPOSED_ICS_CHARS = 65_536
 MAX_EXISTING_ICS_CHARS = 262_144
 POLICY_VALIDATION_HTTP_STATUS = 422
+STORED_EVIDENCE_HTTP_STATUS = 500
 # Matches api.ontology's SOURCE_IDENTIFIER_PATTERN: these ids are opaque
 # RFC 5322-ish message/thread identifiers, not free text.
 SOURCE_IDENTIFIER_PATTERN = r"^[\w\.\-\+@_<>]+$"
 REQUEST_INVALID_ERROR_CODE = "calendar_request_invalid"
 PROPOSED_SOURCE_MISSING_ERROR_CODE = "calendar_proposed_source_missing"
 PROPOSED_SOURCE_REQUIRED_DETAIL = "Provide exactly one of proposed or proposed_ics"
+STORED_EVIDENCE_ERROR_CODE = "calendar_conflict_stored_evidence_corrupt"
+STORED_EVIDENCE_ERROR_DETAIL = "Stored calendar conflict evidence is corrupt"
+
+
+class CalendarConflictStoredEvidenceError(RuntimeError):
+    """Signal corrupt persisted conflict evidence without leaking parser internals."""
+
+    error_code = STORED_EVIDENCE_ERROR_CODE
+
+    def __init__(self) -> None:
+        super().__init__(STORED_EVIDENCE_ERROR_DETAIL)
 
 
 class CalendarConflictAPIRoute(APIRoute):
-    """Keep request-model failures on the stable calendar conflict error envelope."""
+    """Keep request/model failures on the stable calendar conflict error envelope."""
 
     def get_route_handler(self):
-        """Wrap the FastAPI handler so validation uses CalendarConflictErrorResponse."""
+        """Wrap the FastAPI handler so boundary failures use stable error codes."""
         original_route_handler = super().get_route_handler()
 
         async def calendar_conflict_route_handler(request: Request) -> Response:
@@ -65,6 +84,15 @@ class CalendarConflictAPIRoute(APIRoute):
                 return await original_route_handler(request)
             except RequestValidationError as exc:
                 return _request_validation_error_response(exc)
+            except CalendarConflictStoredEvidenceError as exc:
+                error = CalendarConflictErrorResponse(
+                    error_code=exc.error_code,
+                    detail=str(exc),
+                )
+                return JSONResponse(
+                    status_code=STORED_EVIDENCE_HTTP_STATUS,
+                    content=error.model_dump(),
+                )
 
         return calendar_conflict_route_handler
 
@@ -106,10 +134,6 @@ class CalendarConflictRequest(BaseModel):
         has_proposed = self.proposed is not None
         has_proposed_ics = self.proposed_ics is not None
         if has_proposed == has_proposed_ics:
-            # A typed error (not a plain ValueError) so the wrapping
-            # RequestValidationError carries a stable machine-readable
-            # errors()[i]["type"] -- _request_validation_error_response
-            # dispatches on that, never on this rendered message's wording.
             raise PydanticCustomError(
                 PROPOSED_SOURCE_MISSING_ERROR_CODE, PROPOSED_SOURCE_REQUIRED_DETAIL
             )
@@ -136,21 +160,14 @@ class CalendarConflictResponse(BaseModel):
 
 
 class CalendarConflictErrorResponse(BaseModel):
-    """Stable machine code plus safe explanation for policy validation failures."""
+    """Stable machine code plus safe explanation for calendar boundary failures."""
 
     error_code: str
     detail: str
 
 
 def _request_validation_error_response(exc: RequestValidationError) -> JSONResponse:
-    """Map FastAPI request validation onto the existing error_code envelope.
-
-    Dispatches on each error's ``type`` -- the stable identifier a
-    ``PydanticCustomError`` (or Pydantic's own built-in error types) carries
-    independently of its rendered ``msg`` -- never on message wording, so a
-    future change to either error's phrasing can never silently misroute
-    this to the wrong error_code.
-    """
+    """Map FastAPI request validation onto the existing error_code envelope."""
     error_types = {str(error.get("type", "")) for error in exc.errors()}
     if PROPOSED_SOURCE_MISSING_ERROR_CODE in error_types:
         error = CalendarConflictErrorResponse(
@@ -160,8 +177,7 @@ def _request_validation_error_response(exc: RequestValidationError) -> JSONRespo
     elif CORRECTION_INCOHERENT_ERROR_CODE in error_types:
         error = CalendarConflictErrorResponse(
             error_code=CORRECTION_INCOHERENT_ERROR_CODE,
-            detail="status_code and decision_code disagree about whether the "
-            "decision changed",
+            detail="status_code and decision_code disagree about whether the decision changed",
         )
     else:
         error = CalendarConflictErrorResponse(
@@ -292,15 +308,7 @@ class CalendarConflictCorrectionRequest(BaseModel):
 
     @model_validator(mode="after")
     def require_coherent_status_and_decision(self) -> Self:
-        """Reject a status_code/decision_code pair the service would also reject.
-
-        Checked here too (not only in apply_correction) so a mismatched
-        request fails fast with a specific error_code instead of a 500 or a
-        generic one -- re-raised as a typed PydanticCustomError carrying the
-        service exception's own stable error_code (not a plain ValueError),
-        so the wrapping RequestValidationError's errors()[i]["type"] stays
-        that exact code independent of str(exc)'s wording.
-        """
+        """Reject a status_code/decision_code pair the service would also reject."""
         try:
             validate_correction_coherence(
                 status_code=self.status_code, decision_code=self.decision_code
@@ -323,9 +331,20 @@ class CalendarConflictCorrectionResponse(BaseModel):
     created_at: datetime.datetime
 
 
+def _stored_conflict_evidence(raw_conflicts: object) -> list[CalendarConflictEvidence]:
+    """Validate persisted JSON before exposing it through the public API boundary."""
+    if not isinstance(raw_conflicts, list):
+        raise CalendarConflictStoredEvidenceError()
+    try:
+        return [CalendarConflictEvidence.model_validate(item) for item in raw_conflicts]
+    except (ValidationError, TypeError, ValueError) as exc:
+        raise CalendarConflictStoredEvidenceError() from exc
+
+
 def _judgment_response(
     judgment: CalendarConflictJudgment,
 ) -> CalendarConflictJudgmentResponse:
+    """Serialize one persisted judgment after validating stored evidence."""
     return CalendarConflictJudgmentResponse(
         judgment_uid=judgment.judgment_uid,
         proposed_commitment_id=judgment.proposed_commitment_id,
@@ -333,15 +352,7 @@ def _judgment_response(
         source_message_id=judgment.source_message_id,
         decision_code=judgment.decision_code,
         reason_code=judgment.reason_code,
-        conflicts=[
-            CalendarConflictEvidence(
-                commitment_id=conflict["commitment_id"],
-                start_at=conflict["start_at"],
-                end_at=conflict["end_at"],
-                status=conflict["status"],
-            )
-            for conflict in judgment.conflicts_json
-        ],
+        conflicts=_stored_conflict_evidence(judgment.conflicts_json),
         recommended_action=judgment.recommended_action,
         policy_version=judgment.policy_version,
         status_code=judgment.status_code,
@@ -461,23 +472,12 @@ async def correct_calendar_conflict_judgment(
     except CalendarConflictJudgmentNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except CalendarConflictUnsupportedValueError as exc:
-        # Unreachable through this route today (status_code/decision_code are
-        # already Literal-typed on CalendarConflictCorrectionRequest, so
-        # FastAPI rejects an unsupported value before this handler runs) --
-        # kept as defense-in-depth so the service's own ALLOWED_* checks can
-        # never surface as an unhandled 500 if the two ever drift apart.
         error = CalendarConflictErrorResponse(error_code=exc.error_code, detail=str(exc))
         return JSONResponse(
             status_code=POLICY_VALIDATION_HTTP_STATUS,
             content=error.model_dump(),
         )
     except CalendarConflictCorrectionIncoherentError as exc:
-        # Also unreachable through this route today (CalendarConflictCorrectionRequest's
-        # own model_validator already runs this exact check before this handler
-        # runs) -- kept as defense-in-depth for the same reason as the
-        # CalendarConflictUnsupportedValueError clause above: apply_correction's
-        # own internal validate_correction_coherence() call must never surface
-        # as an unhandled 500 if it and the request-model check ever drift apart.
         error = CalendarConflictErrorResponse(error_code=exc.error_code, detail=str(exc))
         return JSONResponse(
             status_code=POLICY_VALIDATION_HTTP_STATUS,

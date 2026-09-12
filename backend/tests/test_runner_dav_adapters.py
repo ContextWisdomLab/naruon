@@ -586,3 +586,14 @@ async def test_carddav_adapter_rejects_protocol_mismatch():
     assert result["status"] == "error"
     assert result["error_code"] == "source_not_configured"
     assert fake_client.requests == []
+
+def test_dav_adapter_rejects_internal_domains():
+    adapters = LocalDavAdapters([])
+    with pytest.raises(ValueError, match="invalid_source_url"):
+        adapters._validate_global_source_host("test.local", 80)
+    with pytest.raises(ValueError, match="invalid_source_url"):
+        adapters._validate_global_source_host("test.internal", 80)
+    with pytest.raises(ValueError, match="invalid_source_url"):
+        adapters._validate_global_source_host("internal", 80)
+    with pytest.raises(ValueError, match="invalid_source_url"):
+        adapters._validate_global_source_host("localhost", 80)

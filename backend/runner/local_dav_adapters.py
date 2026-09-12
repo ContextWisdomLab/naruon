@@ -212,7 +212,15 @@ class LocalDavAdapters:
         try:
             ipaddress.ip_address(hostname)
         except ValueError:
-            pass
+            lower_hostname = hostname.lower()
+            if (
+                lower_hostname == "localhost"
+                or lower_hostname.endswith(".localhost")
+                or lower_hostname == "internal"
+                or lower_hostname.endswith(".internal")
+                or lower_hostname.endswith(".local")
+            ):
+                raise ValueError("invalid_source_url")
         else:
             self._validate_global_address(hostname)
             return

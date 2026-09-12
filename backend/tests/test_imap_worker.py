@@ -126,6 +126,7 @@ async def test_imap_worker_imports_fetched_rfc822_messages(monkeypatch):
     # No \Seen in the FLAGS envelope above -> imported as unread.
     assert kwargs["is_read"] is False
     assert args[3] == "org-imap"
+    assert args[4] == "workspace-imap"
     assert kwargs["owner_addresses"] == ["imap-user@example.com"]
 
     session.commit.assert_awaited_once()

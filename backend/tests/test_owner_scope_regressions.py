@@ -48,7 +48,7 @@ class _CrossWorkspaceTaskSession:
         self.statement_texts.append(statement_text)
         source_scope_enforced = (
             "ticket_tasks.email_id is null" in statement_text
-            and "email_records.email_id is not null" in statement_text
+            and "email_records.id is not null" in statement_text
         )
         return _TaskRows([] if source_scope_enforced else [(self.task, None)])
 
@@ -91,7 +91,7 @@ def test_task_query_requires_authorized_source_or_no_source(
 
     assert "email_records.workspace_id" in statement_text
     assert "ticket_tasks.email_id is null" in statement_text
-    assert "email_records.email_id is not null" in statement_text
+    assert "email_records.id is not null" in statement_text
 
 
 @pytest.mark.asyncio

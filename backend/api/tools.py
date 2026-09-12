@@ -577,6 +577,149 @@ registry.register(
 )
 
 
+def _reject_non_finite_json_constant(value: str) -> None:
+    """Reject Python's non-standard JSON number extensions at the parser boundary."""
+    raise ValueError(f"non-finite JSON number is not permitted: {value}")
+
+
+class _JsonNumberLexeme(str):
+    """Preserve a validated JSON number token without binary-float coercion."""
+
+
+def _preserve_json_integer(value: str) -> _JsonNumberLexeme:
+    """Preserve an integer token while retaining Python's digit-limit defense."""
+    int(value)
+    return _JsonNumberLexeme(value)
+
+
+def _preserve_json_real(value: str) -> _JsonNumberLexeme:
+    """Preserve a fractional or exponent-form JSON number exactly as received."""
+    return _JsonNumberLexeme(value)
+
+
+def _reject_duplicate_json_object_pairs(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    """Reject duplicate member names before Python can silently discard values."""
+    parsed: dict[str, Any] = {}
+    for name, value in pairs:
+        if name in parsed:
+            raise ValueError(
+                f"duplicate JSON object member name is not permitted: {name}"
+            )
+        parsed[name] = value
+    return parsed
+
+
+class _JsonSizeLimiter:
+    def __init__(self, limit: int):
+        self.limit = limit
+        self.current = 0
+
+    def add(self, chars: int):
+        self.current += chars
+        if self.current > self.limit:
+            raise ValueError(f"Formatted JSON must not exceed {self.limit} characters")
+
+def _format_json_value(value: Any, *, depth: int = 0, limiter: Optional[_JsonSizeLimiter] = None) -> str:
+    """Pretty-print decoded JSON without changing validated number lexemes."""
+    if limiter is None:  # pragma: no cover
+        limiter = _JsonSizeLimiter(float("inf"))
+
+    indentation = "  " * depth
+    child_indentation = "  " * (depth + 1)
+    nl = chr(10)
+
+    if isinstance(value, _JsonNumberLexeme):
+        res = str(value)
+        limiter.add(len(res))
+        return res
+    if value is None:
+        limiter.add(4)
+        return "null"
+    if value is True:
+        limiter.add(4)
+        return "true"
+    if value is False:
+        limiter.add(5)
+        return "false"
+    if isinstance(value, str):
+        res = json.dumps(value, ensure_ascii=False)
+        limiter.add(len(res))
+        return res
+    if isinstance(value, list):
+        if not value:
+            limiter.add(2)
+            return "[]"
+        limiter.add(2)
+        rendered_items = []
+        for i, item in enumerate(value):
+            if i > 0:
+                limiter.add(2)
+            limiter.add(len(child_indentation))
+            rendered_items.append(
+                f"{child_indentation}{_format_json_value(item, depth=depth + 1, limiter=limiter)}"
+            )
+        limiter.add(1 + len(indentation) + 1)
+        return "[" + nl + ("," + nl).join(rendered_items) + nl + indentation + "]"
+    if isinstance(value, dict):
+        if not value:
+            limiter.add(2)
+            return "{}"
+        limiter.add(2)
+        rendered_members = []
+        for i, (name, item) in enumerate(value.items()):
+            if i > 0:
+                limiter.add(2)
+            encoded_name = json.dumps(name, ensure_ascii=False)
+            limiter.add(len(child_indentation) + len(encoded_name) + 2)
+            rendered_members.append(
+                f"{child_indentation}{encoded_name}: "
+                f"{_format_json_value(item, depth=depth + 1, limiter=limiter)}"
+            )
+        limiter.add(1 + len(indentation) + 1)
+        return "{" + nl + ("," + nl).join(rendered_members) + nl + indentation + "}"
+    raise TypeError(f"unsupported decoded JSON value: {type(value).__name__}")  # pragma: no cover
+
+async def json_formatter_handler(params: Dict[str, Any]) -> Dict[str, str]:
+    """Validate and pretty-print JSON without silently changing numeric values."""
+    text = params.get("json_string", "")
+    if len(text) > ANALYSIS_TEXT_MAX_CHARS:
+        raise ValueError(
+            f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"
+        )
+    try:
+        parsed = json.loads(
+            text,
+            parse_float=_preserve_json_real,
+            parse_int=_preserve_json_integer,
+            parse_constant=_reject_non_finite_json_constant,
+            object_pairs_hook=_reject_duplicate_json_object_pairs,
+        )
+        limiter = _JsonSizeLimiter(ANALYSIS_TEXT_MAX_CHARS)
+        formatted = _format_json_value(parsed, limiter=limiter)
+        formatted.encode("utf-8")
+    except ValueError as exc:
+        if str(exc).startswith("Formatted JSON must not exceed"):
+            raise
+        raise ValueError("Invalid JSON string") from exc
+    except (json.JSONDecodeError, RecursionError, UnicodeEncodeError) as exc:
+        raise ValueError("Invalid JSON string") from exc
+    return {"formatted_json": formatted}
+
+
+registry.register(
+    ToolInfo(
+        code="json_formatter",
+        name="JSON 포매터 및 검증기 (JSON Formatter & Validator)",
+        description="주어진 JSON 문자열을 보기 좋게 포매팅하거나 유효성을 검사합니다.",
+        category="유틸리티",
+        parameters={"json_string": "string"},
+    ),
+    json_formatter_handler,
+)
+
+
 async def base64_encoder_handler(params: Dict[str, Any]) -> Dict[str, str]:
     text = params.get("text", "")
     return {"encoded_text": base64.b64encode(text.encode("utf-8")).decode("utf-8")}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Network } from 'vis-network';
 
 interface Node {
@@ -157,7 +157,12 @@ function describeEdge(edge: Edge, nodeMap: Map<string | number, string>) {
 
 import { apiClient } from '@/lib/api-client';
 
-export default function NetworkGraph() {
+const NetworkGraph = React.memo(function NetworkGraph() {
+  // ⚡ Bolt: Wrap NetworkGraph in React.memo to prevent unnecessary re-renders
+  // 🎯 Why: NetworkGraph is a heavy visualization component using vis-network.
+  // 📊 Impact: Prevents expensive O(N) DOM manipulations and layout thrashing when parent components re-render.
+  // 🔬 Measurement: Observe React Profiler to confirm NetworkGraph skips rendering when unrelated state in parent components (like SearchLayout or WorkspaceHome) updates.
+
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
   const unavailableRelationshipDescriptionId = useId();
@@ -478,4 +483,6 @@ export default function NetworkGraph() {
       />
     </div>
   );
-}
+});
+
+export default NetworkGraph;

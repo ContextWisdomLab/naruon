@@ -15,7 +15,7 @@
 **Action:** When adding accessible loading states to buttons, use `disabled={isLoading}` for state, add `aria-busy={isLoading}` for context, but avoid redundant `aria-disabled={isLoading}`.
 
 ## 2024-06-04 - Semantic Buttons for Task Interactions
-**Learning:** Interactive areas that trigger actions (like opening a task detail view or navigating to a source) should be semantic `<button>` elements rather than `<div>`s with `onClick` handlers. `div`s lack native keyboard accessibility, focus rings, and proper screen reader roles. Also, `aria-label`s should be context-aware (e.g., "접수 더보기" instead of just "더보기").
+**Learning:** Interactive areas that trigger actions (like opening a task detail view or navigating to a source) should be semantic `<button>` elements rather than `<div>`s with `onClick` handlers. `div`s lack native keyboard accessibility, focus rings, and proper screen reader roles. Also adding `aria-label`s should be context-aware (e.g., "접수 더보기" instead of just "더보기").
 **Action:** When creating new components that function as clickable cards or icon triggers, always wrap them in `<button type="button">` and ensure they have `focus-visible` styles and contextually descriptive `aria-label`s.
 
 ## 2024-06-06 - Always Include Focus States for Custom Buttons
@@ -73,14 +73,10 @@
 **Action:** When adding or auditing buttons for async operations like '동기화 중', '전송 중', or '검색 중', ensure `aria-busy={loadingVariable}` is explicitly added alongside existing spinner and disabled states.
 ## 2026-06-25 - Explicit Loading Feedback for Intent Generation
 **Learning:** In deeply nested data-action layouts (like DataLayout's document and thread intent generation), missing explicit loading spinners and text changes (e.g., from "실행" to "처리 중") leaves users guessing if the button click registered. `disabled` alone is insufficient feedback for intent-checking actions which often take several seconds.
-**Action:** When adding asynchronous intent check actions (like WebDAV or thread validations), always combine `disabled={isLoading}`, `aria-busy={isLoading}`, a `Loader2` spinner, and a dynamic text label (e.g. `isLoading ? '점검 중' : '점검'`) to give immediate, unambiguous feedback.
+**Action:** When adding asynchronous intent check actions (like WebDAV or thread validations), always combine `disabled={isLoading}`, `aria-busy={isLoading}`, a `Loader2` spinner, and a dynamic text label (e.g., `isLoading ? '점검 중' : '점검'`) to give immediate, unambiguous feedback.
 ## 2026-06-25 - Use semantic type="search" with custom clear buttons
 **Learning:** Using `type="search"` on input fields improves mobile UX by rendering a semantic search keyboard (with a "Search" submit button instead of "Go/Enter"). However, when adding a custom clear button ('X') using UI components or Tailwind CSS, the native webkit clear button overlaps with it.
 **Action:** When implementing search fields, always use `type="search"` instead of `type="text"` to get the semantic keyboard benefits. To prevent visual overlaps with custom clear icons, add the `[&::-webkit-search-cancel-button]:hidden` Tailwind utility class to hide the native webkit clear button.
 ## 2025-05-19 - Dynamic ARIA labels and robust disabled states for sidebar actions
 **Learning:** Hardcoded ARIA labels in mockups (like "출시 회의 일정 삭제") are often left intact during implementation, leading to incorrect screen reader announcements when different items are selected. In addition, action buttons that depend on selection state often lack correct visual and functional disabled states.
 **Action:** When implementing detail views or sidebars, always replace hardcoded mockup ARIA labels with dynamic data (e.g. `${event.title} 삭제`), and ensure action buttons are explicitly disabled (both functionally via `disabled` and visually via `opacity-50 cursor-not-allowed`) when their prerequisites (like a selected item or specific properties like location) are unmet.
-
-## 2026-06-25 - Avoid redundant aria-disabled on native disabled elements
-**Learning:** When managing disabled states for interactive elements (like buttons), applying the `aria-disabled` attribute alongside the native HTML `disabled` attribute is an accessibility anti-pattern. The native `disabled` attribute inherently communicates the unavailable state to screen readers. Adding `aria-disabled` is redundant and can cause issues with accessibility linters.
-**Action:** Use only the native `disabled` attribute for state management. For async operations (e.g., loading or saving), use the native `disabled` attribute and add `aria-busy="true"` to explicitly communicate that the element is actively updating.

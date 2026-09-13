@@ -3,21 +3,15 @@
 Existing rows default to read so historical/file imports do not surface as unread.
 
 Deliberate exception to this repo's "Alembic migrations use structured
-operations (``op.create_index``, ...), never ``sa.text(f"...")`` DDL" rule
+operations (``op.create_index``, ...), never raw DDL" rule
 (``AGENTS.md``/``CLAUDE.md``): ``upgrade()``/``downgrade()`` below use
-``op.execute()`` with the module-level ``_UPGRADE_SQL``/``_DOWNGRADE_SQL``
-constants instead of a structured ``op.*`` call. That rule's actual target is
-DDL built from interpolated identifier strings (an injection-safety concern);
-these constants interpolate only ``_IS_READ_PROVENANCE_MARKER``, a fixed
-module-level literal, never an identifier or a value built from a variable,
-external input, or runtime state -- the same safety property a structured
-call would have. The reason a structured call isn't used is different: this
-migration's behavior must be conditional on whether the legacy ``emails``
-table exists, evaluated at apply time (see the comment on ``_UPGRADE_SQL``
-below for why that check cannot live in Python), and no structured Alembic
-operation expresses "run this DDL only if a runtime condition holds" -- a
-``DO $$ ... $$`` block is the correct primitive for that, not a workaround
-for one.
+``op.execute()`` with fixed module-level SQL constants instead of a structured
+``op.*`` call. The reason a structured call isn't used is that this migration's
+behavior must be conditional on whether the legacy ``emails`` table exists,
+evaluated at apply time (see the comment on ``_UPGRADE_SQL`` below for why that
+check cannot live in Python), and no structured Alembic operation expresses
+"run this DDL only if a runtime condition holds". The SQL is entirely static:
+no identifier or value is assembled from external input or runtime state.
 """
 
 from alembic import op
@@ -71,9 +65,10 @@ depends_on = None
 # and its data, since a downgrade has no other way to tell "I added this"
 # apart from "this happens to be present". Checking the marker via
 # ``col_description`` makes downgrade drop only what this exact revision's
-# upgrade created.
+# upgrade created. The regression test asserts this constant remains present
+# in both static SQL blocks, preventing marker drift without constructing SQL.
 _IS_READ_PROVENANCE_MARKER = "0011_email_read_state:added"
-_UPGRADE_SQL = f"""
+_UPGRADE_SQL = """
 DO $$
 BEGIN
     IF to_regclass('emails') IS NOT NULL AND NOT EXISTS (
@@ -83,12 +78,12 @@ BEGIN
         AND NOT attisdropped
     ) THEN
         ALTER TABLE emails ADD COLUMN is_read boolean NOT NULL DEFAULT true;
-        COMMENT ON COLUMN emails.is_read IS '{_IS_READ_PROVENANCE_MARKER}';
+        COMMENT ON COLUMN emails.is_read IS '0011_email_read_state:added';
     END IF;
 END $$;
 """
 
-_DOWNGRADE_SQL = f"""
+_DOWNGRADE_SQL = """
 DO $$
 BEGIN
     IF to_regclass('emails') IS NOT NULL AND EXISTS (
@@ -101,21 +96,18 @@ BEGIN
         WHERE attrelid = to_regclass('emails')
         AND attname = 'is_read'
         AND NOT attisdropped
-    )) = '{_IS_READ_PROVENANCE_MARKER}' THEN
+    )) = '0011_email_read_state:added' THEN
         ALTER TABLE emails DROP COLUMN IF EXISTS is_read;
     END IF;
 END $$;
 """
 
 
-# False positive on both calls below: _UPGRADE_SQL/_DOWNGRADE_SQL interpolate only the
-# fixed module-level literal _IS_READ_PROVENANCE_MARKER (see the module docstring above),
-# never external input or an identifier -- the same safety property a parameterized query
-# would have. Semgrep's raw-query/formatted-sql-query rules pattern-match on
-# "op.execute(f-string)" and cannot see that the interpolated value is a constant.
+# This is fixed migration DDL, not application query construction. The raw-query
+# Semgrep rule cannot distinguish this static Alembic boundary from runtime SQL.
 def upgrade() -> None:
-    op.execute(_UPGRADE_SQL)  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query,python.lang.security.audit.formatted-sql-query.formatted-sql-query
+    op.execute(_UPGRADE_SQL)  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
 
 
 def downgrade() -> None:
-    op.execute(_DOWNGRADE_SQL)  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query,python.lang.security.audit.formatted-sql-query.formatted-sql-query
+    op.execute(_DOWNGRADE_SQL)  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query

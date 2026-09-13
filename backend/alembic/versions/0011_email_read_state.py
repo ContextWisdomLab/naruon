@@ -86,7 +86,7 @@ BEGIN
         COMMENT ON COLUMN emails.is_read IS '{_IS_READ_PROVENANCE_MARKER}';
     END IF;
 END $$;
-"""  # nosec B608
+"""
 
 _DOWNGRADE_SQL = f"""
 DO $$
@@ -105,7 +105,7 @@ BEGIN
         ALTER TABLE emails DROP COLUMN IF EXISTS is_read;
     END IF;
 END $$;
-"""  # nosec B608
+"""
 
 
 # False positive on both calls below: _UPGRADE_SQL/_DOWNGRADE_SQL interpolate only the

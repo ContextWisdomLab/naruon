@@ -15,7 +15,7 @@
 **Action:** When adding accessible loading states to buttons, use `disabled={isLoading}` for state, add `aria-busy={isLoading}` for context, but avoid redundant `aria-disabled={isLoading}`.
 
 ## 2024-06-04 - Semantic Buttons for Task Interactions
-**Learning:** Interactive areas that trigger actions (like opening a task detail view or navigating to a source) should be semantic `<button>` elements rather than `<div>`s with `onClick` handlers. `div`s lack native keyboard accessibility, focus rings, and proper screen reader roles. Also adding `aria-label`s should be context-aware (e.g., "접수 더보기" instead of just "더보기").
+**Learning:** Interactive areas that trigger actions (like opening a task detail view or navigating to a source) should be semantic `<button>` elements rather than `<div>`s with `onClick` handlers. `div`s lack native keyboard accessibility, focus rings, and proper screen reader roles. Also, `aria-label`s should be context-aware (e.g., "접수 더보기" instead of just "더보기").
 **Action:** When creating new components that function as clickable cards or icon triggers, always wrap them in `<button type="button">` and ensure they have `focus-visible` styles and contextually descriptive `aria-label`s.
 
 ## 2024-06-06 - Always Include Focus States for Custom Buttons
@@ -73,7 +73,7 @@
 **Action:** When adding or auditing buttons for async operations like '동기화 중', '전송 중', or '검색 중', ensure `aria-busy={loadingVariable}` is explicitly added alongside existing spinner and disabled states.
 ## 2026-06-25 - Explicit Loading Feedback for Intent Generation
 **Learning:** In deeply nested data-action layouts (like DataLayout's document and thread intent generation), missing explicit loading spinners and text changes (e.g., from "실행" to "처리 중") leaves users guessing if the button click registered. `disabled` alone is insufficient feedback for intent-checking actions which often take several seconds.
-**Action:** When adding asynchronous intent check actions (like WebDAV or thread validations), always combine `disabled={isLoading}`, `aria-busy={isLoading}`, a `Loader2` spinner, and a dynamic text label (e.g., `isLoading ? '점검 중' : '점검'`) to give immediate, unambiguous feedback.
+**Action:** When adding asynchronous intent check actions (like WebDAV or thread validations), always combine `disabled={isLoading}`, `aria-busy={isLoading}`, a `Loader2` spinner, and a dynamic text label (e.g. `isLoading ? '점검 중' : '점검'`) to give immediate, unambiguous feedback.
 ## 2026-06-25 - Use semantic type="search" with custom clear buttons
 **Learning:** Using `type="search"` on input fields improves mobile UX by rendering a semantic search keyboard (with a "Search" submit button instead of "Go/Enter"). However, when adding a custom clear button ('X') using UI components or Tailwind CSS, the native webkit clear button overlaps with it.
 **Action:** When implementing search fields, always use `type="search"` instead of `type="text"` to get the semantic keyboard benefits. To prevent visual overlaps with custom clear icons, add the `[&::-webkit-search-cancel-button]:hidden` Tailwind utility class to hide the native webkit clear button.

@@ -753,6 +753,29 @@ registry.register(
 )
 
 
+async def url_extractor_handler(params: Dict[str, Any]) -> Any:
+    text = params.get("text", "")
+    # 과도한 구두점 매칭을 피하는 URL 정규 표현식 (부정 뒤돌아보기 사용)
+    # ReDoS 및 CodeQL 경고 등을 피하기 위해 간결한 패턴 사용.
+    pattern = r"https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=]+(?<![,.])"
+    urls = re.findall(pattern, text)
+    # 중복 제거 및 리스트 반환
+    unique_urls = list(dict.fromkeys(urls))
+    return {"urls": unique_urls, "url_count": len(unique_urls)}
+
+
+registry.register(
+    ToolInfo(
+        code="url_extractor",
+        name="URL 추출기 (URL Extractor)",
+        description="텍스트 본문에서 URL을 추출하고 중복을 제거하여 반환합니다.",
+        category="유틸리티",
+        parameters={"text": "string"},
+    ),
+    url_extractor_handler,
+)
+
+
 async def uuid_v4_generator_handler(params: Dict[str, Any]) -> Dict[str, str]:
     return {"uuid": str(uuid.uuid4())}
 

@@ -714,6 +714,7 @@ async def run_noema_agent(
             status="unavailable",
             notice="The pydantic-ai runtime is not installed; agent is disabled.",
             provider_name=gateway.model_alias,
+            error_code="pydantic_ai_unavailable",
         )
 
     deps = NoemaAgentDeps(
@@ -739,6 +740,7 @@ async def run_noema_agent(
             notice="The agent run could not be completed.",
             provider_name=gateway.model_alias,
             tool_calls=tuple(deps.tool_calls),
+            error_code="noema_agent_run_failed",
         )
     finally:
         await closer()

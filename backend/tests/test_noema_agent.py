@@ -177,9 +177,9 @@ async def test_content_graph_query_returns_nodes_and_edges():
     )
     session = _QueueSession(
         [
-            _FakeResult(scalar=1),
-            _FakeResult(items=[node]),
-            _FakeResult(items=[edge]),
+            _FakeResult(scalar=1),  # email id lookup
+            _FakeResult(items=[node]),  # content nodes
+            _FakeResult(items=[edge]),  # edges
         ]
     )
     result = await tool_content_graph_query(_deps(session), "msg-1")
@@ -271,8 +271,8 @@ async def test_writeback_skipped_when_not_opted_in():
     )
     assert result["status"] == "skipped"
     assert result["provider_write_executed"] is False
-    assert dispatched == []
-    assert session.added == []
+    assert dispatched == []  # runner never contacted
+    assert session.added == []  # no audit side effect
 
 
 @pytest.mark.asyncio
@@ -398,7 +398,7 @@ async def test_check_calendar_conflict_does_not_drop_malformed_rows_and_claim_av
         proposed_end_at="2026-03-01T11:00:00+00:00",
         proposed_status="confirmed",
         existing=[
-            {"commitment_id": "bad-1"},
+            {"commitment_id": "bad-1"},  # missing start_at/end_at/status
             _commitment_row("bad-2", "not-a-timestamp", "also-not-one", "confirmed"),
         ],
     )
@@ -499,11 +499,16 @@ async def test_run_agent_uses_db_gateway_config_and_degrades_without_runtime(
         noema_orchestrator_base_url="https://orchestrator.internal/v1",
         noema_orchestrator_token="orch-token",
     )
+    # Bypass real SSRF/DNS validation for this hermetic unit test; the fixed
+    # https URL above is a stand-in for whatever the tenant configured.
     monkeypatch.setattr(
         orchestrator_gateway,
         "validate_llm_provider_base_url_async",
         _pass_through_url_validator,
     )
+    # Simulate the pydantic-ai runtime being absent: the gateway config still
+    # resolves from the DB (never os.getenv), and the agent degrades to a
+    # notice distinct from "gateway not configured".
     monkeypatch.setattr(noema_agent, "_load_pydantic_ai", lambda: None)
 
     result = await run_noema_agent(
@@ -515,6 +520,9 @@ async def test_run_agent_uses_db_gateway_config_and_degrades_without_runtime(
     )
     assert result.status == "unavailable"
     assert result.error_code == "pydantic_ai_unavailable"
+    # Proves the gateway resolved (from the DB row, not os.getenv) before the
+    # pydantic-ai check ran, distinguishing this from the "not configured"
+    # case in test_run_agent_never_resolves_a_direct_tenant_llm_provider.
     assert result.provider_name == orchestrator_gateway.ORCHESTRATOR_MODEL_ALIAS
     assert "pydantic-ai" in (result.notice or "")
 
@@ -528,7 +536,7 @@ async def test_build_agent_returns_none_without_runtime(monkeypatch):
     )
     agent, closer = await build_noema_agent(gateway)
     assert agent is None
-    await closer()
+    await closer()  # no-op closer must be awaitable
 
 
 # --------------------------------------------------------------------------- #
@@ -538,10 +546,18 @@ async def test_build_agent_returns_none_without_runtime(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_agent_runs_tools_with_test_model(monkeypatch):
+    # This is the ONLY test that exercises the real pydantic-ai build path
+    # (imports OpenAIChatModel, constructs the Agent, registers the tools and
+    # their RunContext-typed schemas). It is skipped only when pydantic-ai is
+    # genuinely absent; CI installs backend/requirements-agent.txt so it runs
+    # and proves build_noema_agent returns a working, tool-driving agent.
     pytest.importorskip("pydantic_ai")
     from pydantic_ai import Agent as PydanticAgent
     from pydantic_ai.models.test import TestModel
 
+    # Bypass the real SSRF-guarded/DNS-pinned HTTP client for this hermetic
+    # test -- the client is immediately overridden by TestModel below and
+    # never used to reach the network.
     async def _fake_http_client(_base_url):
         return "https://orchestrator.internal/v1", httpx.AsyncClient()
 
@@ -554,10 +570,11 @@ async def test_agent_runs_tools_with_test_model(monkeypatch):
         inference_token="orch-token",
     )
     agent, closer = await build_noema_agent(gateway)
+    # A real Agent must be built — not the graceful-degradation None.
     assert agent is not None
     assert isinstance(agent, PydanticAgent)
 
-    session = _QueueSession([])
+    session = _QueueSession([])  # every execute yields an empty result
     deps = _deps(session, writeback_enabled=False)
     try:
         with agent.override(model=TestModel()):
@@ -565,6 +582,9 @@ async def test_agent_runs_tools_with_test_model(monkeypatch):
     finally:
         await closer()
 
+    # TestModel exercises each registered tool once, so every declared tool
+    # name must show up in the recorded call log (proves the RunContext-typed
+    # tool schemas resolved and wired end to end).
     expected_tools = {spec["name"] for spec in NOEMA_TOOL_SPECS}
     assert expected_tools <= set(deps.tool_calls)
     assert getattr(result, "output", None) is not None

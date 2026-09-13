@@ -121,6 +121,8 @@ def test_local_request_target_preserves_safe_path_and_query() -> None:
         "/api/../auth/session",
         "/api/%2e%2e/auth/session",
         "/api/%2E%2E/auth/session",
+        "/api/%252e%252e/auth/session",
+        "/api/%25252e%25252e/auth/session",
         "/api/%2fadmin",
         "/api/%2Fadmin",
         "/api/%5cadmin",
@@ -129,7 +131,7 @@ def test_local_request_target_preserves_safe_path_and_query() -> None:
     ],
 )
 def test_local_request_target_rejects_raw_and_encoded_traversal(path: str) -> None:
-    with pytest.raises(LocalHTTPValidationError, match="traversal"):
+    with pytest.raises(LocalHTTPValidationError, match="traversal|limit exceeded"):
         validate_local_request_target(path)
 
 

@@ -197,6 +197,7 @@ const NetworkGraph = memo(function NetworkGraph() {
         setLoading(false);
       });
   }, []);
+
   useEffect(() => {
     if (containerRef.current && nodes.length > 0) {
       const container = containerRef.current;

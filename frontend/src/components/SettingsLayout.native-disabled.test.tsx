@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SettingsLayout } from "./SettingsLayout";
 
 const settingsSource = readFileSync(
-  fileURLToPath(new URL("./SettingsLayout.tsx", import.meta.url)),
+  resolve(process.cwd(), "src/components/SettingsLayout.tsx"),
   "utf8",
 );
 

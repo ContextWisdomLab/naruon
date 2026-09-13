@@ -112,7 +112,10 @@ def thread_group_key():
 
 
 def build_reply_counts_stmt(
-    thread_keys: list[str], user_id: str, organization_id: str | None
+    thread_keys: list[str],
+    user_id: str,
+    organization_id: str | None,
+    workspace_id: str,
 ) -> Select:
     group_key = thread_group_key()
     return (
@@ -121,7 +124,7 @@ def build_reply_counts_stmt(
             func.count(Email.id).label("reply_count"),
         )
         .select_from(Email)
-        .where(*Email.owner_filters(user_id, organization_id))
+        .where(*Email.owner_filters(user_id, organization_id, workspace_id))
         .where(group_key.in_(thread_keys))
         .group_by(group_key)
     )
@@ -229,9 +232,7 @@ def merge_candidate_rows(
                 one_based_rank=zero_based_position + 1,
                 result_kind=row.result_kind,
                 matched_text=row.matched_text,
-                word_similarity_score=getattr(
-                    row, "word_similarity_score", None
-                ),
+                word_similarity_score=getattr(row, "word_similarity_score", None),
                 cosine_distance=getattr(row, "cosine_distance", None),
                 fusion_settings=fusion_settings,
             )
@@ -296,9 +297,7 @@ async def _resolve_query_embedding(
         organization_id=organization_id,
     )
     if runtime_provider is None:
-        logger.info(
-            "No LLM provider configured; hybrid search running lexical-only"
-        )
+        logger.info("No LLM provider configured; hybrid search running lexical-only")
         return None
     try:
         embeddings = await generate_embeddings(
@@ -430,7 +429,7 @@ async def hybrid_search(
         )
 
         owner_filters = Email.owner_filters(
-            target_user_id, auth_context.organization_id
+            target_user_id, auth_context.organization_id, auth_context.workspace_id
         )
         channel_statements = _build_channel_statements(
             normalized_query, query_embedding, owner_filters
@@ -453,11 +452,11 @@ async def hybrid_search(
                     candidate_thread_keys,
                     target_user_id,
                     auth_context.organization_id,
+                    auth_context.workspace_id,
                 )
             )
             reply_counts_by_thread_key = {
-                row.thread_key: row.reply_count
-                for row in reply_counts_result.all()
+                row.thread_key: row.reply_count for row in reply_counts_result.all()
             }
 
         search_results = build_search_result_items(
@@ -513,7 +512,9 @@ async def grounded_answer(
 
         fusion_settings = resolve_fusion_settings()
         owner_filters = Email.owner_filters(
-            auth_context.user_id, auth_context.organization_id
+            auth_context.user_id,
+            auth_context.organization_id,
+            auth_context.workspace_id,
         )
         channel_statements = _build_channel_statements(
             normalized_query, query_embedding, owner_filters

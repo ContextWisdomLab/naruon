@@ -7,6 +7,7 @@ from services.attachment_parser import (
     MAX_ATTACHMENT_PARSE_SOURCE_BYTES,
     MAX_ATTACHMENT_PARSE_SOURCE_CHARS,
     decode_deferred_attachment_payload,
+    decode_quarantined_attachment_payload,
     get_attachment_parser_manifest,
     parse_email_attachment,
 )
@@ -256,6 +257,190 @@ def test_deferred_pdf_decoder_rejects_non_pdf_and_oversized_payloads(monkeypatch
     oversized = base64.b64encode(b"%PDF-1.7").decode("ascii")
     with pytest.raises(ValueError, match="size limit"):
         decode_deferred_attachment_payload(oversized)
+
+
+def test_quarantined_payload_decoder_round_trips_any_sniffed_type():
+    raw = b"\x89PNG\r\n\x1a\n" + b"real png bytes, not a pdf"
+    encoded = base64.b64encode(raw).decode("ascii")
+
+    assert decode_quarantined_attachment_payload(encoded) == raw
+
+
+def test_quarantined_payload_decoder_rejects_bad_base64_and_oversized_payloads(
+    monkeypatch,
+):
+    with pytest.raises(ValueError, match="not valid base64"):
+        decode_quarantined_attachment_payload("not@@base64!!")
+
+    monkeypatch.setattr(
+        "services.attachment_parser.MAX_ATTACHMENT_PARSE_SOURCE_BYTES", 5
+    )
+    oversized = base64.b64encode(b"more than five bytes").decode("ascii")
+    with pytest.raises(ValueError, match="size limit"):
+        decode_quarantined_attachment_payload(oversized)
+
+
+def test_declared_pdf_with_real_png_bytes_is_quarantined():
+    raw = b"\x89PNG\r\n\x1a\n" + b"rest of a real png payload"
+    result = parse_email_attachment(
+        filename="invoice.pdf",
+        content_type="application/pdf",
+        raw_content=raw,
+    )
+
+    assert result.content_type == "application/pdf"
+    assert result.parse_content_type == "image/png"
+    assert result.parse_content == ""
+    assert result.parse_status == "content_type_mismatch_quarantined"
+    assert result.parse_error_code == "content_type_mismatch_quarantined"
+    assert base64.b64decode(result.content) == raw
+
+
+def test_declared_text_plain_with_real_zip_bytes_is_quarantined():
+    raw = b"PK\x03\x04" + b"fake zip body"
+    result = parse_email_attachment(
+        filename="notes.txt",
+        content_type="text/plain",
+        raw_content=raw,
+    )
+
+    assert result.content_type == "text/plain"
+    assert result.parse_content_type == "application/zip"
+    assert result.parser_key == "unsupported_binary"
+    assert result.parse_status == "content_type_mismatch_quarantined"
+    assert result.parse_error_code == "content_type_mismatch_quarantined"
+    assert base64.b64decode(result.content) == raw
+
+
+def test_oversized_mismatched_payload_is_size_limited_not_quarantined(monkeypatch):
+    """An oversized mismatch must not enter quarantine with no retained bytes.
+
+    A quarantined row with no bytes is indistinguishable, to the
+    reparse-intent API, from one that still has something to re-evaluate --
+    it must get the same non-retryable status every other oversized
+    attachment already gets instead.
+    """
+    monkeypatch.setattr(
+        "services.attachment_parser.MAX_ATTACHMENT_PARSE_SOURCE_BYTES", 10
+    )
+    raw = b"\x89PNG\r\n\x1a\n" + b"A" * 20
+
+    result = parse_email_attachment(
+        filename="picture.pdf",
+        content_type="application/pdf",
+        raw_content=raw,
+    )
+
+    assert result.parse_status == "parse_size_limit_exceeded"
+    assert result.parse_error_code == "parse_size_limit_exceeded"
+    assert result.content == ""
+
+
+def test_declared_docx_with_real_zip_bytes_is_not_quarantined():
+    """A real DOCX is a ZIP container by specification -- its own magic bytes."""
+    raw = b"PK\x03\x04" + b"fake docx body"
+    result = parse_email_attachment(
+        filename="report.docx",
+        content_type=(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ),
+        raw_content=raw,
+    )
+
+    assert result.parse_status == "unsupported_content_type"
+    assert result.parse_error_code == "unsupported_content_type"
+    assert result.content_type == (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+
+
+def test_declared_xlsx_and_pptx_with_real_zip_bytes_are_not_quarantined():
+    raw = b"PK\x03\x04" + b"fake office body"
+    cases = [
+        (
+            "budget.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+        (
+            "deck.pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ),
+    ]
+    for filename, content_type in cases:
+        result = parse_email_attachment(
+            filename=filename, content_type=content_type, raw_content=raw
+        )
+        assert result.parse_status != "content_type_mismatch_quarantined"
+
+
+def test_declared_pdf_with_real_zip_bytes_is_still_quarantined():
+    """A ZIP disguised as a PDF is a genuine mismatch, unlike a real OOXML file."""
+    raw = b"PK\x03\x04" + b"fake body"
+    result = parse_email_attachment(
+        filename="not-a-pdf.pdf",
+        content_type="application/pdf",
+        raw_content=raw,
+    )
+
+    assert result.parse_status == "content_type_mismatch_quarantined"
+
+
+def test_matching_declared_and_sniffed_binary_type_is_not_quarantined():
+    """A real PDF declared as a PDF must go through the normal deferred path."""
+    result = parse_email_attachment(
+        filename="contract.pdf",
+        content_type="application/pdf",
+        raw_content=b"%PDF-1.7 real payload",
+    )
+
+    assert result.parse_status == "pdf_dom_recognition_pending"
+
+
+@pytest.mark.parametrize(
+    ("content_type", "filename"),
+    [
+        ("application/octet-stream", "photo.bin"),
+        ("binary/octet-stream", "photo"),
+        ("application/x-binary", "photo.dat"),
+        (None, "photo"),
+        ("", "photo"),
+    ],
+)
+def test_generic_content_type_with_no_recognized_extension_is_not_quarantined(
+    content_type, filename
+):
+    """A generic MIME type is not a claim, so recognized bytes cannot disagree with it.
+
+    ``application/octet-stream`` (and its variants) is MIME's own "no more
+    specific type available" placeholder, never a positive assertion about
+    content -- a sender who sends an ordinary PNG/PDF/ZIP this way hasn't
+    disguised anything, and quarantining it forever (with no declared-type
+    fix ever able to clear it, since the sender already sent the only type
+    they were going to send) defeats attachments no one lied about.
+    """
+    raw = b"\x89PNG\r\n\x1a\n" + b"real png bytes"
+    result = parse_email_attachment(
+        filename=filename, content_type=content_type, raw_content=raw
+    )
+
+    assert result.parse_status != "content_type_mismatch_quarantined"
+
+
+def test_generic_content_type_resolved_via_extension_still_detects_mismatch():
+    """A generic type that resolves to something specific via extension keeps quarantining.
+
+    Once ``_parse_content_type_for`` resolves a generic declaration to a
+    real claim via a recognized extension (here ``.pdf``), that *is* a
+    specific assertion the sniffed bytes can genuinely disagree with -- the
+    generic-type carve-out must not swallow this case.
+    """
+    raw = b"\x89PNG\r\n\x1a\n" + b"real png bytes"
+    result = parse_email_attachment(
+        filename="invoice.pdf", content_type="application/octet-stream", raw_content=raw
+    )
+
+    assert result.parse_status == "content_type_mismatch_quarantined"
+    assert result.parse_error_code == "content_type_mismatch_quarantined"
 
 
 def test_safe_filename_handles_windows_path_traversal():

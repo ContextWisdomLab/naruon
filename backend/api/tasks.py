@@ -3,7 +3,7 @@ from typing import Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import AuthContext, get_auth_context
@@ -154,16 +154,17 @@ async def create_reply_sla_escalations(
             db,
             user_id=auth_context.user_id,
             organization_id=auth_context.organization_id,
+            workspace_id=auth_context.workspace_id,
             overdue_hours=request.overdue_hours,
             limit=request.limit,
         )
-    except ReplySlaTaskConflict:
+    except ReplySlaTaskConflict as conflict_error:
         raise HTTPException(
             status_code=409,
             detail={
-                "error_code": "reply_sla_task_conflict",
+                "error_code": conflict_error.error_code,
                 "message": "Overdue reply follow-up task conflict",
-            }
+            },
         ) from None
     return _reply_sla_response(escalation_result)
 
@@ -177,13 +178,19 @@ def _build_task_query(auth_context: AuthContext):
                 TicketTask.related_email_id == Email.id,
                 Email.user_id == auth_context.user_id,
                 Email.organization_id == auth_context.organization_id,
+                Email.workspace_id == auth_context.workspace_id,
             ),
         )
         .where(
             TicketTask.user_id == auth_context.user_id,
             TicketTask.organization_id == auth_context.organization_id,
+            or_(
+                TicketTask.related_email_id.is_(None),
+                Email.id.is_not(None),
+            ),
         )
     )
+
 
 @router.get("", response_model=list[TicketTaskResponse])
 async def list_ticket_tasks(
@@ -248,6 +255,7 @@ async def _fetch_source_email(
             Email.message_id == request.source_email_id,
             Email.user_id == auth_context.user_id,
             Email.organization_id == auth_context.organization_id,
+            Email.workspace_id == auth_context.workspace_id,
         )
     )
     email = email_result.scalar_one_or_none()

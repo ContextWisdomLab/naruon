@@ -2,13 +2,17 @@ import asyncio
 import os
 from collections.abc import Sequence
 
-from sqlalchemy import Executable, text
+from sqlalchemy import Executable, inspect, text
 from sqlalchemy.engine import Connection
 
 from db.models import Base
 from db.session import engine
 
 INVALID_EMAIL_BACKFILL_OWNER_IDS = {None, "", "default"}
+LEGACY_EMAILS_INDEX = text(
+    "CREATE INDEX IF NOT EXISTS ix_emails_owner_date "
+    "ON emails (user_id, organization_id, date)"
+)
 
 
 def _static_bootstrap_sql(statement: str) -> Executable:
@@ -37,6 +41,11 @@ def _get_add_columns_statements() -> list[Executable]:
         text("ALTER TABLE email_records ADD COLUMN IF NOT EXISTS in_reply_to varchar"),
         text('ALTER TABLE email_records ADD COLUMN IF NOT EXISTS "references" varchar'),
         text("ALTER TABLE email_records ADD COLUMN IF NOT EXISTS reply_to varchar"),
+        text("ALTER TABLE email_records ADD COLUMN IF NOT EXISTS workspace_id varchar"),
+        text(
+            "ALTER TABLE email_attachments "
+            "ADD COLUMN IF NOT EXISTS attachment_uid varchar"
+        ),
         text("ALTER TABLE llm_providers ADD COLUMN IF NOT EXISTS user_id varchar"),
         text(
             "ALTER TABLE llm_providers ADD COLUMN IF NOT EXISTS organization_id varchar"
@@ -93,8 +102,7 @@ def _get_add_columns_statements() -> list[Executable]:
             "ADD COLUMN IF NOT EXISTS organization_id varchar"
         ),
         _static_bootstrap_sql(
-            "ALTER TABLE prompt_templates "
-            "ADD COLUMN IF NOT EXISTS workspace_id varchar"
+            "ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS workspace_id varchar"
         ),
     ]
 
@@ -186,10 +194,7 @@ def _get_create_indexes_statements() -> list[Executable]:
             "CREATE INDEX IF NOT EXISTS ix_email_records_owner_date "
             "ON email_records (user_id, organization_id, date)"
         ),
-        text(
-            "CREATE INDEX IF NOT EXISTS ix_emails_owner_date "
-            "ON emails (user_id, organization_id, date)"
-        ),
+        LEGACY_EMAILS_INDEX,
         text(
             "CREATE INDEX IF NOT EXISTS ix_sender_relationships_owner_source "
             "ON sender_relationships "
@@ -313,6 +318,73 @@ def _get_update_project_folders_statements() -> list[Executable]:
         text(
             "CREATE INDEX IF NOT EXISTS ix_project_folders_owner_scope "
             "ON project_folders (user_id, organization_id)"
+        ),
+    ]
+
+
+def _get_update_email_workspace_statements() -> list[Executable]:
+    return [
+        text(
+            "UPDATE email_records "
+            "SET workspace_id = 'workspace-' || organization_id "
+            "WHERE workspace_id IS NULL OR workspace_id = ''"
+        ),
+        text("ALTER TABLE email_records ALTER COLUMN workspace_id SET NOT NULL"),
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_email_records_workspace_id "
+            "ON email_records (workspace_id)"
+        ),
+        # uq_email_records_owner_message_id (created earlier by validation,
+        # before workspace_id is guaranteed populated) is stricter than
+        # Alembic 0020's uq_emails_workspace_message: it forbids the same
+        # message_id from ever existing in two different workspaces of the
+        # same owner. Drop it now that workspace_id is backfilled and
+        # non-null, and replace it with the same workspace-scoped identity so
+        # a bootstrap-provisioned database doesn't silently diverge from the
+        # Alembic-managed schema it exists to mirror. Historical bootstrap
+        # runs always created this as a plain index (see
+        # _get_validation_and_final_indexes_statements), but a constraint
+        # drop is included too in case an even older schema shape used one.
+        text(
+            "ALTER TABLE email_records "
+            "DROP CONSTRAINT IF EXISTS uq_email_records_owner_message_id"
+        ),
+        text("DROP INDEX IF EXISTS uq_email_records_owner_message_id"),
+        # uq_emails_owner_message_id is the DIFFERENT owner-only identity name
+        # Alembic's own ORM metadata (and 0020_email_workspace_scope.py, as
+        # _OLD_EMAIL_IDENTITY) used before workspace scoping. A database
+        # provisioned via Base.metadata.create_all()
+        # (0001_initial_control_plane.py) before the workspace-scoped model
+        # landed carries this name instead of the bootstrap-specific one
+        # above -- drop it too, or such a database keeps the stricter
+        # 3-column identity forever.
+        text(
+            "ALTER TABLE email_records "
+            "DROP CONSTRAINT IF EXISTS uq_emails_owner_message_id"
+        ),
+        text("DROP INDEX IF EXISTS uq_emails_owner_message_id"),
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "uq_emails_workspace_message "
+            "ON email_records (user_id, organization_id, workspace_id, message_id)"
+        ),
+    ]
+
+
+def _get_update_email_attachment_statements() -> list[Executable]:
+    return [
+        text(
+            "UPDATE email_attachments "
+            "SET attachment_uid = 'attachment_' || encode(sha256(("
+            "random()::text || ':' || clock_timestamp()::text || ':' || "
+            "id::text"
+            ")::bytea), 'hex') "
+            "WHERE attachment_uid IS NULL OR attachment_uid = ''"
+        ),
+        text("ALTER TABLE email_attachments ALTER COLUMN attachment_uid SET NOT NULL"),
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_email_attachments_uid "
+            "ON email_attachments (attachment_uid)"
         ),
     ]
 
@@ -456,10 +528,6 @@ def _get_validation_and_final_indexes_statements() -> list[Executable]:
         text("ALTER TABLE llm_providers ALTER COLUMN user_id SET NOT NULL"),
         text("ALTER TABLE llm_providers ALTER COLUMN organization_id SET NOT NULL"),
         text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_email_records_owner_message_id "
-            "ON email_records (user_id, organization_id, message_id)"
-        ),
-        text(
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_llm_providers_org_name "
             "ON llm_providers (organization_id, name)"
         ),
@@ -512,6 +580,7 @@ def schema_backfill_sql() -> list[Executable]:
     statements.extend(_get_update_webdav_accounts_statements())
     statements.extend(_get_update_project_folders_statements())
     statements.extend(_get_update_prompt_template_statements())
+    statements.extend(_get_update_email_attachment_statements())
     statements.extend(_get_drop_constraints_and_indexes_statements())
     statements.extend(_get_create_new_indexes_statements())
 
@@ -524,11 +593,23 @@ def schema_backfill_sql() -> list[Executable]:
 
     statements.extend(_get_validation_and_final_indexes_statements())
 
+    # email_records.organization_id is only guaranteed NOT NULL once the
+    # validation above passes, so the workspace_id backfill (derived from
+    # organization_id) must run after it, not alongside the other
+    # independent per-table backfills above.
+    statements.extend(_get_update_email_workspace_statements())
+
     return statements
 
 
-def _execute_statements(conn: Connection, statements: Sequence[Executable]) -> None:
+def execute_schema_backfill(
+    conn: Connection, statements: Sequence[Executable] | None = None
+) -> None:
+    statements = schema_backfill_sql() if statements is None else statements
+    legacy_emails_exists = inspect(conn).has_table("emails")
     for statement in statements:
+        if statement is LEGACY_EMAILS_INDEX and not legacy_emails_exists:
+            continue
         conn.execute(statement)
 
 
@@ -536,7 +617,7 @@ async def bootstrap_db() -> None:
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
-        await conn.run_sync(_execute_statements, schema_backfill_sql())
+        await conn.run_sync(execute_schema_backfill)
 
 
 if __name__ == "__main__":

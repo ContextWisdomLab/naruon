@@ -46,15 +46,15 @@ async def get_network_graph(
     if user_id and user_id != current_user:
         raise HTTPException(status_code=403, detail="Not authorized")
     target_user_id = user_id or current_user
-    organization_filter = (
-        Email.organization_id == auth_context.organization_id
-        if auth_context.organization_id is not None
-        else Email.organization_id.is_(None)
-    )
-
     result = await db.execute(
         select(Email.sender, Email.recipients)
-        .where(Email.user_id == target_user_id, organization_filter)
+        .where(
+            *Email.owner_filters(
+                target_user_id,
+                auth_context.organization_id,
+                auth_context.workspace_id,
+            )
+        )
         .limit(limit)
     )
     rows = result.fetchall()

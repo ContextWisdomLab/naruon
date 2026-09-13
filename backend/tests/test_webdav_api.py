@@ -1080,6 +1080,7 @@ async def test_knowledge_materialization_intent_real_postgres_endpoint_smoke(
                         id INTEGER PRIMARY KEY,
                         user_id VARCHAR NOT NULL,
                         organization_id VARCHAR NOT NULL,
+                        workspace_id VARCHAR NOT NULL,
                         message_id VARCHAR NOT NULL,
                         thread_id VARCHAR
                     )
@@ -1131,15 +1132,17 @@ async def test_knowledge_materialization_intent_real_postgres_endpoint_smoke(
                     INSERT INTO email_records (
                         id,
                         user_id,
-                        organization_id,
-                        message_id,
+                            organization_id,
+                            workspace_id,
+                            message_id,
                         thread_id
                     )
                     VALUES (
                         :email_id,
                         :user_id,
-                        :organization_id,
-                        :message_id,
+                            :organization_id,
+                            :workspace_id,
+                            :message_id,
                         :thread_id
                     )
                     """
@@ -1148,6 +1151,7 @@ async def test_knowledge_materialization_intent_real_postgres_endpoint_smoke(
                     "email_id": smoke_id,
                     "user_id": user_id,
                     "organization_id": "org-acme",
+                    "workspace_id": "workspace-org-acme",
                     "message_id": message_id,
                     "thread_id": thread_id,
                 },

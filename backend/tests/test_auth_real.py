@@ -254,6 +254,19 @@ def test_build_auth_context_rejects_invalid_token():
     assert exc.value.status_code == 401
 
 
+def test_build_auth_context_accepts_independently_signed_workspace_membership():
+    # Workspace ids are opaque membership identifiers signed by the verified
+    # session authority; they are not names derived from organization ids.
+    settings.AUTH_SESSION_HMAC_SECRET = SecretStr(TEST_SESSION_HMAC_SECRET)
+    token = _signed_session_token(
+        _valid_session_payload(org="org-acme", workspace="workspace-project-blue")
+    )
+
+    context = build_auth_context(authorization=f"Bearer {token}")
+    assert context.organization_id == "org-acme"
+    assert context.workspace_id == "workspace-project-blue"
+
+
 @pytest.mark.asyncio
 async def test_get_auth_context_rejects_missing_auth():
     # It should raise HTTP 401 when auth is absent instead of defaulting.

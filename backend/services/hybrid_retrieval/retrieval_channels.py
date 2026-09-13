@@ -45,6 +45,15 @@ DENSE_ATTACHMENT_CHANNEL = "dense_attachment"
 # {candidate, confirmed}; the exclusion list is defensive.
 _EXCLUDED_PROJECT_OBJECT_STATUS_CODES = ("dismissed", "rejected")
 
+# Only a "parsed" attachment's `content` is genuine parsed text. Every other
+# status (quarantined content-type mismatch, pdf_dom_recognition_pending
+# awaiting the NewsDOM sidecar, reparse_pending/reparse_payload_invalid,
+# unsupported_content_type, parse_size_limit_exceeded, ...) stores either a
+# base64-encoded raw payload or an empty string -- neither is a legitimate
+# search match, and the base64 payload in particular must never surface as
+# if it were the attachment's real content.
+_SEARCHABLE_ATTACHMENT_PARSE_STATUS = "parsed"
+
 
 def _thread_key_expression():
     normalized_thread_id = func.nullif(
@@ -145,7 +154,9 @@ def build_lexical_attachment_statement(
         owner_filters=owner_filters,
         candidate_limit=candidate_limit,
     )
-    return statement.join(Email, Attachment.email_id == Email.id)
+    return statement.join(Email, Attachment.email_id == Email.id).where(
+        Attachment.parse_status == _SEARCHABLE_ATTACHMENT_PARSE_STATUS
+    )
 
 
 def build_lexical_content_segment_statement(
@@ -228,4 +239,6 @@ def build_dense_attachment_statement(
         owner_filters=owner_filters,
         candidate_limit=candidate_limit,
     )
-    return statement.join(Email, Attachment.email_id == Email.id)
+    return statement.join(Email, Attachment.email_id == Email.id).where(
+        Attachment.parse_status == _SEARCHABLE_ATTACHMENT_PARSE_STATUS
+    )

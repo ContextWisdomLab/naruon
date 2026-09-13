@@ -326,6 +326,7 @@ async def _seed_source_segment(
     email = Email(
         user_id=user_id,
         organization_id=organization_id,
+        workspace_id=f"workspace-{organization_id}",
         message_id=f"<{uuid.uuid4().hex}@example.com>",
         thread_id=f"thread-{uuid.uuid4().hex}",
         fingerprint=f"sha256:{uuid.uuid4().hex}",

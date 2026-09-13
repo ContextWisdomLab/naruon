@@ -280,7 +280,9 @@ async def get_emails(
     user_addresses = configured_email_addresses(tenant_config)
     is_sent_folder = folder == "sent"
     owner_filters = Email.owner_filters(
-        auth_context.user_id, auth_context.organization_id
+        auth_context.user_id,
+        auth_context.organization_id,
+        auth_context.workspace_id,
     )
 
     # Thread winnowing happens in SQL: one newest head row per thread via a
@@ -384,7 +386,10 @@ async def get_pending_replies(
 ):
     # Ensure auth context validates the request payload and scopes access
     pending_emails = await check_missing_replies(
-        db, auth_context.user_id, auth_context.organization_id
+        db,
+        auth_context.user_id,
+        auth_context.organization_id,
+        auth_context.workspace_id,
     )
     items = []
     for email in pending_emails[:limit]:
@@ -446,7 +451,11 @@ async def _fetch_existing_emails_for_candidates(
 
     result = await db.execute(
         select(Email).where(
-            *Email.owner_filters(auth_context.user_id, auth_context.organization_id),
+            *Email.owner_filters(
+                auth_context.user_id,
+                auth_context.organization_id,
+                auth_context.workspace_id,
+            ),
             or_(*predicates),
         )
     )
@@ -610,6 +619,7 @@ async def import_email_files(
             uploads=uploads,
             user_id=auth_context.user_id,
             organization_id=auth_context.organization_id,
+            workspace_id=auth_context.workspace_id,
             embedding_provider=embedding_provider,
         )
     except EmailImportQuotaExceeded as exc:
@@ -647,7 +657,11 @@ async def get_email(
     result = await db.execute(
         select(Email).where(
             Email.id == email_id,
-            *Email.owner_filters(auth_context.user_id, auth_context.organization_id),
+            *Email.owner_filters(
+                auth_context.user_id,
+                auth_context.organization_id,
+                auth_context.workspace_id,
+            ),
         )
     )
     email = result.scalar_one_or_none()
@@ -669,7 +683,11 @@ async def get_email_thread(
     result = await db.execute(
         select(Email)
         .where(
-            *Email.owner_filters(auth_context.user_id, auth_context.organization_id),
+            *Email.owner_filters(
+                auth_context.user_id,
+                auth_context.organization_id,
+                auth_context.workspace_id,
+            ),
             or_(
                 Email.thread_id.in_(lookup_values), Email.message_id.in_(lookup_values)
             ),

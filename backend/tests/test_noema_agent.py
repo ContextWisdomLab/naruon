@@ -3,12 +3,14 @@
 These cover three seams without needing a live LLM or a database:
 
 * tool wiring (mail read/search, content-graph, task actions, writeback)
-* configuration resolved from the DB provider layer (not ``os.getenv``)
-* graceful degradation when the provider or pydantic-ai runtime is absent
+* contextual-orchestrator gateway configuration resolved from the tenant's
+  own DB row (not ``os.getenv``, and never a direct tenant LLM-provider key)
+* graceful degradation when the gateway or the pydantic-ai runtime is absent
 """
 
 import datetime
 
+import httpx
 import pytest
 
 from db.models import (
@@ -16,16 +18,16 @@ from db.models import (
     ContentNodeRecord,
     Email,
     KnowledgeGraphEdgeRecord,
-    LLMProvider,
+    TenantConfig,
     TicketTask,
 )
-from services import noema_agent
-from services.llm_provider_selection import RuntimeLLMProvider
+from services import noema_agent, orchestrator_gateway
 from services.noema_agent import (
     NOEMA_TOOL_SPECS,
     NoemaAgentDeps,
     build_noema_agent,
     run_noema_agent,
+    tool_check_calendar_conflict,
     tool_content_graph_query,
     tool_dispatch_writeback,
     tool_list_tasks,
@@ -33,8 +35,14 @@ from services.noema_agent import (
     tool_search_mail,
     tool_update_task_status,
 )
+from services.orchestrator_gateway import OrchestratorGateway
 
 UTC = datetime.timezone.utc
+
+
+async def _pass_through_url_validator(value: str | None) -> str | None:
+    """Stand in for real SSRF/DNS validation in hermetic unit tests."""
+    return value
 
 
 class _FakeScalars:
@@ -68,10 +76,12 @@ class _QueueSession:
 
     def __init__(self, results=None):
         self._results = list(results or [])
+        self.statements = []
         self.added = []
         self.commits = 0
 
     async def execute(self, _statement):
+        self.statements.append(_statement)
         if not self._results:
             return _FakeResult()
         return self._results.pop(0)
@@ -121,12 +131,16 @@ async def test_search_mail_returns_owner_scoped_snippets():
     assert len(results) == 1
     assert results[0]["message_id"] == "msg-1"
     assert "budget" in results[0]["snippet"]
+    assert "email_records.workspace_id" in str(session.statements[0])
+    assert "workspace-org-1" in session.statements[0].compile().params.values()
 
 
 @pytest.mark.asyncio
 async def test_read_mail_missing_returns_not_found():
     session = _QueueSession([_FakeResult(items=[])])
     result = await tool_read_mail(_deps(session), "msg-404")
+    assert "email_records.workspace_id" in str(session.statements[0])
+    assert "workspace-org-1" in session.statements[0].compile().params.values()
     assert result["status"] == "not_found"
 
 
@@ -172,6 +186,8 @@ async def test_content_graph_query_returns_nodes_and_edges():
     assert result["status"] == "ok"
     assert result["nodes"][0]["uid"] == "node-1"
     assert result["edges"][0]["kind"] == "mentions"
+    assert "email_records.workspace_id" in str(session.statements[0])
+    assert "workspace-org-1" in session.statements[0].compile().params.values()
 
 
 @pytest.mark.asyncio
@@ -291,6 +307,137 @@ async def test_writeback_rejects_unknown_action():
     assert result["status"] == "error"
 
 
+# --------------------------------------------------------------------------- #
+# Calendar conflict check: same deterministic policy as /api/calendar/conflicts
+# --------------------------------------------------------------------------- #
+
+
+def _commitment_row(commitment_id, start_at, end_at, status):
+    return {
+        "commitment_id": commitment_id,
+        "start_at": start_at,
+        "end_at": end_at,
+        "status": status,
+    }
+
+
+@pytest.mark.asyncio
+async def test_check_calendar_conflict_requires_authoritative_provider_evidence():
+    session = _QueueSession([])
+    result = await tool_check_calendar_conflict(
+        _deps(session),
+        proposed_commitment_id="new-1",
+        proposed_start_at="2026-03-01T10:00:00+00:00",
+        proposed_end_at="2026-03-01T11:00:00+00:00",
+        proposed_status="confirmed",
+        existing=[
+            _commitment_row(
+                "other-1",
+                "2026-03-01T12:00:00+00:00",
+                "2026-03-01T13:00:00+00:00",
+                "confirmed",
+            )
+        ],
+    )
+    assert result["status"] == "error"
+    assert result["decision_code"] == "review_required"
+    assert result["error_code"] == "calendar_authoritative_evidence_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_check_calendar_conflict_does_not_trust_conversational_overlap():
+    session = _QueueSession([])
+    result = await tool_check_calendar_conflict(
+        _deps(session),
+        proposed_commitment_id="new-1",
+        proposed_start_at="2026-03-01T10:00:00+00:00",
+        proposed_end_at="2026-03-01T11:00:00+00:00",
+        proposed_status="confirmed",
+        existing=[
+            _commitment_row(
+                "other-1",
+                "2026-03-01T10:30:00+00:00",
+                "2026-03-01T11:30:00+00:00",
+                "confirmed",
+            )
+        ],
+    )
+    assert result["status"] == "error"
+    assert result["decision_code"] == "review_required"
+
+
+@pytest.mark.asyncio
+async def test_check_calendar_conflict_remains_review_required_without_provider_read():
+    session = _QueueSession([])
+    result = await tool_check_calendar_conflict(
+        _deps(session),
+        proposed_commitment_id="new-1",
+        proposed_start_at="2026-03-01T10:00:00+00:00",
+        proposed_end_at="2026-03-01T11:00:00+00:00",
+        proposed_status="confirmed",
+        existing=[
+            _commitment_row(
+                "other-1",
+                "2026-03-01T10:30:00+00:00",
+                "2026-03-01T11:30:00+00:00",
+                "tentative",
+            )
+        ],
+    )
+    assert result["status"] == "error"
+    assert result["decision_code"] == "review_required"
+
+
+@pytest.mark.asyncio
+async def test_check_calendar_conflict_does_not_drop_malformed_rows_and_claim_available():
+    session = _QueueSession([])
+    result = await tool_check_calendar_conflict(
+        _deps(session),
+        proposed_commitment_id="new-1",
+        proposed_start_at="2026-03-01T10:00:00+00:00",
+        proposed_end_at="2026-03-01T11:00:00+00:00",
+        proposed_status="confirmed",
+        existing=[
+            {"commitment_id": "bad-1"},  # missing start_at/end_at/status
+            _commitment_row("bad-2", "not-a-timestamp", "also-not-one", "confirmed"),
+        ],
+    )
+    assert result["status"] == "error"
+    assert result["decision_code"] == "review_required"
+    assert result["error_code"] == "calendar_authoritative_evidence_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_check_calendar_conflict_rejects_even_empty_unverified_evidence():
+    """Conversational evidence cannot substitute for an authoritative read."""
+    session = _QueueSession([])
+    result = await tool_check_calendar_conflict(
+        _deps(session),
+        proposed_commitment_id="new-1",
+        proposed_start_at="2026-03-01T10:00:00+00:00",
+        proposed_end_at="2026-03-01T11:00:00+00:00",
+        proposed_status="confirmed",
+        existing=[],
+    )
+    assert result["status"] == "error"
+    assert result["error_code"] == "calendar_authoritative_evidence_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_check_calendar_conflict_rejects_invalid_proposed_status():
+    session = _QueueSession([])
+    result = await tool_check_calendar_conflict(
+        _deps(session),
+        proposed_commitment_id="new-1",
+        proposed_start_at="2026-03-01T10:00:00+00:00",
+        proposed_end_at="2026-03-01T11:00:00+00:00",
+        proposed_status="banana",
+        existing=[],
+    )
+    assert result["status"] == "error"
+    assert result["error_code"] == "calendar_status_unsupported"
+
+
 def test_tool_specs_cover_declared_capabilities():
     capabilities = {spec["capability"] for spec in NOEMA_TOOL_SPECS}
     assert {
@@ -300,6 +447,7 @@ def test_tool_specs_cover_declared_capabilities():
         "tasks.read",
         "tasks.update",
         "calendar.writeback",
+        "calendar.conflict_check",
     } <= capabilities
 
 
@@ -308,44 +456,28 @@ def test_tool_specs_cover_declared_capabilities():
 # --------------------------------------------------------------------------- #
 
 
-class _ProviderScalars:
-    def __init__(self, items):
-        self._items = items
-
-    def first(self):
-        return self._items[0] if self._items else None
-
-
-class _ProviderResult:
-    def __init__(self, providers):
-        self._providers = providers
-
-    def scalars(self):
-        return _ProviderScalars(self._providers)
-
-    def scalar_one_or_none(self):
-        return None
-
-
-class _ProviderSession:
-    """Minimal session that satisfies resolve_runtime_llm_provider."""
-
-    def __init__(self, providers):
-        self._providers = providers
-
-    async def execute(self, statement):
-        text = str(statement).lower()
-        if "llm_providers" in text:
-            return _ProviderResult(self._providers)
-        return _ProviderResult([])
-
-
 @pytest.mark.asyncio
-async def test_run_agent_unavailable_without_provider(monkeypatch):
-    async def _no_provider(*args, **kwargs):
-        return None
+async def test_run_agent_never_resolves_a_direct_tenant_llm_provider():
+    """Noema's LLM path must go only through the contextual-orchestrator gateway.
 
-    monkeypatch.setattr(noema_agent, "resolve_runtime_llm_provider", _no_provider)
+    Owner architecture finding on this PR: naruon's general-purpose Noema
+    agent must never resolve a tenant's own configured LLM provider (or build
+    a direct ``openai.AsyncOpenAI`` client from one) -- that would make naruon
+    a second provider-routing authority instead of a `contextual-orchestrator`
+    consumer. Production LLM routing belongs to
+    `ContextualWisdomLab/contextual-orchestrator`; naruon owns the Noema
+    tools/authorization/context, not a second routing authority.
+
+    ``resolve_runtime_llm_provider`` (the tenant-BYOK resolver used elsewhere
+    in this app for search/summaries) is not merely unused by
+    ``run_noema_agent`` -- it is not even imported into this module's
+    namespace any more, which is the strongest available proof there is
+    nothing left to fall back to. A workspace with no gateway configured
+    gets a single, structured "unavailable" result -- never a crash from
+    reaching for an ``LLMProvider`` row that was never queried.
+    """
+    assert not hasattr(noema_agent, "resolve_runtime_llm_provider")
+
     result = await run_noema_agent(
         _QueueSession([]),
         user_id="user-1",
@@ -354,53 +486,55 @@ async def test_run_agent_unavailable_without_provider(monkeypatch):
         prompt="hello",
     )
     assert result.status == "unavailable"
-    assert result.provider_name is None
+    assert result.error_code == "orchestrator_gateway_unavailable"
 
 
 @pytest.mark.asyncio
-async def test_run_agent_uses_db_provider_and_degrades_without_runtime(monkeypatch):
-    provider = LLMProvider(
-        id=7,
+async def test_run_agent_uses_db_gateway_config_and_degrades_without_runtime(
+    monkeypatch,
+):
+    tenant_config = TenantConfig(
         user_id="user-1",
         organization_id="org-1",
-        name="Local Gemma",
-        provider_type="ollama",
-        base_url="http://ollama:11434/v1",
-        model_identifier="gemma",
-        embedding_model="embeddinggemma",
-        api_key=None,
-        is_active=True,
-        updated_at=datetime.datetime.now(UTC),
+        noema_orchestrator_base_url="https://orchestrator.internal/v1",
+        noema_orchestrator_token="orch-token",
     )
-    # Simulate the pydantic-ai runtime being absent: the config still resolves
-    # from the DB provider, and the agent degrades to a notice.
+    # Bypass real SSRF/DNS validation for this hermetic unit test; the fixed
+    # https URL above is a stand-in for whatever the tenant configured.
+    monkeypatch.setattr(
+        orchestrator_gateway,
+        "validate_llm_provider_base_url_async",
+        _pass_through_url_validator,
+    )
+    # Simulate the pydantic-ai runtime being absent: the gateway config still
+    # resolves from the DB (never os.getenv), and the agent degrades to a
+    # notice distinct from "gateway not configured".
     monkeypatch.setattr(noema_agent, "_load_pydantic_ai", lambda: None)
 
     result = await run_noema_agent(
-        _ProviderSession([provider]),
+        _QueueSession([_FakeResult(scalar=tenant_config)]),
         user_id="user-1",
         organization_id="org-1",
         workspace_id="workspace-org-1",
         prompt="hello",
     )
     assert result.status == "unavailable"
-    # Proves the provider name came from the DB record, not os.getenv.
-    assert result.provider_name is not None
+    assert result.error_code == "pydantic_ai_unavailable"
+    # Proves the gateway resolved (from the DB row, not os.getenv) before the
+    # pydantic-ai check ran, distinguishing this from the "not configured"
+    # case in test_run_agent_never_resolves_a_direct_tenant_llm_provider.
+    assert result.provider_name == orchestrator_gateway.ORCHESTRATOR_MODEL_ALIAS
     assert "pydantic-ai" in (result.notice or "")
 
 
 @pytest.mark.asyncio
 async def test_build_agent_returns_none_without_runtime(monkeypatch):
     monkeypatch.setattr(noema_agent, "_load_pydantic_ai", lambda: None)
-    provider = RuntimeLLMProvider(
-        api_key="sk-test",
-        base_url=None,
-        chat_model="gpt-4o",
-        embedding_model="text-embedding-3-small",
-        provider_name="OpenAI",
-        provider_source="tenant_config",
+    gateway = OrchestratorGateway(
+        base_url="https://orchestrator.internal/v1",
+        inference_token="orch-token",
     )
-    agent, closer = await build_noema_agent(provider)
+    agent, closer = await build_noema_agent(gateway)
     assert agent is None
     await closer()  # no-op closer must be awaitable
 
@@ -411,7 +545,7 @@ async def test_build_agent_returns_none_without_runtime(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_agent_runs_tools_with_test_model():
+async def test_agent_runs_tools_with_test_model(monkeypatch):
     # This is the ONLY test that exercises the real pydantic-ai build path
     # (imports OpenAIChatModel, constructs the Agent, registers the tools and
     # their RunContext-typed schemas). It is skipped only when pydantic-ai is
@@ -421,15 +555,21 @@ async def test_agent_runs_tools_with_test_model():
     from pydantic_ai import Agent as PydanticAgent
     from pydantic_ai.models.test import TestModel
 
-    provider = RuntimeLLMProvider(
-        api_key="sk-test",
-        base_url=None,
-        chat_model="gpt-4o",
-        embedding_model="text-embedding-3-small",
-        provider_name="OpenAI",
-        provider_source="tenant_config",
+    # Bypass the real SSRF-guarded/DNS-pinned HTTP client for this hermetic
+    # test -- the client is immediately overridden by TestModel below and
+    # never used to reach the network.
+    async def _fake_http_client(_base_url):
+        return "https://orchestrator.internal/v1", httpx.AsyncClient()
+
+    monkeypatch.setattr(
+        noema_agent, "build_llm_provider_http_client", _fake_http_client
     )
-    agent, closer = await build_noema_agent(provider)
+
+    gateway = OrchestratorGateway(
+        base_url="https://orchestrator.internal/v1",
+        inference_token="orch-token",
+    )
+    agent, closer = await build_noema_agent(gateway)
     # A real Agent must be built — not the graceful-degradation None.
     assert agent is not None
     assert isinstance(agent, PydanticAgent)

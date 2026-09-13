@@ -34,6 +34,12 @@ PolicyValidationCode = Literal[
     "calendar_proposed_source_missing",
 ]
 
+# The bounded existing-commitment batch size every caller enforces: the REST
+# endpoint (api/calendar_conflicts.py), the Noema agent tool
+# (services/noema_agent.py), and any future caller. A single shared constant
+# so the two enforcement points cannot silently drift apart.
+MAX_EXISTING_COMMITMENTS = 500
+
 _STATUS_PRIORITY: dict[str, int] = {
     "desired": 1,
     "tentative": 2,
@@ -106,6 +112,31 @@ class CalendarConflictDecision:
     policy_version: str = "status-weighted-v1"
 
 
+_DEFAULT_RECOMMENDED_ACTIONS: dict[DecisionCode, str] = {
+    "available": "Proceed with scheduling.",
+    "blocked": (
+        "Choose another time or explicitly resolve the equal/higher-priority "
+        "conflict first."
+    ),
+    "review_required": (
+        "Review and explicitly reschedule or accept the lower-priority conflict "
+        "before proceeding."
+    ),
+}
+
+
+def default_recommended_action(decision_code: DecisionCode) -> str:
+    """Return the canonical next-action text this policy pairs with a decision.
+
+    The single source of truth for decision_code -> recommended_action, so a
+    human-corrected judgment that changes decision_code (see
+    services/calendar_conflict_judgment_service.py) can restate a coherent
+    recommended_action instead of drifting from what this policy itself would
+    have said for that decision.
+    """
+    return _DEFAULT_RECOMMENDED_ACTIONS[decision_code]
+
+
 def _require_timezone_aware(value: datetime.datetime) -> None:
     """Reject local/naive timestamps whose absolute instant is ambiguous."""
     if value.tzinfo is None or value.utcoffset() is None:
@@ -174,7 +205,7 @@ def evaluate_calendar_conflicts(
             decision_code="available",
             reason_code="no_overlapping_commitment",
             conflicts=(),
-            recommended_action="Proceed with scheduling.",
+            recommended_action=default_recommended_action("available"),
         )
 
     conflicts = tuple(
@@ -194,7 +225,7 @@ def evaluate_calendar_conflicts(
             decision_code="available",
             reason_code="no_overlapping_commitment",
             conflicts=(),
-            recommended_action="Proceed with scheduling.",
+            recommended_action=default_recommended_action("available"),
         )
 
     proposed_priority = _STATUS_PRIORITY[proposed.status]
@@ -206,18 +237,12 @@ def evaluate_calendar_conflicts(
             decision_code="blocked",
             reason_code="equal_or_higher_priority_conflict",
             conflicts=conflicts,
-            recommended_action=(
-                "Choose another time or explicitly resolve the equal/higher-priority "
-                "conflict first."
-            ),
+            recommended_action=default_recommended_action("blocked"),
         )
 
     return CalendarConflictDecision(
         decision_code="review_required",
         reason_code="lower_priority_conflict_requires_explicit_resolution",
         conflicts=conflicts,
-        recommended_action=(
-            "Review and explicitly reschedule or accept the lower-priority conflict "
-            "before proceeding."
-        ),
+        recommended_action=default_recommended_action("review_required"),
     )

@@ -17,6 +17,9 @@ args="$*"
 
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   case "${GH_SCENARIO:-pass}" in
+    draft)
+      printf '{"number":42,"state":"OPEN","headRefOid":"%s","isDraft":true,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":"","statusCheckRollup":[]}' "$head_sha"
+      ;;
     changes_requested)
       printf '{"number":42,"state":"OPEN","headRefOid":"%s","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":"CHANGES_REQUESTED","statusCheckRollup":[]}' "$head_sha"
       ;;
@@ -450,6 +453,19 @@ assert_failed_checks_create_marker_comment() {
   assert_in_file 'Application CI' "$temp_dir/gh.log"
   assert_not_in_file 'https://checks/app-ci' "$temp_dir/gh.log"
   assert_in_file 'head_sha=0123456789abcdef0123456789abcdef01234567 -f status=completed -f conclusion=failure' "$temp_dir/gh.log"
+  assert_not_in_file '^pr merge' "$temp_dir/gh.log"
+}
+
+assert_draft_pr_waits_without_false_failure() {
+  local temp_dir
+  temp_dir="$(mktemp -d)"
+  run_gate draft "$temp_dir"
+
+  assert_exit_code 0 "$temp_dir"
+  assert_in_file 'Draft PR: merge automation is paused.' "$temp_dir/gh.log"
+  assert_in_file 'status=in_progress' "$temp_dir/gh.log"
+  assert_not_in_file 'conclusion=failure' "$temp_dir/gh.log"
+  assert_not_in_file 'PR governance metadata gate is not ready' "$temp_dir/gh.log"
   assert_not_in_file '^pr merge' "$temp_dir/gh.log"
 }
 
@@ -923,6 +939,7 @@ assert_head_change_during_evaluation_skips_stale_publication
 assert_closed_during_evaluation_skips_stale_publication
 assert_startup_failure_creates_marker_comment
 assert_failed_checks_create_marker_comment
+assert_draft_pr_waits_without_false_failure
 assert_existing_marker_comment_is_patched
 assert_resolved_marker_comment_is_updated_on_ready_gate
 assert_coderabbit_pending_waits_without_hard_comment

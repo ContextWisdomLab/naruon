@@ -1,7 +1,84 @@
+import importlib.util
 from pathlib import Path
+
+import asyncpg
+import pytest
+from sqlalchemy import inspect, text
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from core.config import settings
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_revision_module(revision_filename: str):
+    # Revision filenames start with a digit and aren't valid module names,
+    # so they can't be imported with a normal `import` statement.
+    path = BACKEND_ROOT / "alembic" / "versions" / revision_filename
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _setup_pre_0020_email_records(
+    sync_conn, *, legacy_identity_as_constraint: bool
+) -> None:
+    sync_conn.execute(text("DROP TABLE IF EXISTS email_records CASCADE"))
+    sync_conn.execute(
+        text(
+            "CREATE TABLE email_records ("
+            "id serial primary key, user_id varchar, "
+            "organization_id varchar, message_id varchar)"
+        )
+    )
+    if legacy_identity_as_constraint:
+        sync_conn.execute(
+            text(
+                "ALTER TABLE email_records ADD CONSTRAINT "
+                "uq_email_records_owner_message_id "
+                "UNIQUE (user_id, organization_id, message_id)"
+            )
+        )
+    else:
+        sync_conn.execute(
+            text(
+                "CREATE UNIQUE INDEX uq_email_records_owner_message_id "
+                "ON email_records (user_id, organization_id, message_id)"
+            )
+        )
+
+
+def _run_0020_upgrade(sync_conn) -> None:
+    from alembic.operations import Operations
+    from alembic.runtime.migration import MigrationContext
+
+    module = _load_revision_module("0020_email_workspace_scope.py")
+    context = MigrationContext.configure(sync_conn, opts={"target_metadata": None})
+    with Operations.context(context):
+        module.upgrade()
+
+
+def _run_0021_upgrade(sync_conn) -> None:
+    from alembic.operations import Operations
+    from alembic.runtime.migration import MigrationContext
+
+    module = _load_revision_module("0021_calendar_correction_rationale.py")
+    context = MigrationContext.configure(sync_conn, opts={"target_metadata": None})
+    with Operations.context(context):
+        module.upgrade()
+
+
+def _run_0001_upgrade(sync_conn) -> None:
+    from alembic.operations import Operations
+    from alembic.runtime.migration import MigrationContext
+
+    module = _load_revision_module("0001_initial_control_plane.py")
+    context = MigrationContext.configure(sync_conn, opts={"target_metadata": None})
+    with Operations.context(context):
+        module.upgrade()
 
 
 def test_alembic_scaffold_exists_with_model_metadata_target():
@@ -32,7 +109,268 @@ def test_initial_alembic_revision_records_current_schema_path():
     assert "down_revision = None" in revision_text
     assert "CREATE EXTENSION IF NOT EXISTS vector" in revision_text
     assert "Base.metadata.create_all" in revision_text
-    assert "schema_backfill_sql" in revision_text
+    # Must delegate to the guarded execute_schema_backfill (which skips
+    # legacy-table-only statements when the table doesn't exist yet on a
+    # fresh database) rather than iterating schema_backfill_sql() directly.
+    assert "execute_schema_backfill" in revision_text
+
+
+def test_email_workspace_migration_replaces_owner_only_identity_constraint():
+    revision_text = (
+        BACKEND_ROOT / "alembic" / "versions" / "0020_email_workspace_scope.py"
+    ).read_text()
+
+    assert 'down_revision = "0019_attachment_uid"' in revision_text
+    assert '"uq_emails_owner_message_id"' in revision_text
+    assert '"uq_emails_workspace_message"' in revision_text
+    assert "op.drop_constraint(" in revision_text
+    assert "op.create_unique_constraint(" in revision_text
+    assert (
+        '["user_id", "organization_id", "workspace_id", "message_id"]' in revision_text
+    )
+    assert "sa.text(" not in revision_text
+
+
+def test_calendar_correction_rationale_uses_append_only_rename_migration():
+    original_revision = (
+        BACKEND_ROOT / "alembic" / "versions" / "0018_calendar_conflict_judgments.py"
+    ).read_text()
+    rename_revision = (
+        BACKEND_ROOT
+        / "alembic"
+        / "versions"
+        / "0021_calendar_correction_rationale.py"
+    ).read_text()
+
+    assert 'sa.Column("rationale"' in original_revision
+    assert 'down_revision = "0020_email_workspace_scope"' in rename_revision
+    assert 'new_column_name="correction_rationale"' in rename_revision
+    assert "op.alter_column(" in rename_revision
+    assert "sa.text(" not in rename_revision
+
+
+def test_calendar_correction_rationale_upgrade_renames_legacy_column(monkeypatch):
+    module = _load_revision_module("0021_calendar_correction_rationale.py")
+    calls = []
+
+    class Inspector:
+        @staticmethod
+        def has_table(table_name):
+            return table_name == "calendar_conflict_corrections"
+
+        @staticmethod
+        def get_columns(_table_name):
+            return [{"name": "rationale"}]
+
+    def _fake_bind():
+        return object()
+
+    monkeypatch.setattr(module.op, "get_bind", _fake_bind)
+    monkeypatch.setattr(module.sa, "inspect", lambda _connection: Inspector())
+    monkeypatch.setattr(
+        module.op,
+        "alter_column",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    module.upgrade()
+
+    assert calls == [
+        (
+            ("calendar_conflict_corrections", "rationale"),
+            {"new_column_name": "correction_rationale"},
+        )
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.postgres
+async def test_calendar_correction_rationale_real_postgres_smoke():
+    engine = create_async_engine(settings.DATABASE_URL)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "CREATE TEMP TABLE calendar_conflict_corrections ("
+                    "rationale text) ON COMMIT DROP"
+                )
+            )
+            await conn.run_sync(_run_0021_upgrade)
+
+            def _column_names(sync_conn):
+                return {
+                    column["name"]
+                    for column in inspect(sync_conn).get_columns(
+                        "calendar_conflict_corrections"
+                    )
+                }
+
+            column_names = await conn.run_sync(_column_names)
+            assert "correction_rationale" in column_names
+            assert "rationale" not in column_names
+    except (
+        ConnectionRefusedError,
+        OSError,
+        OperationalError,
+        asyncpg.CannotConnectNowError,
+        asyncpg.InvalidAuthorizationSpecificationError,
+        asyncpg.InvalidCatalogNameError,
+        asyncpg.InvalidPasswordError,
+    ):
+        await engine.dispose()
+        pytest.skip("PostgreSQL smoke path unavailable")
+    except Exception:
+        await engine.dispose()
+        raise
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.postgres
+async def test_0001_initial_upgrade_succeeds_against_a_fresh_database():
+    # 0001_initial_control_plane.py::upgrade() is what a genuinely fresh
+    # `alembic upgrade head` runs first. Base.metadata.create_all() never
+    # creates a table named "emails" (only "email_records" is ORM-modeled),
+    # so if this migration bypasses execute_schema_backfill's guard and
+    # blindly executes every schema_backfill_sql() statement itself, the
+    # legacy "ix_emails_owner_date" index statement raises
+    # 'relation "emails" does not exist' and a fresh install can never
+    # migrate at all.
+    engine = create_async_engine(settings.DATABASE_URL)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(_run_0001_upgrade)
+            result = await conn.execute(
+                text(
+                    "SELECT indexname FROM pg_indexes "
+                    "WHERE tablename = 'email_records' "
+                    "AND indexname = 'ix_email_records_owner_date'"
+                )
+            )
+            assert result.scalar_one() == "ix_email_records_owner_date"
+    except (
+        ConnectionRefusedError,
+        OSError,
+        OperationalError,
+        asyncpg.CannotConnectNowError,
+        asyncpg.InvalidAuthorizationSpecificationError,
+        asyncpg.InvalidCatalogNameError,
+        asyncpg.InvalidPasswordError,
+    ):
+        await engine.dispose()
+        pytest.skip("PostgreSQL smoke path unavailable")
+    except Exception:
+        await engine.dispose()
+        raise
+    finally:
+        await engine.dispose()
+
+
+def test_email_workspace_migration_also_drops_bootstrap_created_owner_only_index():
+    """backend/scripts/bootstrap_db.py's owner-only identity predates this
+    migration's own uq_emails_owner_message_id and uses a different name
+    (uq_email_records_owner_message_id) and a different catalog shape (a
+    plain index, not a named unique constraint). A database that was
+    bootstrap-initialized before bootstrap_db.py's own fix landed and is
+    later migrated via Alembic would keep that stricter 3-column identity
+    forever -- this migration's own get_unique_constraints()-only check can
+    never see it (wrong name, and get_unique_constraints never returns plain
+    indexes at all)."""
+    revision_text = (
+        BACKEND_ROOT / "alembic" / "versions" / "0020_email_workspace_scope.py"
+    ).read_text()
+
+    assert '"uq_email_records_owner_message_id"' in revision_text
+    assert "get_indexes(" in revision_text
+    assert "op.drop_index(" in revision_text
+
+
+@pytest.mark.asyncio
+@pytest.mark.postgres
+@pytest.mark.parametrize("legacy_identity_as_constraint", [True, False])
+async def test_email_workspace_migration_real_postgres_smoke(
+    legacy_identity_as_constraint,
+):
+    """inspector.get_indexes() also reports the backing index of a unique
+    constraint under the same name (PostgreSQL implements a unique
+    constraint via a unique index), so a check that only looks at
+    get_indexes() before get_unique_constraints() would try `DROP INDEX` on
+    a constraint's own backing index -- PostgreSQL rejects that outright
+    ("cannot drop index ... because constraint ... requires it"), aborting
+    the whole migration. bootstrap_db.py has only ever produced the legacy
+    identity as a plain index, but this proves the migration itself handles
+    either catalog shape without relying on that assumption."""
+    engine = create_async_engine(settings.DATABASE_URL)
+    try:
+        async with engine.connect() as probe_conn:
+            original_email_records_oid = (
+                await probe_conn.execute(
+                    text(
+                        "SELECT oid FROM pg_class "
+                        "WHERE oid = to_regclass('email_records')"
+                    )
+                )
+            ).scalar_one_or_none()
+        assert original_email_records_oid is not None
+
+        async with engine.connect() as conn:
+            transaction = await conn.begin()
+            try:
+
+                def _setup(sync_conn):
+                    _setup_pre_0020_email_records(
+                        sync_conn,
+                        legacy_identity_as_constraint=legacy_identity_as_constraint,
+                    )
+
+                await conn.run_sync(_setup)
+                await conn.run_sync(_run_0020_upgrade)
+
+                def _inspect(sync_conn):
+                    insp = inspect(sync_conn)
+                    return (
+                        {i["name"] for i in insp.get_indexes("email_records")},
+                        {
+                            c["name"]
+                            for c in insp.get_unique_constraints("email_records")
+                        },
+                    )
+
+                index_names, constraint_names = await conn.run_sync(_inspect)
+            finally:
+                await transaction.rollback()
+
+        async with engine.connect() as probe_conn:
+            restored_email_records_oid = (
+                await probe_conn.execute(
+                    text(
+                        "SELECT oid FROM pg_class "
+                        "WHERE oid = to_regclass('email_records')"
+                    )
+                )
+            ).scalar_one_or_none()
+        assert restored_email_records_oid == original_email_records_oid
+    except (
+        ConnectionRefusedError,
+        OSError,
+        OperationalError,
+        asyncpg.CannotConnectNowError,
+        asyncpg.InvalidAuthorizationSpecificationError,
+        asyncpg.InvalidCatalogNameError,
+        asyncpg.InvalidPasswordError,
+    ):
+        await engine.dispose()
+        pytest.skip("PostgreSQL smoke path unavailable")
+    except Exception:
+        await engine.dispose()
+        raise
+    finally:
+        await engine.dispose()
+
+    assert "uq_email_records_owner_message_id" not in index_names
+    assert "uq_email_records_owner_message_id" not in constraint_names
+    assert "uq_emails_workspace_message" in constraint_names
 
 
 def test_provider_writeback_retry_queue_has_incremental_revision():
@@ -420,6 +758,195 @@ def test_merge_revision_reconciles_email_read_state_branch():
     assert "op.create_table(" not in revision_text
     assert "op.add_column(" not in revision_text
     assert "op.drop_column(" not in revision_text
+
+
+def test_legacy_email_read_state_branch_defers_check_to_sql(monkeypatch):
+    revision_path = (
+        BACKEND_ROOT / "alembic" / "versions" / "0011_email_read_state.py"
+    )
+    revision_text = revision_path.read_text()
+
+    # The legacy-table check must be evaluated in SQL (at apply time), not in
+    # Python at generation time: offline SQL generation (`alembic upgrade
+    # --sql`, a real flag `scripts/migrate_db.py` exposes) has no live
+    # connection to introspect with, and the one generated script is meant to
+    # later be applied against whichever database a DBA chooses -- a
+    # Python-side sa.inspect(op.get_bind()) check can only ever bake in one
+    # fixed answer, which is wrong for whichever kind of target it didn't
+    # assume (silently skips the real column on a legacy target while
+    # `alembic_version` still advances, or crashes outright against a fresh
+    # one). upgrade()/downgrade() themselves must contain no such check --
+    # only op.execute(<static SQL>) calls -- so this can't regress into
+    # either failure mode.
+    assert "def upgrade" in revision_text
+    upgrade_and_after = revision_text.split("def upgrade", 1)[1]
+    assert "sa.inspect(op.get_bind())" not in upgrade_and_after
+    assert "context.is_offline_mode()" not in upgrade_and_after
+
+    module = _load_revision_module("0011_email_read_state.py")
+    # to_regclass('emails'), not information_schema.tables by bare
+    # table_name: the latter ignores search_path and can match an unrelated
+    # same-named table in a different accessible schema than the one the
+    # unqualified ALTER TABLE below actually resolves to. Checked on the
+    # loaded module's own SQL constants, not the raw file text, so this
+    # can't be fooled by a comment mentioning either string for context.
+    assert "DO $$" in module._UPGRADE_SQL
+    assert "DO $$" in module._DOWNGRADE_SQL
+    assert "to_regclass('emails')" in module._UPGRADE_SQL
+    assert "to_regclass('emails')" in module._DOWNGRADE_SQL
+    assert "information_schema.tables" not in module._UPGRADE_SQL
+    assert "information_schema.tables" not in module._DOWNGRADE_SQL
+    assert "ALTER TABLE emails ADD COLUMN is_read" in module._UPGRADE_SQL
+    # CodeRabbit (naruon#1501): downgrade must drop emails.is_read only when
+    # this revision's own upgrade created it, not whenever the column merely
+    # happens to be present -- an unconditional DROP would also destroy a
+    # pre-existing, unrelated is_read column and its data. upgrade() tags the
+    # column it creates with a provenance marker comment; downgrade() checks
+    # that exact marker via col_description before dropping.
+    assert "COMMENT ON COLUMN emails.is_read" in module._UPGRADE_SQL
+    assert module._IS_READ_PROVENANCE_MARKER in module._UPGRADE_SQL
+    assert "col_description" in module._DOWNGRADE_SQL
+    assert module._IS_READ_PROVENANCE_MARKER in module._DOWNGRADE_SQL
+
+    calls = []
+    monkeypatch.setattr(module.op, "execute", lambda sql: calls.append(sql))
+    module.upgrade()
+    module.downgrade()
+    assert len(calls) == 2
+    assert "ADD COLUMN is_read" in calls[0]
+    assert "DROP COLUMN IF EXISTS is_read" in calls[1]
+
+
+def _run_0011_upgrade(sync_conn) -> None:
+    from alembic.operations import Operations
+    from alembic.runtime.migration import MigrationContext
+
+    module = _load_revision_module("0011_email_read_state.py")
+    context = MigrationContext.configure(sync_conn, opts={"target_metadata": None})
+    with Operations.context(context):
+        module.upgrade()
+
+
+def _run_0011_downgrade(sync_conn) -> None:
+    from alembic.operations import Operations
+    from alembic.runtime.migration import MigrationContext
+
+    module = _load_revision_module("0011_email_read_state.py")
+    context = MigrationContext.configure(sync_conn, opts={"target_metadata": None})
+    with Operations.context(context):
+        module.downgrade()
+
+
+@pytest.mark.asyncio
+@pytest.mark.postgres
+async def test_legacy_email_read_state_real_postgres_smoke():
+    """Both directions this migration must get right against a real database:
+    a legacy target (still has the ``emails`` table) gets the column added and
+    later removed; a fresh-baseline target (no ``emails`` table at all, the
+    now-common case) is left untouched rather than erroring.
+    """
+    engine = create_async_engine(settings.DATABASE_URL)
+    try:
+        try:
+            async with engine.connect() as probe_conn:
+                await probe_conn.execute(text("SELECT 1"))
+        except (
+            ConnectionRefusedError,
+            OSError,
+            OperationalError,
+            asyncpg.CannotConnectNowError,
+            asyncpg.InvalidAuthorizationSpecificationError,
+            asyncpg.InvalidCatalogNameError,
+            asyncpg.InvalidPasswordError,
+        ):
+            pytest.skip("PostgreSQL smoke path unavailable")
+
+        async with engine.begin() as conn:
+            # Fresh-baseline case first, on a connection with no "emails"
+            # table anywhere in scope: must no-op, not raise.
+            await conn.run_sync(_run_0011_upgrade)
+
+            await conn.execute(
+                text("CREATE TEMP TABLE emails (id serial primary key) ON COMMIT DROP")
+            )
+
+            def _has_is_read(sync_conn):
+                return any(
+                    column["name"] == "is_read"
+                    for column in inspect(sync_conn).get_columns("emails")
+                )
+
+            assert not await conn.run_sync(_has_is_read)
+            await conn.run_sync(_run_0011_upgrade)
+            assert await conn.run_sync(_has_is_read)
+
+            await conn.run_sync(_run_0011_downgrade)
+            assert not await conn.run_sync(_has_is_read)
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.postgres
+async def test_legacy_email_read_state_downgrade_preserves_a_preexisting_column():
+    """downgrade() must not drop an ``emails.is_read`` column (or its data)
+    that predates this revision -- CodeRabbit flagged the earlier
+    unconditional ``DROP COLUMN IF EXISTS`` on naruon#1501: since upgrade()'s
+    ``NOT EXISTS`` guard already leaves a pre-existing column untouched
+    (never adding its own provenance marker to it), downgrade() must
+    symmetrically leave it alone too, distinguishing "this revision added it"
+    from "it merely happens to be present" via the marker set on the
+    ``COMMENT ON COLUMN`` this revision's own upgrade() applies.
+    """
+    engine = create_async_engine(settings.DATABASE_URL)
+    try:
+        try:
+            async with engine.connect() as probe_conn:
+                await probe_conn.execute(text("SELECT 1"))
+        except (
+            ConnectionRefusedError,
+            OSError,
+            OperationalError,
+            asyncpg.CannotConnectNowError,
+            asyncpg.InvalidAuthorizationSpecificationError,
+            asyncpg.InvalidCatalogNameError,
+            asyncpg.InvalidPasswordError,
+        ):
+            pytest.skip("PostgreSQL smoke path unavailable")
+
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "CREATE TEMP TABLE emails (id serial primary key, "
+                    "is_read boolean NOT NULL DEFAULT false) ON COMMIT DROP"
+                )
+            )
+            await conn.execute(text("INSERT INTO emails (is_read) VALUES (false)"))
+
+            def _has_is_read(sync_conn):
+                return any(
+                    column["name"] == "is_read"
+                    for column in inspect(sync_conn).get_columns("emails")
+                )
+
+            # upgrade() must be a no-op here: the column already exists, so
+            # its NOT EXISTS guard skips both the ADD COLUMN and the marker
+            # COMMENT -- this pre-existing column is never tagged as "added
+            # by this revision".
+            assert await conn.run_sync(_has_is_read)
+            await conn.run_sync(_run_0011_upgrade)
+            assert await conn.run_sync(_has_is_read)
+
+            # downgrade() must leave the untagged, pre-existing column (and
+            # its data) alone rather than dropping it.
+            await conn.run_sync(_run_0011_downgrade)
+            assert await conn.run_sync(_has_is_read)
+            preserved_value = (
+                await conn.execute(text("SELECT is_read FROM emails"))
+            ).scalar_one()
+            assert preserved_value is False
+    finally:
+        await engine.dispose()
 
 
 def test_merge_revision_reconciles_newsdom_provider_branch():

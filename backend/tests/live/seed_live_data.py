@@ -99,6 +99,7 @@ def _seed_emails(session: AsyncSession) -> None:
             Email(
                 user_id=LIVE_E2E_USER_ID,
                 organization_id=LIVE_E2E_ORGANIZATION_ID,
+                workspace_id=LIVE_E2E_WORKSPACE_ID,
                 message_id=MESSAGE_IDS[0],
                 thread_id=THREAD_ID,
                 fingerprint="sha256:live-e2e-root",
@@ -112,6 +113,7 @@ def _seed_emails(session: AsyncSession) -> None:
             Email(
                 user_id=LIVE_E2E_USER_ID,
                 organization_id=LIVE_E2E_ORGANIZATION_ID,
+                workspace_id=LIVE_E2E_WORKSPACE_ID,
                 message_id=MESSAGE_IDS[1],
                 thread_id=THREAD_ID,
                 fingerprint="sha256:live-e2e-reply",

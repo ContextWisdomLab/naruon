@@ -134,6 +134,7 @@ def _make_email(
     return Email(
         user_id=user_id,
         organization_id=organization_id,
+        workspace_id=f"workspace-{organization_id}",
         message_id=f"<{uuid.uuid4().hex}@example.com>",
         thread_id=thread_id,
         sender="sender@example.com",

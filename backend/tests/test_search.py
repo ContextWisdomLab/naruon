@@ -13,9 +13,7 @@ from services.llm_provider_selection import LOCAL_PROVIDER_API_KEY
 
 pytestmark = pytest.mark.usefixtures("dev_auth_dependency_overrides")
 
-_CANDIDATE_DATE = datetime.datetime(
-    2026, 4, 27, 10, 0, tzinfo=datetime.timezone.utc
-)
+_CANDIDATE_DATE = datetime.datetime(2026, 4, 27, 10, 0, tzinfo=datetime.timezone.utc)
 
 
 class MockLexicalRow:
@@ -117,19 +115,11 @@ class MockSession:
             return MockRowsResult([MockReplyCountRow("thread-123", 2)])
         if "word_similarity" in statement_text:
             return MockRowsResult(
-                [
-                    MockLexicalRow(
-                        1, "Test Subject", "test@test.com", "Test Body", 0.9
-                    )
-                ]
+                [MockLexicalRow(1, "Test Subject", "test@test.com", "Test Body", 0.9)]
             )
         if "<=>" in statement_text:
             return MockRowsResult(
-                [
-                    MockDenseRow(
-                        1, "Test Subject", "test@test.com", "Test Body", 0.3
-                    )
-                ]
+                [MockDenseRow(1, "Test Subject", "test@test.com", "Test Body", 0.3)]
             )
         return MockRowsResult([])
 
@@ -278,9 +268,7 @@ def test_search_endpoint_query_is_scoped_to_current_user(mock_generate_embedding
         assert "email_records.organization_id" in statement_text
         query_params = channel_statement.compile().params
         user_scope_params = {
-            value
-            for key, value in query_params.items()
-            if key.startswith("user_id")
+            value for key, value in query_params.items() if key.startswith("user_id")
         }
         organization_scope_params = {
             value
@@ -317,9 +305,7 @@ def test_search_falls_back_to_lexical_when_embedding_provider_fails(
     assert response.status_code == 200
     data = response.json()
     assert len(data["results"]) == 1
-    joined_statements = " ".join(
-        str(stmt).lower() for stmt in session.statements
-    )
+    joined_statements = " ".join(str(stmt).lower() for stmt in session.statements)
     assert "word_similarity" in joined_statements
     assert "<=>" not in joined_statements
 
@@ -355,9 +341,7 @@ def test_search_runs_lexical_only_when_no_provider_is_configured():
     assert response.status_code == 200
     data = response.json()
     assert len(data["results"]) == 1
-    joined_statements = " ".join(
-        str(stmt).lower() for stmt in session.statements
-    )
+    joined_statements = " ".join(str(stmt).lower() for stmt in session.statements)
     assert "word_similarity" in joined_statements
     assert "<=>" not in joined_statements
 
@@ -406,12 +390,10 @@ def test_search_uses_primary_config_session_and_readonly_search_session(
         "llm_providers" in str(stmt).lower() for stmt in config_session.statements
     )
     assert all(
-        "word_similarity" not in str(stmt).lower()
-        for stmt in config_session.statements
+        "word_similarity" not in str(stmt).lower() for stmt in config_session.statements
     )
     assert any(
-        "word_similarity" in str(stmt).lower()
-        for stmt in search_session.statements
+        "word_similarity" in str(stmt).lower() for stmt in search_session.statements
     )
 
 
@@ -437,9 +419,7 @@ def test_search_pads_local_embedding_dimension_for_vector_search(
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    joined_statements = " ".join(
-        str(stmt).lower() for stmt in session.statements
-    )
+    joined_statements = " ".join(str(stmt).lower() for stmt in session.statements)
     assert "<=>" in joined_statements
 
 
@@ -478,14 +458,50 @@ def test_build_reply_counts_stmt_scopes_and_groups_by_thread_key():
     from api.search import build_reply_counts_stmt
 
     stmt = build_reply_counts_stmt(
-        ["thread-1", "thread-2"], user_id="user1", organization_id="org1"
+        ["thread-1", "thread-2"],
+        user_id="user1",
+        organization_id="org1",
+        workspace_id="workspace-a",
     )
     sql = str(stmt).lower()
 
     assert "email_records.user_id" in sql
     assert "email_records.organization_id" in sql
+    assert "email_records.workspace_id" in sql
     assert "count(email_records.id)" in sql
     assert "group by coalesce(nullif(btrim(btrim(email_records.thread_id)" in sql
+
+
+def test_lexical_attachment_statement_excludes_non_parsed_attachments():
+    # Quarantined (content_type_mismatch_quarantined) and deferred-recognition
+    # (pdf_dom_recognition_pending) attachments store a base64-encoded raw
+    # payload in `content`, not parsed text -- hybrid search must not surface
+    # that payload as if it were a genuine content match.
+    from db.models import Email
+    from services.hybrid_retrieval.retrieval_channels import (
+        build_lexical_attachment_statement,
+    )
+
+    owner_filters = Email.owner_filters("user1", "org1", "workspace-a")
+
+    stmt = build_lexical_attachment_statement("hello", owner_filters, 20)
+    sql = str(stmt).lower()
+
+    assert "email_attachments.parse_status" in sql
+
+
+def test_dense_attachment_statement_excludes_non_parsed_attachments():
+    from db.models import Email
+    from services.hybrid_retrieval.retrieval_channels import (
+        build_dense_attachment_statement,
+    )
+
+    owner_filters = Email.owner_filters("user1", "org1", "workspace-a")
+
+    stmt = build_dense_attachment_statement([0.1] * 1536, owner_filters, 20)
+    sql = str(stmt).lower()
+
+    assert "email_attachments.parse_status" in sql
 
 
 def _make_fusion_settings(**overrides):

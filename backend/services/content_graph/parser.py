@@ -297,6 +297,19 @@ class _ContentHTMLParser(HTMLParser):
         )
 
 
+def content_graph_source_record_uid(prefix: str, *parts: str) -> str:
+    """Build the one canonical ``source_record_uid`` for a content-graph source.
+
+    Every pipeline stage that indexes content into the content graph (initial
+    email import, attachment reparse) must call this instead of hashing its
+    own identity string, so the same logical source always resolves to the
+    same ``source_record_uid`` no matter which stage indexed it.
+    """
+    payload = "\x00".join(str(part) for part in parts)
+    digest = hashlib.sha256(payload.encode("utf-8", errors="surrogatepass")).hexdigest()
+    return f"{prefix}:{digest[:32]}"
+
+
 def parse_content(
     *,
     source_kind: str,

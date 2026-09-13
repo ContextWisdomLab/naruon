@@ -6,7 +6,11 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from core.config import settings
 from db.models import Base
-from scripts.bootstrap_db import schema_backfill_sql
+from scripts.bootstrap_db import (
+    LEGACY_EMAILS_INDEX,
+    execute_schema_backfill,
+    schema_backfill_sql,
+)
 from db.models import (
     AgentRunRecord,
     CalendarWritebackSource,
@@ -30,8 +34,7 @@ def _get_schema_statements(monkeypatch):
 
 
 def _execute_schema_backfill(sync_conn):
-    for statement in schema_backfill_sql():
-        sync_conn.execute(statement)
+    execute_schema_backfill(sync_conn)
 
 
 def test_schema_backfill_adds_email_columns(monkeypatch):
@@ -126,8 +129,11 @@ def test_schema_backfill_adds_email_indexes(monkeypatch):
         for statement in statements
     )
     assert any(
-        "create unique index if not exists uq_email_records_owner_message_id"
-        in statement
+        "create unique index if not exists uq_emails_workspace_message" in statement
+        for statement in statements
+    )
+    assert any(
+        "user_id, organization_id, workspace_id, message_id" in statement
         for statement in statements
     )
     assert any(
@@ -204,13 +210,11 @@ def test_schema_backfill_adds_prompt_template_scope_columns_and_indexes(monkeypa
         for statement in statements
     )
     assert any(
-        "alter table prompt_templates alter column prompt_uid set not null"
-        in statement
+        "alter table prompt_templates alter column prompt_uid set not null" in statement
         for statement in statements
     )
     assert any(
-        "create unique index if not exists uq_prompt_templates_prompt_uid"
-        in statement
+        "create unique index if not exists uq_prompt_templates_prompt_uid" in statement
         for statement in statements
     )
     assert any(
@@ -298,8 +302,7 @@ def test_schema_backfill_creates_ai_hub_workflow_tables(monkeypatch):
         "ix_agent_run_records_scope_time" in statement for statement in statements
     )
     assert any(
-        "ix_agent_run_records_workflow_uid" in statement
-        and "workflow_uid" in statement
+        "ix_agent_run_records_workflow_uid" in statement and "workflow_uid" in statement
         for statement in statements
     )
     assert any(
@@ -412,6 +415,132 @@ def test_schema_backfill_adds_project_folder_columns_and_indexes(monkeypatch):
     )
 
 
+def test_schema_backfill_adds_email_workspace_column_and_index(monkeypatch):
+    """A pre-existing database bootstrapped via create_all/backfill (not Alembic)
+    must gain email_records.workspace_id too, or every workspace-scoped email
+    query fails after deployment (see Alembic 0020_email_workspace_scope)."""
+    statements = _get_schema_statements(monkeypatch)
+    assert any(
+        "alter table email_records add column if not exists workspace_id" in statement
+        for statement in statements
+    )
+    assert any(
+        "update email_records set workspace_id" in statement
+        and "'workspace-' || organization_id" in statement
+        for statement in statements
+    )
+    assert any(
+        "alter table email_records alter column workspace_id set not null" in statement
+        for statement in statements
+    )
+    assert any(
+        "create index if not exists ix_email_records_workspace_id" in statement
+        and "email_records (workspace_id)" in statement
+        for statement in statements
+    )
+
+
+def test_schema_backfill_replaces_owner_only_email_uniqueness_with_workspace_scope(
+    monkeypatch,
+):
+    """uq_email_records_owner_message_id (user_id, organization_id, message_id)
+    predates workspace scoping and is stricter than Alembic 0020's replacement
+    identity: it silently forbids the same message_id from ever existing in two
+    different workspaces of the same owner, which Alembic 0020 now explicitly
+    allows via uq_emails_workspace_message. A bootstrap-provisioned database
+    must drop the owner-only shape (as either a plain index or a named
+    constraint, since historical bootstrap runs may have produced either) and
+    replace it with the same workspace-scoped identity, or it silently diverges
+    from the Alembic-managed schema it exists to mirror."""
+    statements = _get_schema_statements(monkeypatch)
+
+    workspace_not_null = next(
+        i
+        for i, statement in enumerate(statements)
+        if "alter table email_records alter column workspace_id set not null"
+        in statement
+    )
+    drop_constraint_index = next(
+        i
+        for i, statement in enumerate(statements)
+        if "alter table email_records drop constraint if exists "
+        "uq_email_records_owner_message_id" in statement
+    )
+    drop_index_index = next(
+        i
+        for i, statement in enumerate(statements)
+        if statement
+        == "drop index if exists uq_email_records_owner_message_id"
+    )
+    new_create_index = next(
+        i
+        for i, statement in enumerate(statements)
+        if "create unique index if not exists "
+        "uq_emails_workspace_message" in statement
+        and "user_id, organization_id, workspace_id, message_id" in statement
+    )
+
+    # The owner-only index must still exist earlier (validation runs before
+    # workspace_id is guaranteed populated) but must be dropped and replaced
+    # only after workspace_id is backfilled and non-null.
+    assert workspace_not_null < drop_constraint_index
+    assert drop_index_index != new_create_index
+
+    # uq_emails_owner_message_id is the DIFFERENT owner-only identity name
+    # Alembic's own ORM metadata (and 0020_email_workspace_scope.py) used
+    # before workspace scoping -- a database provisioned via
+    # Base.metadata.create_all() (0001_initial_control_plane.py) before the
+    # workspace-scoped model landed carries this name, not the bootstrap
+    # script's own uq_email_records_owner_message_id. Bootstrap must drop
+    # both legacy names (constraint and index forms) or such a database
+    # keeps the stricter 3-column identity forever.
+    drop_alembic_constraint_index = next(
+        i
+        for i, statement in enumerate(statements)
+        if "alter table email_records drop constraint if exists "
+        "uq_emails_owner_message_id" in statement
+    )
+    drop_alembic_index_index = next(
+        i
+        for i, statement in enumerate(statements)
+        if statement == "drop index if exists uq_emails_owner_message_id"
+    )
+    assert workspace_not_null < drop_alembic_constraint_index
+    assert drop_alembic_index_index != new_create_index
+    assert workspace_not_null < new_create_index
+
+
+def test_schema_backfill_adds_attachment_uid_column_and_index(monkeypatch):
+    """A pre-existing database bootstrapped via create_all/backfill (not Alembic)
+    must gain email_attachments.attachment_uid too, or every opaque-id
+    attachment lookup fails after deployment (see Alembic 0019_attachment_uid)."""
+    statements = _get_schema_statements(monkeypatch)
+    assert any(
+        "alter table email_attachments add column if not exists attachment_uid"
+        in statement
+        for statement in statements
+    )
+    assert any(
+        "update email_attachments set attachment_uid" in statement
+        and "attachment_" in statement
+        and "encode(sha256" in statement
+        and "bytea" in statement
+        and "hex" in statement
+        and "random()::text" in statement
+        and "clock_timestamp()::text" in statement
+        for statement in statements
+    )
+    assert any(
+        "alter table email_attachments alter column attachment_uid set not null"
+        in statement
+        for statement in statements
+    )
+    assert any(
+        "create unique index if not exists uq_email_attachments_uid" in statement
+        for statement in statements
+    )
+
+
 def test_schema_backfill_adds_tenant_config_columns_and_indexes(monkeypatch):
     statements = _get_schema_statements(monkeypatch)
     assert any(
@@ -461,7 +590,20 @@ def test_schema_backfill_uses_only_explicit_non_default_owner_ids(monkeypatch):
         and "where user_id is null and organization_id is null" in statement
         for statement in statements
     )
-    assert sum("update email_records" in statement for statement in statements) == 1
+    # email_records also gets a separate, unrelated workspace_id backfill
+    # (see test_schema_backfill_adds_email_workspace_column_and_index), so
+    # this counts only the owner-backfill statement specifically, not every
+    # "update email_records" statement.
+    assert (
+        sum(
+            "update email_records" in statement
+            and "set user_id" in statement
+            and "organization_id = :organization_id" in statement
+            and "where user_id is null and organization_id is null" in statement
+            for statement in statements
+        )
+        == 1
+    )
     assert any(
         "update llm_providers" in statement
         and "set user_id" in statement
@@ -744,6 +886,77 @@ def test_schema_backfill_creates_connector_signal_events():
 
 @pytest.mark.asyncio
 @pytest.mark.postgres
+async def test_schema_backfill_creates_legacy_emails_index_when_table_exists():
+    engine = create_async_engine(settings.DATABASE_URL)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "CREATE TEMP TABLE emails ("
+                    "user_id varchar, organization_id varchar, date timestamptz"
+                    ") ON COMMIT DROP"
+                )
+            )
+            await conn.run_sync(execute_schema_backfill, [LEGACY_EMAILS_INDEX])
+            result = await conn.execute(
+                text(
+                    "SELECT indexname FROM pg_indexes "
+                    "WHERE tablename = 'emails' "
+                    "AND indexname = 'ix_emails_owner_date'"
+                )
+            )
+            assert result.scalar_one() == "ix_emails_owner_date"
+    except (
+        ConnectionRefusedError,
+        OSError,
+        OperationalError,
+        asyncpg.CannotConnectNowError,
+        asyncpg.InvalidAuthorizationSpecificationError,
+        asyncpg.InvalidCatalogNameError,
+        asyncpg.InvalidPasswordError,
+    ):
+        await engine.dispose()
+        pytest.skip("PostgreSQL smoke path unavailable")
+    except Exception:
+        await engine.dispose()
+        raise
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.postgres
+async def test_schema_backfill_skips_legacy_emails_index_when_table_absent():
+    # A genuinely fresh database (0001_initial_control_plane.py's own
+    # Base.metadata.create_all()) never creates a table named "emails" --
+    # only "email_records" is ORM-modeled. execute_schema_backfill's guard
+    # must skip LEGACY_EMAILS_INDEX in exactly this case rather than raising
+    # "relation \"emails\" does not exist" (Postgres's CREATE INDEX IF NOT
+    # EXISTS only guards the index name, not the target table's existence).
+    engine = create_async_engine(settings.DATABASE_URL)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(execute_schema_backfill, [LEGACY_EMAILS_INDEX])
+    except (
+        ConnectionRefusedError,
+        OSError,
+        OperationalError,
+        asyncpg.CannotConnectNowError,
+        asyncpg.InvalidAuthorizationSpecificationError,
+        asyncpg.InvalidCatalogNameError,
+        asyncpg.InvalidPasswordError,
+    ):
+        await engine.dispose()
+        pytest.skip("PostgreSQL smoke path unavailable")
+    except Exception:
+        await engine.dispose()
+        raise
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.postgres
 async def test_connector_signal_events_real_postgres_bootstrap_smoke():
     engine = create_async_engine(settings.DATABASE_URL)
     duplicate_count = 0
@@ -769,18 +982,19 @@ async def test_connector_signal_events_real_postgres_bootstrap_smoke():
             email_result = await conn.execute(
                 text("""
                     INSERT INTO email_records (
-                        user_id, organization_id, message_id, sender, recipients,
-                        subject, "date", body
+                        user_id, organization_id, workspace_id, message_id,
+                        sender, recipients, subject, "date", body, is_read
                     )
                     VALUES (
-                        :user_id, :organization_id, :message_id, :sender,
-                        :recipients, :subject, now(), :body
+                        :user_id, :organization_id, :workspace_id, :message_id,
+                        :sender, :recipients, :subject, now(), :body, false
                     )
                     RETURNING id
                     """),
                 {
                     "user_id": smoke_user_id,
                     "organization_id": smoke_organization_id,
+                    "workspace_id": f"workspace-{smoke_organization_id}",
                     "message_id": "<reply-sla-bootstrap-smoke@example.com>",
                     "sender": "smoke@example.com",
                     "recipients": "owner@example.com",

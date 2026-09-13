@@ -30,7 +30,11 @@ from services.batch_embedding_service import (
     BatchEmbeddingPartial,
     try_batch_import_embeddings,
 )
-from services.content_graph import ParseResult, parse_content
+from services.content_graph import (
+    ParseResult,
+    content_graph_source_record_uid,
+    parse_content,
+)
 from services.email_dedupe_service import strong_email_fingerprint
 from services.email_parser import EmailData, parse_eml_bytes
 from services.embedding import (
@@ -216,13 +220,14 @@ async def _find_existing_email(
     *,
     user_id: str,
     organization_id: str,
+    workspace_id: str,
     message_id: str,
     fingerprint: str,
 ) -> Email | None:
     message_lookup_values = {message_id, f"<{message_id}>"}
     result = await session.execute(
         select(Email).where(
-            *Email.owner_filters(user_id, organization_id),
+            *Email.owner_filters(user_id, organization_id, workspace_id),
             or_(
                 Email.message_id.in_(message_lookup_values),
                 Email.fingerprint == fingerprint,
@@ -233,11 +238,25 @@ async def _find_existing_email(
 
 
 async def _owner_email_import_count(
-    session: AsyncSession, *, user_id: str, organization_id: str
+    session: AsyncSession,
+    *,
+    user_id: str,
+    organization_id: str,
 ) -> int:
+    # Owner-wide on purpose: MAX_IMPORT_EMAILS_PER_OWNER and the advisory
+    # quota lock this feeds are both scoped to (user_id, organization_id)
+    # only, not to a single workspace -- Email.owner_filters() additionally
+    # requires workspace_id, which would let each workspace the same owner
+    # imports through grant another full allowance.
+    organization_filter = (
+        Email.organization_id == organization_id
+        if organization_id is not None
+        else Email.organization_id.is_(None)
+    )
     count = await session.scalar(
         select(func.count(Email.id)).where(
-            *Email.owner_filters(user_id, organization_id)
+            Email.user_id == user_id,
+            organization_filter,
         )
     )
     return int(count or 0)
@@ -318,31 +337,52 @@ async def _extract_and_generate_embeddings(
     )
     fitted_embeddings: list[list[float]] = []
     for source_text in source_texts:
-        source_chunks = chunk_text(source_text)
-        if not source_chunks:
-            fitted_embeddings.append(_zero_embedding())
-            continue
-
-        vector_sum: list[float] | None = None
-        vector_count = 0
-        for start in range(0, len(source_chunks), MAX_EMBEDDING_CHUNKS_PER_WINDOW):
-            chunk_embeddings = await _generate_import_embeddings(
-                source_chunks[start : start + MAX_EMBEDDING_CHUNKS_PER_WINDOW],
+        fitted_embeddings.append(
+            await generate_source_embedding(
+                source_text,
                 embedding_provider=embedding_provider,
                 batch_context=batch_context,
             )
-            for embedding in chunk_embeddings:
-                if vector_sum is None:
-                    vector_sum = [0.0] * len(embedding)
-                for index, value in enumerate(embedding):
-                    vector_sum[index] += value
-                vector_count += 1
-        fitted_embeddings.append(
-            [value / vector_count for value in vector_sum]
-            if vector_sum and vector_count
-            else _zero_embedding()
         )
     return attachment_payloads, fitted_embeddings
+
+
+async def generate_source_embedding(
+    source_text: str,
+    *,
+    embedding_provider: EmailImportEmbeddingProvider | None,
+    batch_context: "EmailImportBatchContext | None" = None,
+) -> list[float]:
+    """Chunk, embed in bounded windows, and average one source vector.
+
+    Public (not ``_``-prefixed): ``attachment_reparse_worker.py`` imports
+    this cross-module, alongside ``content_graph_source_record_uid`` and
+    ``append_knowledge_graph_edges`` -- the module boundary stays consistent
+    when every cross-module helper is public (CodeRabbit, naruon#1501).
+    """
+    source_chunks = chunk_text(source_text)
+    if not source_chunks:
+        return _zero_embedding()
+
+    vector_sum: list[float] | None = None
+    vector_count = 0
+    for start in range(0, len(source_chunks), MAX_EMBEDDING_CHUNKS_PER_WINDOW):
+        chunk_embeddings = await _generate_import_embeddings(
+            source_chunks[start : start + MAX_EMBEDDING_CHUNKS_PER_WINDOW],
+            embedding_provider=embedding_provider,
+            batch_context=batch_context,
+        )
+        for embedding in chunk_embeddings:
+            if vector_sum is None:
+                vector_sum = [0.0] * len(embedding)
+            for index, value in enumerate(embedding):
+                vector_sum[index] += value
+            vector_count += 1
+    return (
+        [value / vector_count for value in vector_sum]
+        if vector_sum and vector_count
+        else _zero_embedding()
+    )
 
 
 def _build_email_object(
@@ -356,10 +396,13 @@ def _build_email_object(
     persisted_date: datetime.datetime,
     attachment_payloads: list[dict],
     fitted_embeddings: list[list[float]],
+    workspace_id: str | None = None,
 ) -> tuple[Email, int]:
+    resolved_workspace_id = workspace_id or f"workspace-{organization_id}"
     email_obj = Email(
         user_id=user_id,
         organization_id=organization_id,
+        workspace_id=resolved_workspace_id,
         message_id=message_id,
         thread_id=thread_id,
         fingerprint=fingerprint,
@@ -418,7 +461,11 @@ def _build_email_object(
         message_id=message_id,
         attachment_payloads=attachment_payloads,
     )
-    _append_knowledge_graph_edges(email_obj)
+    append_knowledge_graph_edges(
+        nodes=email_obj.content_nodes,
+        segments=email_obj.content_segments,
+        email_obj=email_obj,
+    )
 
     return email_obj, attachment_count
 
@@ -459,7 +506,7 @@ def _append_email_content_graph(
 ) -> None:
     body_parse_result = parse_content(
         source_kind="email_body",
-        source_record_uid=_content_graph_source_record_uid("email", message_id),
+        source_record_uid=content_graph_source_record_uid("email", message_id),
         content=str(parsed.get("body_parse_content") or parsed.get("body") or ""),
         content_type=str(parsed.get("body_content_type") or "text/plain"),
         display_name="Email body",
@@ -485,7 +532,7 @@ def _append_email_content_graph(
             continue
         attachment_parse_result = parse_content(
             source_kind="attachment",
-            source_record_uid=_content_graph_source_record_uid(
+            source_record_uid=content_graph_source_record_uid(
                 "attachment",
                 message_id,
                 str(attachment_index),
@@ -552,11 +599,20 @@ def _append_parse_result_records(
             attachment_obj.content_segments.append(segment_record)
 
 
-def _append_knowledge_graph_edges(email_obj: Email) -> None:
+def append_knowledge_graph_edges(
+    *,
+    nodes: list[ContentNodeRecord],
+    segments: list[ContentSegmentRecord],
+    email_obj: Email | None = None,
+    attachment_obj: Attachment | None = None,
+) -> None:
+    """Append the canonical content-graph topology for one indexed source."""
+    if email_obj is None and attachment_obj is None:
+        raise ValueError("email_obj or attachment_obj is required")
     nodes_by_uid = {
         node.content_node_uid: node
         for node in sorted(
-            email_obj.content_nodes,
+            nodes,
             key=lambda item: (
                 item.source_kind,
                 item.source_record_uid,
@@ -580,6 +636,7 @@ def _append_knowledge_graph_edges(email_obj: Email) -> None:
     ) -> None:
         nonlocal ordinal_index
         edge = KnowledgeGraphEdgeRecord(
+            email_id=attachment_obj.email_id if attachment_obj is not None else None,
             edge_uid=_knowledge_graph_edge_uid(
                 edge_kind,
                 _edge_endpoint_uid(source_node, source_segment),
@@ -596,12 +653,11 @@ def _append_knowledge_graph_edges(email_obj: Email) -> None:
             source_segment=source_segment,
             target_segment=target_segment,
         )
-        email_obj.knowledge_graph_edges.append(edge)
-        attachment = _edge_attachment(
-            source_node=source_node,
-            target_node=target_node,
-            source_segment=source_segment,
-            target_segment=target_segment,
+        if email_obj is not None:
+            email_obj.knowledge_graph_edges.append(edge)
+        attachment = attachment_obj or _edge_attachment(
+            source_node=source_node, target_node=target_node,
+            source_segment=source_segment, target_segment=target_segment,
         )
         if attachment is not None:
             attachment.knowledge_graph_edges.append(edge)
@@ -627,7 +683,7 @@ def _append_knowledge_graph_edges(email_obj: Email) -> None:
         list[ContentSegmentRecord],
     ] = defaultdict(list)
     for segment in sorted(
-        email_obj.content_segments,
+        segments,
         key=lambda item: (
             item.source_kind,
             item.source_record_uid,
@@ -736,12 +792,6 @@ def _knowledge_graph_edge_uid(
     return f"kgedge_{digest[:32]}"
 
 
-def _content_graph_source_record_uid(prefix: str, *parts: str) -> str:
-    payload = "\x00".join(str(part) for part in parts)
-    digest = hashlib.sha256(payload.encode("utf-8", errors="surrogatepass")).hexdigest()
-    return f"{prefix}:{digest[:32]}"
-
-
 def _project_source_segments(email_obj: Email) -> list[ProjectSourceSegment]:
     """Snapshot the imported email's content segments as project source segments.
 
@@ -797,14 +847,17 @@ async def _persist_project_graph_projection(
     *,
     user_id: str,
     organization_id: str,
+    workspace_id: str,
     embedding_provider: EmailImportEmbeddingProvider | None = None,
 ) -> None:
     """Best-effort projection of imported content segments into the project graph.
 
     Runs after the email is already committed. Flag-gated and defensive: any
-    failure is logged and rolled back so it never fails the email import. The
-    workspace scope mirrors the convention enforced by the project graph
-    repository (``workspace-<organization_id>``).
+    failure is logged and rolled back so it never fails the email import.
+    ``workspace_id`` must be the same resolved workspace the imported email
+    itself was stored under -- recomputing a default here would put the
+    email and its derived project-graph objects in different workspaces
+    whenever the caller resolved a non-default one.
     """
     if not source_segments:
         return
@@ -814,11 +867,6 @@ async def _persist_project_graph_projection(
         )
         if not extraction.objects:
             return
-        workspace_id = (
-            f"workspace-{organization_id}"
-            if organization_id
-            else f"workspace-{user_id}"
-        )
         await persist_project_graph_projection(
             session,
             extraction=extraction,
@@ -842,9 +890,11 @@ async def _import_single_eml(
     display_filename: str,
     user_id: str,
     organization_id: str,
+    workspace_id: str | None = None,
     embedding_provider: EmailImportEmbeddingProvider | None = None,
     batch_context: "EmailImportBatchContext | None" = None,
 ) -> EmailImportItemResult:
+    resolved_workspace_id = workspace_id or f"workspace-{organization_id}"
     try:
         content, parsed = await asyncio.to_thread(_read_and_parse_eml, eml_path)
     except EmailParseError as exc:
@@ -868,6 +918,7 @@ async def _import_single_eml(
         session,
         user_id=user_id,
         organization_id=organization_id,
+        workspace_id=resolved_workspace_id,
         message_id=message_id,
         fingerprint=fingerprint,
     )
@@ -883,6 +934,7 @@ async def _import_single_eml(
         parsed,
         user_id=user_id,
         organization_id=organization_id,
+        workspace_id=resolved_workspace_id,
     )
 
     attachment_payloads, fitted_embeddings = await _extract_and_generate_embeddings(
@@ -893,6 +945,7 @@ async def _import_single_eml(
         parsed=parsed,
         user_id=user_id,
         organization_id=organization_id,
+        workspace_id=resolved_workspace_id,
         message_id=message_id,
         thread_id=thread_id,
         fingerprint=fingerprint,
@@ -927,6 +980,7 @@ async def _import_single_eml(
         project_source_segments,
         user_id=user_id,
         organization_id=organization_id,
+        workspace_id=resolved_workspace_id,
         embedding_provider=embedding_provider,
     )
 
@@ -1160,8 +1214,10 @@ async def import_email_uploads(
     uploads: list[EmailImportUpload],
     user_id: str,
     organization_id: str,
+    workspace_id: str | None = None,
     embedding_provider: EmailImportEmbeddingProvider | None = None,
 ) -> EmailImportResult:
+    resolved_workspace_id = workspace_id or f"workspace-{organization_id}"
     lock_acquired = await _acquire_owner_import_quota_lock(
         session, user_id=user_id, organization_id=organization_id
     )
@@ -1173,7 +1229,9 @@ async def import_email_uploads(
     try:
         result = EmailImportResult()
         existing_email_count = await _owner_email_import_count(
-            session, user_id=user_id, organization_id=organization_id
+            session,
+            user_id=user_id,
+            organization_id=organization_id,
         )
         remaining_quota = MAX_IMPORT_EMAILS_PER_OWNER - existing_email_count
         if remaining_quota <= 0:
@@ -1224,6 +1282,7 @@ async def import_email_uploads(
                         display_filename=display_filename,
                         user_id=user_id,
                         organization_id=organization_id,
+                        workspace_id=resolved_workspace_id,
                         embedding_provider=embedding_provider,
                         batch_context=batch_context,
                     )

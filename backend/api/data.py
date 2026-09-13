@@ -30,7 +30,10 @@ from db.models import (
     WebdavAccount,
 )
 from db.session import get_db
-from services.attachment_parser import get_attachment_parser_manifest
+from services.attachment_parser import (
+    CONTENT_TYPE_MISMATCH_QUARANTINED_STATUS,
+    get_attachment_parser_manifest,
+)
 from services.newsdom_pdf_recognition import (
     PDF_DOM_RECOGNITION_PENDING_STATUS,
 )
@@ -45,6 +48,10 @@ DATA_VECTOR_DIMENSIONS = 1536
 # would let a caller stash a pending document the configured sidecar will always
 # reject while the base64 copy inflates the database.
 _MAX_PDF_DOM_UPLOAD_BYTES = 20 * 1024 * 1024
+# The only status a reparse-intent may act on -- an attachment that parsed
+# cleanly, is still pending, or already failed for an unrelated reason has
+# nothing for a reparse pass to usefully re-evaluate.
+ATTACHMENT_REPARSE_PENDING_STATUS = "reparse_pending"
 ATTACHMENT_PARSE_BREAKDOWN_EVIDENCE_SOURCE = (
     "email_attachments.content_type, "
     "email_attachments.parse_content_type, "
@@ -116,7 +123,7 @@ RepositoryType = Literal[
     "attachment_repository",
     "document_repository",
 ]
-EmailScopeFilter = tuple[ColumnElement[bool], ColumnElement[bool]]
+EmailScopeFilter = tuple[ColumnElement[bool], ColumnElement[bool], ColumnElement[bool]]
 AttachmentAssetRow = Row[tuple[Attachment, Email]]
 
 
@@ -287,6 +294,19 @@ class DataAttachmentParseBreakdown(BaseModel):
     object_count: int
     evidence_source: str
     provider_write_executed: bool
+
+
+class DataAttachmentActionResponse(BaseModel):
+    attachment_uid: str
+    filename: str
+    content_type: str
+    parse_content_type: str
+    parse_status: str
+    parse_error_code: str | None
+    provider_write_executed: bool
+    provenance: Literal["server-authoritative"]
+    audit_event: str
+    message: str
 
 
 class DataContentGraphBreakdown(BaseModel):
@@ -2463,15 +2483,20 @@ def _owner_scope_statement(model, auth_context: AuthContext):
 
 
 def _email_scope_filter(auth_context: AuthContext) -> EmailScopeFilter:
+    # workspace_id is the finest-grained scope and is applied unconditionally,
+    # mirroring _owner_scope_statement's pattern for every other
+    # workspace_id-bearing model: even an organization admin is scoped to
+    # their own workspace, not every workspace in the organization.
+    workspace_filter = Email.workspace_id == auth_context.workspace_id
     if _can_read_org_scope(auth_context):
         organization_filter = Email.organization_id == auth_context.organization_id
-        return (organization_filter, organization_filter)
+        return (workspace_filter, organization_filter, organization_filter)
     organization_filter = (
         Email.organization_id == auth_context.organization_id
         if auth_context.organization_id is not None
         else Email.organization_id.is_(None)
     )
-    return (Email.user_id == auth_context.user_id, organization_filter)
+    return (workspace_filter, Email.user_id == auth_context.user_id, organization_filter)
 
 
 async def _scoped_rows(db: AsyncSession, statement):
@@ -2499,6 +2524,57 @@ async def _get_workspace_document(
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return document
+
+
+async def _get_scoped_attachment(
+    db: AsyncSession,
+    auth_context: AuthContext,
+    attachment_uid: str,
+    *,
+    lock: bool = False,
+) -> Attachment:
+    # Attachment carries no workspace_id/user_id/organization_id of its own --
+    # it is scoped through its parent Email, same as every other
+    # attachment-facing query in this file.
+    email_scope = _email_scope_filter(auth_context)
+    statement = (
+        select(Attachment)
+        .join(Email)
+        .where(Attachment.attachment_uid == attachment_uid, *email_scope)
+    )
+    if lock:
+        # Concurrent read-then-write status transitions (e.g. reparse-intent)
+        # must not race unlocked: without this, a stale request that already
+        # read an earlier status could commit after a concurrent request (or
+        # the reparse worker) has moved the row further along, silently
+        # clobbering that newer result. Scoped to Attachment only so this
+        # doesn't also lock the joined Email row.
+        statement = statement.with_for_update(of=Attachment)
+    result = await db.execute(statement)
+    attachment = result.scalar_one_or_none()
+    if attachment is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return attachment
+
+
+def _attachment_response(
+    attachment: Attachment,
+    *,
+    audit_event: str,
+    message: str,
+) -> DataAttachmentActionResponse:
+    return DataAttachmentActionResponse(
+        attachment_uid=attachment.attachment_uid,
+        filename=attachment.filename,
+        content_type=attachment.content_type,
+        parse_content_type=attachment.parse_content_type,
+        parse_status=attachment.parse_status,
+        parse_error_code=attachment.parse_error_code,
+        provider_write_executed=False,
+        provenance="server-authoritative",
+        audit_event=audit_event,
+        message=message,
+    )
 
 
 def _status_from_ratio(total_count: int, ready_count: int) -> SurfaceStatus:
@@ -3275,6 +3351,37 @@ async def create_document_pdf_dom_recognition_intent(
         message=(
             "PDF DOM recognition intent recorded; the NewsDOM sidecar worker "
             "will land the structured DOM. No provider write executed."
+        ),
+    )
+
+
+@router.post(
+    "/attachments/{attachment_uid}/reparse-intent",
+    response_model=DataAttachmentActionResponse,
+)
+async def create_attachment_reparse_intent(
+    attachment_uid: str,
+    auth_context: AuthContext = Depends(get_auth_context),
+    db: AsyncSession = Depends(get_db),
+) -> DataAttachmentActionResponse:
+    attachment = await _get_scoped_attachment(
+        db, auth_context, attachment_uid, lock=True
+    )
+    if attachment.parse_status != CONTENT_TYPE_MISMATCH_QUARANTINED_STATUS:
+        raise HTTPException(
+            status_code=422,
+            detail="Reparse intent is only available for quarantined attachments.",
+        )
+    attachment.parse_status = ATTACHMENT_REPARSE_PENDING_STATUS
+    attachment.parse_error_code = None
+    await db.commit()
+    await db.refresh(attachment)
+    return _attachment_response(
+        attachment,
+        audit_event="data.attachment.reparse_intent",
+        message=(
+            "Reparse intent recorded; a future worker pass re-evaluates this "
+            "attachment. No synchronous re-parse executed."
         ),
     )
 

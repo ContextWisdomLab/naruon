@@ -64,6 +64,7 @@ async def test_imap_worker_imports_fetched_rfc822_messages(monkeypatch):
         imap_username="imap-user@example.com",
         imap_password="imap-secret",
     )
+    config.workspace_id = "workspace-imap"
     raw_message = (
         b"Message-ID: <imap-1@example.com>\r\n"
         b"From: Sender <sender@example.com>\r\n"
@@ -125,6 +126,7 @@ async def test_imap_worker_imports_fetched_rfc822_messages(monkeypatch):
     # No \Seen in the FLAGS envelope above -> imported as unread.
     assert kwargs["is_read"] is False
     assert args[3] == "org-imap"
+    assert args[4] == "workspace-imap"
     assert kwargs["owner_addresses"] == ["imap-user@example.com"]
 
     session.commit.assert_awaited_once()
@@ -164,6 +166,53 @@ async def test_imap_worker_requires_credentials_without_sensitive_log_names(
     assert "imap-secret" not in caplog.text
 
 
+@pytest.mark.asyncio
+async def test_resolve_unambiguous_workspace_id_returns_the_sole_workspace():
+    from services.imap_worker import resolve_unambiguous_workspace_id
+
+    class FakeSession:
+        async def scalars(self, _statement):
+            class _Result:
+                def __iter__(self):
+                    return iter(["workspace-only"])
+
+            return _Result()
+
+    workspace_id = await resolve_unambiguous_workspace_id(
+        FakeSession(), "user-1", "org-1"
+    )
+    assert workspace_id == "workspace-only"
+
+
+@pytest.mark.asyncio
+async def test_resolve_unambiguous_workspace_id_fails_closed_when_absent_or_ambiguous():
+    from services.imap_worker import resolve_unambiguous_workspace_id
+
+    class FakeSession:
+        def __init__(self, rows):
+            self._rows = rows
+
+        async def scalars(self, _statement):
+            rows = self._rows
+
+            class _Result:
+                def __iter__(self):
+                    return iter(rows)
+
+            return _Result()
+
+    assert (
+        await resolve_unambiguous_workspace_id(FakeSession([]), "user-1", "org-1")
+        is None
+    )
+    assert (
+        await resolve_unambiguous_workspace_id(
+            FakeSession(["workspace-a", "workspace-b"]), "user-1", "org-1"
+        )
+        is None
+    )
+
+
 def test_flags_indicate_seen_parses_seen_flag():
     from services.imap_worker import flags_indicate_seen
 
@@ -173,7 +222,7 @@ def test_flags_indicate_seen_parses_seen_flag():
     no_flags = ("OK", [(b"1 (RFC822 {%d}" % len(raw), raw)])
 
     assert flags_indicate_seen(seen[1]) is True
-    assert flags_indicate_seen(unseen[1]) is False   # other flags, but not \Seen
+    assert flags_indicate_seen(unseen[1]) is False  # other flags, but not \Seen
     assert flags_indicate_seen(no_flags[1]) is False  # no FLAGS section -> unread
     assert flags_indicate_seen([]) is False
     assert flags_indicate_seen(None) is False

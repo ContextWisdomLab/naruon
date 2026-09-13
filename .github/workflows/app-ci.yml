@@ -104,6 +104,21 @@ jobs:
             exit 1
           fi
 
+      - name: Run repository-root governance contract tests
+        # tests/ (repo root) holds workflow/YAML contract tests, e.g.
+        # test_stacked_pr_workflow_contract.py. The backend job's own pytest
+        # invocation above runs from backend/ and never collects this
+        # directory, so it needs its own explicit step. Mirrors that step's
+        # own log scan: a warning-class message pytest prints without
+        # actually failing the run must not be accepted as clean evidence.
+        run: |
+          set -o pipefail
+          python -m pytest -q tests 2>&1 | tee root_pytest_output.log
+          if grep -qiE 'timeout|fatal|warn|denied' root_pytest_output.log; then
+            echo "::error::Root governance contract tests produced Timeout, Fatal, Warn, or Denied outputs"
+            exit 1
+          fi
+
   frontend:
     name: frontend
     runs-on: ubuntu-latest

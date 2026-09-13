@@ -815,6 +815,7 @@ async def test_reply_sla_escalation_real_postgres_smoke():
             Email(
                 user_id=user_id,
                 organization_id=organization_id,
+                workspace_id=f"workspace-{organization_id}",
                 message_id="<reply-sla-smoke@example.com>",
                 thread_id="<reply-sla-smoke-thread>",
                 sender="reply-sla-smoke@example.com",

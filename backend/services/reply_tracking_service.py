@@ -123,6 +123,7 @@ async def check_missing_replies(
     session: AsyncSession,
     user_id: str,
     organization_id: str | None,
+    workspace_id: str,
     tenant_config: TenantConfig | None = None,
 ) -> list[Email]:
     """
@@ -145,16 +146,10 @@ async def check_missing_replies(
     recent_limit = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
         days=7
     )
-    organization_filter = (
-        Email.organization_id == organization_id
-        if organization_id is not None
-        else Email.organization_id.is_(None)
-    )
     stmt = (
         select(Email)
         .where(
-            Email.user_id == user_id,
-            organization_filter,
+            *Email.owner_filters(user_id, organization_id, workspace_id),
             Email.date > recent_limit,
         )
         .order_by(Email.date.asc(), Email.id.asc())

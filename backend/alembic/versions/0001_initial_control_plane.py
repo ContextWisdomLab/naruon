@@ -9,7 +9,7 @@ from alembic import op
 from sqlalchemy import text
 
 from db.models import Base
-from scripts.bootstrap_db import schema_backfill_sql
+from scripts.bootstrap_db import execute_schema_backfill
 
 revision = "0001_initial_control_plane"
 down_revision = None
@@ -19,8 +19,7 @@ def upgrade() -> None:
     connection = op.get_bind()
     connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     Base.metadata.create_all(connection)
-    for statement in schema_backfill_sql():
-        connection.execute(statement)
+    execute_schema_backfill(connection)
 
 
 def downgrade() -> None:

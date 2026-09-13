@@ -51,6 +51,7 @@ async def test_reply_before_root_uses_first_reference_as_deterministic_thread_id
         },
         user_id="testuser",
         organization_id="org-acme",
+        workspace_id="workspace-a",
     )
 
     assert thread_id == "root@example.com"
@@ -69,6 +70,7 @@ async def test_reply_without_references_uses_in_reply_to_as_deterministic_thread
         },
         user_id="testuser",
         organization_id="org-acme",
+        workspace_id="workspace-a",
     )
 
     assert thread_id == "parent@example.com"
@@ -87,6 +89,7 @@ async def test_existing_parent_thread_id_wins_over_deterministic_fallback():
         },
         user_id="testuser",
         organization_id="org-acme",
+        workspace_id="workspace-a",
     )
 
     assert thread_id == "thread-123"
@@ -105,6 +108,7 @@ async def test_existing_legacy_bracketed_thread_id_is_normalized():
         },
         user_id="testuser",
         organization_id="org-acme",
+        workspace_id="workspace-a",
     )
 
     assert thread_id == "root@example.com"
@@ -124,6 +128,7 @@ async def test_forwarded_subject_alone_does_not_merge_unrelated_thread():
         },
         user_id="testuser",
         organization_id="org-acme",
+        workspace_id="workspace-a",
     )
 
     assert thread_id == "forwarded-copy@example.com"
@@ -143,12 +148,14 @@ async def test_existing_thread_lookup_is_scoped_to_owner_and_organization():
         },
         user_id="testuser",
         organization_id="org-acme",
+        workspace_id="workspace-a",
     )
 
     assert thread_id == "thread-123"
     query_text = str(session.queries[-1]).lower()
     assert "email_records.user_id" in query_text
     assert "email_records.organization_id" in query_text
+    assert "email_records.workspace_id" in query_text
 
 
 def test_normalize_message_id_strips_brackets_and_outer_whitespace():
@@ -201,7 +208,11 @@ def test_extract_reference_ids_falls_back_to_whitespace_split_without_brackets()
 async def test_find_existing_thread_ids_returns_empty_without_candidates():
     session = _SequentialSession([])
     result = await _find_existing_thread_ids(
-        session, [], user_id="testuser", organization_id="org-acme"
+        session,
+        [],
+        user_id="testuser",
+        organization_id="org-acme",
+        workspace_id="workspace-a",
     )
     assert result == {}
     assert session.execute_count == 0
@@ -217,6 +228,7 @@ async def test_find_existing_thread_ids_dedupes_overlapping_bracket_targets():
         ["<a@x.com>", "a@x.com"],
         user_id="testuser",
         organization_id="org-acme",
+        workspace_id="workspace-a",
     )
     assert result == {"a@x.com": "thread-a"}
 
@@ -239,6 +251,7 @@ async def test_find_existing_thread_ids_skips_rows_with_blank_thread_or_message_
         ["a@x.com", "c@x.com"],
         user_id="testuser",
         organization_id="org-acme",
+        workspace_id="workspace-a",
     )
     assert result == {"c@x.com": "thread-c"}
 
@@ -259,6 +272,7 @@ async def test_assign_thread_id_uses_a_later_candidate_when_the_first_has_no_thr
         },
         user_id="testuser",
         organization_id="org-acme",
+        workspace_id="workspace-a",
     )
 
     assert thread_id == "thread-older"
@@ -277,7 +291,10 @@ def test_generate_email_fingerprint_is_deterministic_case_insensitive_and_field_
     # 2. lower-cased + outer-whitespace-stripped components collapse to one key
     assert (
         generate_email_fingerprint(
-            "  QUARTERLY PLAN  ", "Mon, 01 Jun 2026 09:00:00 +0000", "A@X.com", "  b@Y.com "
+            "  QUARTERLY PLAN  ",
+            "Mon, 01 Jun 2026 09:00:00 +0000",
+            "A@X.com",
+            "  b@Y.com ",
         )
         == baseline
     )
@@ -305,6 +322,7 @@ async def test_assign_thread_id_generates_fresh_uuid_when_no_identifiers_present
         {"message_id": None, "in_reply_to": None, "references": None},
         user_id="testuser",
         organization_id="org-acme",
+        workspace_id="workspace-a",
     )
 
     assert len(thread_id) == 32
@@ -330,6 +348,7 @@ async def test_multi_id_in_reply_to_threads_on_any_existing_parent():
         },
         user_id="testuser",
         organization_id="org-acme",
+        workspace_id="workspace-a",
     )
 
     assert thread_id == "thread-xyz"
@@ -348,6 +367,7 @@ async def test_multi_id_in_reply_to_fallback_uses_first_parent_as_root():
         },
         user_id="testuser",
         organization_id="org-acme",
+        workspace_id="workspace-a",
     )
 
     assert thread_id == "first@example.com"
@@ -369,6 +389,7 @@ async def test_in_reply_to_with_cfws_comment_extracts_bare_msg_id():
         },
         user_id="testuser",
         organization_id="org-acme",
+        workspace_id="workspace-a",
     )
 
     assert thread_id == "thread-123"

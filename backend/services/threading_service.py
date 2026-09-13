@@ -13,6 +13,7 @@ import hashlib
 # email header processing, yielding a measurable speedup when handling long reference lists.
 REFERENCE_PATTERN = re.compile(r"<([^>]+)>")
 
+
 def generate_email_fingerprint(
     subject: str | None,
     date_str: str | None,
@@ -81,6 +82,7 @@ async def _find_existing_thread_ids(
     *,
     user_id: str,
     organization_id: str | None,
+    workspace_id: str,
 ) -> dict[str, str]:
     if not message_ids:
         return {}
@@ -95,7 +97,7 @@ async def _find_existing_thread_ids(
 
     result = await session.execute(
         select(Email.message_id, Email.thread_id).where(
-            *Email.owner_filters(user_id, organization_id),
+            *Email.owner_filters(user_id, organization_id, workspace_id),
             Email.message_id.in_(target_ids),
         )
     )
@@ -118,6 +120,7 @@ async def assign_thread_id(
     *,
     user_id: str,
     organization_id: str | None,
+    workspace_id: str,
 ) -> str:
     """
     Determine the thread_id for a new email based on in_reply_to and references.
@@ -145,6 +148,7 @@ async def assign_thread_id(
             existing_candidates,
             user_id=user_id,
             organization_id=organization_id,
+            workspace_id=workspace_id,
         )
         for candidate in existing_candidates:
             thread_id = thread_ids_by_message_id.get(candidate)

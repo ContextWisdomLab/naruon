@@ -179,7 +179,9 @@ async def capture_relationship_from_source(
 ):
     result = await db.execute(
         select(Email).where(
-            *Email.owner_filters(auth_ctx.user_id, auth_ctx.organization_id),
+            *Email.owner_filters(
+                auth_ctx.user_id, auth_ctx.organization_id, auth_ctx.workspace_id
+            ),
             Email.message_id == req.source_message_id,
         )
     )

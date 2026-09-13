@@ -163,9 +163,7 @@ class LimitAwareMockSession(MockSession):
             # Emulate the SQL window query: newest head row per thread,
             # ordered by date desc, LIMIT applied to heads (not raw rows).
             heads: dict[str, object] = {}
-            for item in sorted(
-                self.items, key=lambda email: email.date, reverse=True
-            ):
+            for item in sorted(self.items, key=lambda email: email.date, reverse=True):
                 key = item.thread_id or item.message_id
                 heads.setdefault(key, item)
             rows = list(heads.values())
@@ -247,6 +245,21 @@ class _PostgresBind:
 class PostgresImportRecordingSession(ImportRecordingSession):
     def get_bind(self):
         return _PostgresBind()
+
+
+class ScalarQueryCapturingImportSession(PostgresImportRecordingSession):
+    def __init__(
+        self,
+        items,
+        tenant_config=_DEFAULT_TENANT_CONFIG,
+        llm_providers=None,
+    ):
+        super().__init__(items, tenant_config=tenant_config, llm_providers=llm_providers)
+        self.scalar_queries = []
+
+    async def scalar(self, query):
+        self.scalar_queries.append(query)
+        return await super().scalar(query)
 
 
 def compiled_query_text(query) -> str:
@@ -953,7 +966,9 @@ async def test_import_email_files_rejects_invalid_canonical_filename(
 ):
     response = await client.post(
         "/api/emails/import-files",
-        files=[("files", (upload_filename, b"not accepted", "application/octet-stream"))],
+        files=[
+            ("files", (upload_filename, b"not accepted", "application/octet-stream"))
+        ],
         headers={"X-Organization-Id": "org-acme"},
     )
 
@@ -1400,6 +1415,65 @@ async def test_import_email_files_rejects_oversized_archive_before_partial_commi
 
 
 @pytest.mark.asyncio
+async def test_owner_import_quota_count_is_not_scoped_to_a_single_workspace(
+    client: AsyncClient, monkeypatch
+):
+    # MAX_IMPORT_EMAILS_PER_OWNER and the advisory quota lock are both scoped
+    # to (user_id, organization_id) only -- an owner-wide allowance, not a
+    # per-workspace one. If the count query underneath it additionally filters
+    # by workspace_id, an owner importing through N distinct workspaces gets
+    # N times the intended allowance instead of one shared 1000-email cap.
+    from db.session import get_db
+
+    existing_email = Email(
+        id=91,
+        user_id="testuser",
+        organization_id="org-acme",
+        workspace_id="workspace-other",
+        message_id="<existing-other-workspace@example.com>",
+        thread_id="existing-thread-other",
+        sender="partner@example.com",
+        recipients="user@example.com",
+        subject="Existing in another workspace",
+        date=datetime.datetime(2026, 6, 11, 10, 0, tzinfo=datetime.timezone.utc),
+        body="Existing body",
+        embedding=[0.0] * 1536,
+    )
+    session = ScalarQueryCapturingImportSession([existing_email])
+    previous_db_override = app.dependency_overrides.get(get_db)
+    app.dependency_overrides[get_db] = lambda: session
+    try:
+        await client.post(
+            "/api/emails/import-files",
+            files=[
+                (
+                    "files",
+                    (
+                        "quota-cross-workspace.eml",
+                        _sample_eml_bytes(message_id="<quota-cross-workspace@example.com>"),
+                        "message/rfc822",
+                    ),
+                )
+            ],
+            headers={"X-Organization-Id": "org-acme"},
+        )
+    finally:
+        if previous_db_override is None:
+            app.dependency_overrides.pop(get_db, None)
+        else:
+            app.dependency_overrides[get_db] = previous_db_override
+
+    quota_queries = [
+        query
+        for query in session.scalar_queries
+        if "count(" in compiled_query_text(query) and "email_records" in compiled_query_text(query)
+    ]
+    assert quota_queries
+    assert_query_is_owner_scoped(quota_queries[-1])
+    assert "workspace_id" not in compiled_query_text(quota_queries[-1])
+
+
+@pytest.mark.asyncio
 async def test_unique_email_thread_intent_query_is_scoped_to_current_user(
     client: AsyncClient, sample_email: Email
 ):
@@ -1483,6 +1557,7 @@ async def _seed_reply_tracking_smoke_data(Session, user_id, organization_id, now
                 Email(
                     user_id=user_id,
                     organization_id=organization_id,
+                    workspace_id=f"workspace-{organization_id}",
                     message_id="waiting-smoke-msg",
                     thread_id="<waiting-smoke-thread>",
                     sender="reply-smoke@example.com",
@@ -1494,6 +1569,7 @@ async def _seed_reply_tracking_smoke_data(Session, user_id, organization_id, now
                 Email(
                     user_id=user_id,
                     organization_id=organization_id,
+                    workspace_id=f"workspace-{organization_id}",
                     message_id="note-smoke-msg",
                     thread_id="note-smoke-thread",
                     sender="reply-smoke@example.com",
@@ -1505,6 +1581,7 @@ async def _seed_reply_tracking_smoke_data(Session, user_id, organization_id, now
                 Email(
                     user_id=user_id,
                     organization_id=organization_id,
+                    workspace_id=f"workspace-{organization_id}",
                     message_id="answered-smoke-msg",
                     thread_id="<answered-smoke-thread>",
                     sender="reply-smoke@example.com",
@@ -1516,6 +1593,7 @@ async def _seed_reply_tracking_smoke_data(Session, user_id, organization_id, now
                 Email(
                     user_id=user_id,
                     organization_id=organization_id,
+                    workspace_id=f"workspace-{organization_id}",
                     message_id="answer-smoke-msg",
                     thread_id="answered-smoke-thread",
                     sender="target@example.com",
@@ -2095,9 +2173,11 @@ def test_email_owner_filters():
         group_ids=(),
         workspace_id="ws-789",
     )
-    filters1 = Email.owner_filters(ctx1.user_id, ctx1.organization_id)
+    filters1 = Email.owner_filters(
+        ctx1.user_id, ctx1.organization_id, ctx1.workspace_id
+    )
 
-    assert len(filters1) == 2
+    assert len(filters1) == 3
     assert (
         str(filters1[0].compile(compile_kwargs={"literal_binds": True}))
         == "email_records.user_id = 'user-123'"
@@ -2105,6 +2185,10 @@ def test_email_owner_filters():
     assert (
         str(filters1[1].compile(compile_kwargs={"literal_binds": True}))
         == "email_records.organization_id = 'org-456'"
+    )
+    assert (
+        str(filters1[2].compile(compile_kwargs={"literal_binds": True}))
+        == "email_records.workspace_id = 'ws-789'"
     )
 
     # Test with None organization_id
@@ -2115,9 +2199,11 @@ def test_email_owner_filters():
         group_ids=(),
         workspace_id="ws-789",
     )
-    filters2 = Email.owner_filters(ctx2.user_id, ctx2.organization_id)
+    filters2 = Email.owner_filters(
+        ctx2.user_id, ctx2.organization_id, ctx2.workspace_id
+    )
 
-    assert len(filters2) == 2
+    assert len(filters2) == 3
     assert (
         str(filters2[0].compile(compile_kwargs={"literal_binds": True}))
         == "email_records.user_id = 'user-123'"
@@ -2126,6 +2212,7 @@ def test_email_owner_filters():
         str(filters2[1].compile(compile_kwargs={"literal_binds": True}))
         == "email_records.organization_id IS NULL"
     )
+
 
 def test_find_matches_for_candidates_perf_optim_handles_missing_lookups():
     """
@@ -2143,7 +2230,7 @@ def test_find_matches_for_candidates_perf_optim_handles_missing_lookups():
         sender="test@test.com",
         recipients="test2@test.com",
         subject="Subject",
-        body="Body"
+        body="Body",
     )
 
     candidates = [candidate]

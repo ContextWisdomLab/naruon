@@ -7,7 +7,7 @@ from db.models import TenantConfig
 from services.email_client import validate_pop3_destination
 from services.email_parser import parse_eml_bytes
 from services.exceptions import EmailParseError
-from services.imap_worker import process_fetched_email
+from services.imap_worker import process_fetched_email, resolve_unambiguous_workspace_id
 
 logger = logging.getLogger(__name__)
 MAX_POP3_FETCH_MESSAGES = 10
@@ -56,21 +56,42 @@ class Pop3SyncWorker:
                     break
 
     async def _sync(self):
+        resolved = []
         async with AsyncSessionLocal() as session:
-            result = await session.execute(select(TenantConfig).where(TenantConfig.pop3_server.isnot(None)))
+            result = await session.execute(
+                select(TenantConfig).where(TenantConfig.pop3_server.isnot(None))
+            )
             configs = result.scalars().all()
-            
+
+            for config in configs:
+                if not config.pop3_server or not config.pop3_port:
+                    continue
+                # TenantConfig has no workspace_id column; POP3 sync has no
+                # signed session either, so the only evidence of this owner's
+                # workspace is whatever workspace their already-imported mail
+                # belongs to (same fail-closed resolution as ImapSyncWorker).
+                workspace_id = await resolve_unambiguous_workspace_id(
+                    session, config.user_id, config.organization_id
+                )
+                if workspace_id is None:
+                    logger.info(
+                        "Skipping POP3 sync because an unambiguous workspace is unavailable"
+                    )
+                    continue
+                resolved.append((config, workspace_id))
+
         semaphore = asyncio.Semaphore(10)
-        tasks = []
-        for config in configs:
-            if not config.pop3_server or not config.pop3_port:
-                continue
-            tasks.append(self._sync_tenant(config, semaphore))
-            
+        tasks = [
+            self._sync_tenant(config, workspace_id, semaphore)
+            for config, workspace_id in resolved
+        ]
+
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _sync_tenant(self, config: TenantConfig, semaphore: asyncio.Semaphore):
+    async def _sync_tenant(
+        self, config: TenantConfig, workspace_id: str, semaphore: asyncio.Semaphore
+    ):
         async with semaphore:
             try:
                 pop3_server, pop3_port = self._validated_destination(config)
@@ -88,7 +109,9 @@ class Pop3SyncWorker:
                 messages = await asyncio.to_thread(
                     self._do_pop3_sync, config, pop3_server, pop3_port
                 )
-                imported_count = await self._import_messages(config, messages)
+                imported_count = await self._import_messages(
+                    config, workspace_id, messages
+                )
                 logger.info(
                     "Successfully synced POP3 server for user %s with %s imported messages.",
                     config.user_id,
@@ -102,7 +125,7 @@ class Pop3SyncWorker:
                 )
 
     async def _import_messages(
-        self, config: TenantConfig, messages: list[bytes]
+        self, config: TenantConfig, workspace_id: str, messages: list[bytes]
     ) -> int:
         if not messages:
             return 0
@@ -125,6 +148,7 @@ class Pop3SyncWorker:
                         email_data,
                         config.user_id,
                         config.organization_id,
+                        workspace_id=workspace_id,
                         owner_addresses=owner_addresses,
                     )
                     imported_count += 1
@@ -195,7 +219,5 @@ class Pop3SyncWorker:
 
     def _bytes_line(self, line: bytes | str) -> bytes:
         return (
-            line
-            if isinstance(line, bytes)
-            else line.encode("utf-8", errors="replace")
+            line if isinstance(line, bytes) else line.encode("utf-8", errors="replace")
         )

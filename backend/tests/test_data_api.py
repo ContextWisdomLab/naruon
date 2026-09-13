@@ -59,6 +59,7 @@ class MockAsyncSession:
     def __init__(self, results):
         self.results = results
         self.documents: list[Document] = []
+        self.attachments: list[Attachment] = []
         self.queries = []
         self.execute_calls = 0
 
@@ -66,6 +67,53 @@ class MockAsyncSession:
         self.queries.append(query)
         rendered_query = str(query)
         rendered_query_lower = rendered_query.lower()
+        if "where email_attachments.attachment_uid = " in rendered_query_lower:
+            compiled = query.compile()
+            params = compiled.params
+            attachment_uid = next(
+                (
+                    value
+                    for key, value in params.items()
+                    if key.startswith("attachment_uid")
+                ),
+                None,
+            )
+            user_id = next(
+                (value for key, value in params.items() if key.startswith("user_id")),
+                None,
+            )
+            organization_id = next(
+                (
+                    value
+                    for key, value in params.items()
+                    if key.startswith("organization_id")
+                ),
+                None,
+            )
+            workspace_id = next(
+                (
+                    value
+                    for key, value in params.items()
+                    if key.startswith("workspace_id")
+                ),
+                None,
+            )
+            rows = [
+                attachment
+                for attachment in self.attachments
+                if attachment.attachment_uid == attachment_uid
+                and (user_id is None or attachment.email.user_id == user_id)
+                and (
+                    attachment.email.organization_id == organization_id
+                    if organization_id is not None
+                    else attachment.email.organization_id is None
+                )
+                and (
+                    workspace_id is None
+                    or attachment.email.workspace_id == workspace_id
+                )
+            ]
+            return MockResult(rows[0] if rows else None)
         if (
             "webdav_accounts.source_uid" in rendered_query_lower
             and "webdav_accounts.account_id" not in rendered_query_lower
@@ -189,10 +237,12 @@ def _email(
     *,
     thread_id: str | None,
     subject: str = "Data source package",
+    workspace_id: str = "workspace-org-acme",
 ) -> Email:
     return Email(
         user_id="owner",
         organization_id="org-acme",
+        workspace_id=workspace_id,
         message_id=message_id,
         thread_id=thread_id,
         fingerprint=f"sha256:{message_id}",
@@ -2458,9 +2508,7 @@ def test_data_quality_surface_rejects_public_identity_headers_without_signed_ses
 
 def test_member_data_quality_queries_are_owner_scoped(mock_db):
     token = _signed_session_token(
-        _valid_session_payload(
-            sub="member", role="member", workspace="workspace-member"
-        )
+        _valid_session_payload(sub="member", role="member")
     )
     client, previous_secret, original_overrides = _with_signed_auth(mock_db, token)
     try:
@@ -2475,6 +2523,7 @@ def test_member_data_quality_queries_are_owner_scoped(mock_db):
     assert "webdav_accounts.workspace_id = :workspace_id_1" in rendered_queries
     assert "project_folders.user_id = :user_id_1" in rendered_queries
     assert "email_records.user_id = :user_id_1" in rendered_queries
+    assert "email_records.workspace_id = :workspace_id_1" in rendered_queries
     assert "sender_relationships.user_id = :user_id_1" in rendered_queries
 
 
@@ -2638,6 +2687,156 @@ def test_data_document_actions_are_workspace_scoped_and_intent_only(mock_db):
 
     assert rival_response.status_code == 404
     assert "doc_rival" not in rival_response.text
+
+
+def test_data_attachment_reparse_intent_transitions_quarantined_to_pending(mock_db):
+    owned_email = _email("<owned-quarantine@example.com>", thread_id="thread-owned")
+    attachment = _attachment("invoice.pdf", "")
+    attachment.attachment_uid = "attachment_owned"
+    attachment.content_type = "application/pdf"
+    attachment.parse_content_type = "image/png"
+    attachment.parse_status = "content_type_mismatch_quarantined"
+    attachment.parse_error_code = "content_type_mismatch_quarantined"
+    attachment.email = owned_email
+    mock_db.attachments.append(attachment)
+
+    token = _signed_session_token(_valid_session_payload(sub="owner"))
+    client, previous_secret, original_overrides = _with_signed_auth(mock_db, token)
+    try:
+        response = client.post(
+            "/api/data/attachments/attachment_owned/reparse-intent"
+        )
+    finally:
+        client.close()
+        _restore_overrides(previous_secret, original_overrides)
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["attachment_uid"] == "attachment_owned"
+    assert data["parse_status"] == "reparse_pending"
+    assert data["parse_error_code"] is None
+    assert data["provider_write_executed"] is False
+    assert data["audit_event"] == "data.attachment.reparse_intent"
+    assert attachment.parse_status == "reparse_pending"
+    assert attachment.parse_error_code is None
+
+
+def test_data_attachment_reparse_intent_locks_the_attachment_row(mock_db):
+    # Concurrent reparse-intent requests (or a request racing the reparse
+    # worker) must never read-then-blindly-overwrite the same unlocked row:
+    # a stale request holding an earlier "quarantined" read could otherwise
+    # clobber a result the worker already landed. Locking the row for the
+    # duration of this transaction serializes that race, exactly like
+    # calendar_conflict_judgment_service.apply_correction's FOR UPDATE.
+    owned_email = _email("<owned-quarantine-lock@example.com>", thread_id="thread-owned")
+    attachment = _attachment("invoice.pdf", "")
+    attachment.attachment_uid = "attachment_owned_lock"
+    attachment.content_type = "application/pdf"
+    attachment.parse_content_type = "image/png"
+    attachment.parse_status = "content_type_mismatch_quarantined"
+    attachment.parse_error_code = "content_type_mismatch_quarantined"
+    attachment.email = owned_email
+    mock_db.attachments.append(attachment)
+
+    token = _signed_session_token(_valid_session_payload(sub="owner"))
+    client, previous_secret, original_overrides = _with_signed_auth(mock_db, token)
+    try:
+        response = client.post(
+            "/api/data/attachments/attachment_owned_lock/reparse-intent"
+        )
+    finally:
+        client.close()
+        _restore_overrides(previous_secret, original_overrides)
+
+    assert response.status_code == 200, response.text
+    attachment_query = next(
+        query
+        for query in mock_db.queries
+        if "email_attachments.attachment_uid = " in str(query).lower()
+    )
+    assert "FOR UPDATE" in str(attachment_query)
+
+
+def test_data_attachment_reparse_intent_rejects_non_quarantined_status(mock_db):
+    owned_email = _email("<owned-parsed@example.com>", thread_id="thread-owned")
+    attachment = _attachment("notes.txt", "already parsed content")
+    attachment.attachment_uid = "attachment_parsed"
+    attachment.parse_status = "parsed"
+    attachment.email = owned_email
+    mock_db.attachments.append(attachment)
+
+    token = _signed_session_token(_valid_session_payload(sub="owner"))
+    client, previous_secret, original_overrides = _with_signed_auth(mock_db, token)
+    try:
+        response = client.post(
+            "/api/data/attachments/attachment_parsed/reparse-intent"
+        )
+    finally:
+        client.close()
+        _restore_overrides(previous_secret, original_overrides)
+
+    assert response.status_code == 422, response.text
+    assert attachment.parse_status == "parsed"
+
+
+def test_data_attachment_reparse_intent_is_scoped_to_caller(mock_db):
+    rival_email = _email(
+        "<rival-quarantine@example.com>", thread_id="thread-rival"
+    )
+    rival_email.user_id = "rival-owner"
+    rival_attachment = _attachment("payload.pdf", "")
+    rival_attachment.attachment_uid = "attachment_rival"
+    rival_attachment.parse_status = "content_type_mismatch_quarantined"
+    rival_attachment.email = rival_email
+    mock_db.attachments.append(rival_attachment)
+
+    token = _signed_session_token(_valid_session_payload(sub="owner"))
+    client, previous_secret, original_overrides = _with_signed_auth(mock_db, token)
+    try:
+        response = client.post(
+            "/api/data/attachments/attachment_rival/reparse-intent"
+        )
+    finally:
+        client.close()
+        _restore_overrides(previous_secret, original_overrides)
+
+    assert response.status_code == 404
+    assert "attachment_rival" not in response.text
+    assert rival_attachment.parse_status == "content_type_mismatch_quarantined"
+
+
+def test_data_attachment_reparse_intent_is_scoped_to_workspace(mock_db):
+    # Same user_id and organization_id as the caller, but a DIFFERENT
+    # workspace_id -- the IDOR class this same PR's new reparse-intent route
+    # would otherwise open: Email carried no workspace_id at all before this
+    # fix, so _email_scope_filter could only ever check user_id/organization_id.
+    other_workspace_email = _email(
+        "<other-workspace-quarantine@example.com>",
+        thread_id="thread-other-workspace",
+        workspace_id="workspace-rival",
+    )
+    other_workspace_attachment = _attachment("payload.pdf", "")
+    other_workspace_attachment.attachment_uid = "attachment_other_workspace"
+    other_workspace_attachment.parse_status = "content_type_mismatch_quarantined"
+    other_workspace_attachment.email = other_workspace_email
+    mock_db.attachments.append(other_workspace_attachment)
+
+    token = _signed_session_token(_valid_session_payload(sub="owner"))
+    client, previous_secret, original_overrides = _with_signed_auth(mock_db, token)
+    try:
+        response = client.post(
+            "/api/data/attachments/attachment_other_workspace/reparse-intent"
+        )
+    finally:
+        client.close()
+        _restore_overrides(previous_secret, original_overrides)
+
+    assert response.status_code == 404
+    assert "attachment_other_workspace" not in response.text
+    assert (
+        other_workspace_attachment.parse_status
+        == "content_type_mismatch_quarantined"
+    )
 
 
 def test_data_document_webdav_materialization_executes_source_backed_write(
@@ -2950,12 +3149,14 @@ async def _seed_smoke_test_data(conn, ids: dict):
         text(
             """
             INSERT INTO email_records (
-                user_id, organization_id, message_id, thread_id,
-                fingerprint, sender, recipients, subject, "date", body
+                user_id, organization_id, workspace_id, message_id, thread_id,
+                fingerprint, sender, recipients, subject, "date", body,
+                is_read
             )
             VALUES (
-                :user_id, :organization_id, :message_id, :thread_id,
-                :fingerprint, :sender, :recipients, :subject, now(), :body
+                :user_id, :organization_id, :workspace_id, :message_id,
+                :thread_id, :fingerprint, :sender, :recipients, :subject,
+                now(), :body, true
             )
             RETURNING id
             """
@@ -2963,6 +3164,7 @@ async def _seed_smoke_test_data(conn, ids: dict):
         {
             "user_id": ids["user_id"],
             "organization_id": ids["organization_id"],
+            "workspace_id": ids["workspace_id"],
             "message_id": first_message_id,
             "thread_id": "thread-data-smoke",
             "fingerprint": "sha256:data-smoke",
@@ -2976,12 +3178,12 @@ async def _seed_smoke_test_data(conn, ids: dict):
         text(
             """
             INSERT INTO email_records (
-                user_id, organization_id, message_id, sender, recipients,
-                subject, "date", body
+                user_id, organization_id, workspace_id, message_id, sender,
+                recipients, subject, "date", body, is_read
             )
             VALUES (
-                :user_id, :organization_id, :message_id, :sender,
-                :recipients, :subject, now(), :body
+                :user_id, :organization_id, :workspace_id, :message_id,
+                :sender, :recipients, :subject, now(), :body, true
             )
             RETURNING id
             """
@@ -2989,6 +3191,7 @@ async def _seed_smoke_test_data(conn, ids: dict):
         {
             "user_id": ids["user_id"],
             "organization_id": ids["organization_id"],
+            "workspace_id": ids["workspace_id"],
             "message_id": second_message_id,
             "sender": "partner@example.com",
             "recipients": "owner@example.com",
@@ -3000,12 +3203,14 @@ async def _seed_smoke_test_data(conn, ids: dict):
         text(
             """
             INSERT INTO email_records (
-                user_id, organization_id, message_id, thread_id,
-                fingerprint, sender, recipients, subject, "date", body
+                user_id, organization_id, workspace_id, message_id, thread_id,
+                fingerprint, sender, recipients, subject, "date", body,
+                is_read
             )
             VALUES (
-                :user_id, :organization_id, :message_id, :thread_id,
-                :fingerprint, :sender, :recipients, :subject, now(), :body
+                :user_id, :organization_id, :workspace_id, :message_id,
+                :thread_id, :fingerprint, :sender, :recipients, :subject,
+                now(), :body, true
             )
             RETURNING id
             """
@@ -3013,6 +3218,7 @@ async def _seed_smoke_test_data(conn, ids: dict):
         {
             "user_id": ids["rival_user_id"],
             "organization_id": ids["rival_organization_id"],
+            "workspace_id": ids["rival_workspace_id"],
             "message_id": rival_message_id,
             "thread_id": "thread-rival",
             "fingerprint": "sha256:rival",
@@ -3189,32 +3395,35 @@ async def _seed_smoke_test_data(conn, ids: dict):
         text(
             """
             INSERT INTO email_attachments (
-                email_id, filename, content,
+                attachment_uid, email_id, filename, content,
                 content_type, parse_status, parse_content_type,
                 parser_key, parse_error_code
             )
             VALUES
             (
-                :first_email_id, 'ready.txt', 'ready attachment',
-                'text/plain', 'parsed', 'text/plain',
+                :first_attachment_uid, :first_email_id, 'ready.txt',
+                'ready attachment', 'text/plain', 'parsed', 'text/plain',
                 'plain_text', NULL
             ),
             (
-                :second_email_id, 'blank.txt', '',
+                :second_attachment_uid, :second_email_id, 'blank.txt', '',
                 'application/pdf', 'unsupported_content_type',
                 'application/pdf', 'plain_text',
                 'unsupported_content_type'
             ),
             (
-                :rival_email_id, 'rival.txt', 'rival attachment',
-                'text/plain', 'parsed', 'text/plain',
+                :rival_attachment_uid, :rival_email_id, 'rival.txt',
+                'rival attachment', 'text/plain', 'parsed', 'text/plain',
                 'plain_text', NULL
             )
             """
         ),
         {
+            "first_attachment_uid": f"attachment_{uuid.uuid4().hex}",
             "first_email_id": first_email_id,
+            "second_attachment_uid": f"attachment_{uuid.uuid4().hex}",
             "second_email_id": second_email_id,
+            "rival_attachment_uid": f"attachment_{uuid.uuid4().hex}",
             "rival_email_id": rival_email_id,
         },
     )

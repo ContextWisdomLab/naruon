@@ -147,6 +147,31 @@ def test_tenant_config_endpoint(client, mock_db, monkeypatch):
     assert data["google_client_secret"] is None
 
 
+def test_noema_orchestrator_gateway_config_returns_presence_without_the_token(
+    client, mock_db
+):
+    post_payload = {
+        "user_id": "test_user",
+        "noema_orchestrator_base_url": "https://orchestrator.internal/v1",
+        "noema_orchestrator_token": "orch-token-123",
+    }
+    response = client.post(
+        "/api/config", json=post_payload, headers={"X-User-Id": "test_user"}
+    )
+    assert response.status_code == 200
+
+    get_response = client.get(
+        "/api/config",
+        headers={"X-User-Id": "test_user"},
+    )
+    assert get_response.status_code == 200
+    data = get_response.json()
+    assert data["noema_orchestrator_base_url"] == "https://orchestrator.internal/v1"
+    assert data["has_noema_orchestrator_token"] is True
+    assert "noema_orchestrator_token" not in data
+    assert "orch-token-123" not in get_response.text
+
+
 def test_validate_mail_config_update_revalidates_existing_mail_hosts(monkeypatch):
     from api.tenant_config import validate_mail_config_update
 

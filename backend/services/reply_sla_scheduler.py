@@ -3,9 +3,10 @@ import logging
 import random
 
 from sqlalchemy import bindparam, func, or_, select
+from sqlalchemy.exc import DBAPIError
 
-from db.models import TenantConfig
-from db.session import AsyncSessionLocal
+from db.models import Email, TenantConfig
+from db.session import AsyncSessionLocal, engine
 from services.reply_sla_escalation_service import create_reply_sla_escalation_tasks
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,7 @@ MAX_STARTUP_JITTER_SECONDS = 60
 
 
 def _session_uses_postgresql(session) -> bool:
+    """Identify PostgreSQL coordination without assuming a development bind."""
     try:
         bind = session.get_bind()
     except Exception:
@@ -54,9 +56,8 @@ async def _try_acquire_sweep_lease(session) -> bool | None:
 
 
 async def _release_sweep_lease(session) -> None:
-    # Session-level advisory locks outlive pooled connections; always release
-    # explicitly so a returned connection cannot keep the lease forever.
-    await session.scalar(
+    """Require confirmed release on the connection that acquired the lease."""
+    released = await session.scalar(
         select(
             func.pg_advisory_unlock(
                 func.hashtext(bindparam("namespace_key")),
@@ -65,9 +66,13 @@ async def _release_sweep_lease(session) -> None:
         ),
         _SWEEP_LOCK_PARAMS,
     )
+    if released is not True:
+        raise RuntimeError("Reply SLA sweep lease release was not confirmed.")
 
 
 class ReplySlaScheduler:
+    """Schedule owner-scoped overdue reply tasks under a database sweep lease."""
+
     def __init__(
         self,
         *,
@@ -75,6 +80,7 @@ class ReplySlaScheduler:
         overdue_hours: int = DEFAULT_REPLY_SLA_OVERDUE_HOURS,
         limit: int = DEFAULT_REPLY_SLA_LIMIT,
     ):
+        """Set the cycle interval and existing escalation policy limits."""
         self.interval_seconds = interval_seconds
         self.overdue_hours = overdue_hours
         self.limit = limit
@@ -82,6 +88,7 @@ class ReplySlaScheduler:
         self._is_running = False
 
     async def start(self):
+        """Start at most one local scheduling task."""
         if self._is_running:
             logger.warning("ReplySlaScheduler is already running.")
             return
@@ -91,6 +98,7 @@ class ReplySlaScheduler:
         logger.info("ReplySlaScheduler started.")
 
     async def stop(self):
+        """Cancel the scheduling task and await its cleanup."""
         if not self._is_running:
             return
 
@@ -106,6 +114,7 @@ class ReplySlaScheduler:
         logger.info("ReplySlaScheduler stopped.")
 
     async def _run_loop(self):
+        """Jitter replica startup and retry failed cycles on the normal interval."""
         # Startup jitter de-synchronizes replicas started by the same deploy
         # so they do not contend for the sweep lease at the same instant.
         try:
@@ -132,43 +141,76 @@ class ReplySlaScheduler:
                     break
 
     async def _sync(self):
-        async with AsyncSessionLocal() as session:
-            lease = await _try_acquire_sweep_lease(session)
-            if lease is False:
-                logger.debug(
-                    "Reply SLA sweep skipped: another replica holds the lease."
-                )
-                return
+        """Keep one physical lease connection across escalation transactions."""
+        async with (
+            engine.connect() as connection,
+            AsyncSessionLocal(bind=connection) as session,
+        ):
             try:
+                lease = await _try_acquire_sweep_lease(session)
+                if lease is False:
+                    logger.debug(
+                        "Reply SLA sweep skipped: another replica holds the lease."
+                    )
+                    return
                 await self._sweep_configured_owners(session)
-            finally:
                 if lease is True:
+                    await session.rollback()
                     await _release_sweep_lease(session)
+            except BaseException:
+                # Invalidate before AsyncSession's shielded close/rollback can wait.
+                await connection.invalidate()
+                raise
 
     async def _sweep_configured_owners(self, session):
+        """Reload owner records after rollback without replacing the lease backend."""
         result = await session.execute(
-            select(TenantConfig).where(
+            select(TenantConfig.id).where(
                 or_(
                     TenantConfig.smtp_username.isnot(None),
                     TenantConfig.imap_username.isnot(None),
                 )
             )
         )
-        configs = result.scalars().all()
+        config_ids = result.scalars().all()
 
-        for config in configs:
+        for config_id in config_ids:
             try:
-                await create_reply_sla_escalation_tasks(
-                    session,
-                    user_id=config.user_id,
-                    organization_id=config.organization_id,
-                    overdue_hours=self.overdue_hours,
-                    limit=self.limit,
-                    tenant_config=config,
+                config = await session.get(
+                    TenantConfig, config_id, populate_existing=True
                 )
-            except Exception:
+                if config is None:
+                    continue
+                workspace_ids = await session.scalars(
+                    select(Email.workspace_id)
+                    .where(
+                        Email.user_id == config.user_id,
+                        Email.organization_id == config.organization_id,
+                    )
+                    .distinct()
+                )
+                for workspace_id in workspace_ids:
+                    # Bypass cached state after commit, and expired state after
+                    # conflict rollback, before authorizing another workspace.
+                    config = await session.get(
+                        TenantConfig, config_id, populate_existing=True
+                    )
+                    if config is None:
+                        break
+                    await create_reply_sla_escalation_tasks(
+                        session,
+                        user_id=config.user_id,
+                        organization_id=config.organization_id,
+                        workspace_id=workspace_id,
+                        overdue_hours=self.overdue_hours,
+                        limit=self.limit,
+                        tenant_config=config,
+                    )
+            except Exception as exc:
+                if isinstance(exc, DBAPIError) and exc.connection_invalidated:
+                    raise
+                await session.rollback()
                 logger.error(
-                    "Overdue reply follow-up failed for configured owner %s.",
-                    config.user_id,
-                    exc_info=True,
+                    "Overdue reply follow-up failed for a configured owner (%s).",
+                    type(exc).__name__,
                 )

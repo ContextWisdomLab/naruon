@@ -1,13 +1,31 @@
 """Noema general agent.
 
 A general-purpose `Pydantic-AI <https://ai.pydantic.dev>`_ (MIT) agent that
-reasons over the naruon workspace. It runs on the tenant's configured LLM
-provider — resolved through :func:`resolve_runtime_llm_provider` from the
-Fernet-encrypted provider records, never from ``os.getenv`` — and it is given a
-small set of tools that plug into the existing service and runner seams:
+reasons over the naruon workspace. Every chat-completion call is routed
+through ``ContextualWisdomLab/contextual-orchestrator`` — resolved through
+:func:`services.orchestrator_gateway.resolve_orchestrator_gateway` from the
+tenant's own Fernet-encrypted gateway credential, never ``os.getenv`` and
+never a direct tenant LLM-provider key. Production LLM routing belongs to
+contextual-orchestrator; naruon owns the Noema tools/authorization/context,
+not a second provider-routing authority. This is a distinct, tenant-scoped
+credential from the one ``ContextualWisdomLab/.github``'s central
+review-pipeline Noema uses (``scripts/ci/noema_review_gate.py``); naruon's
+workspace data is never sent through that CI credential path. Per
+``docs/CWL-MASTER-CONTEXT.md`` (``ContextualWisdomLab/.github``), Noema is
+actually one shared agent runtime (Pydantic-AI/Codex-Python) consumed by
+naruon, the ``.github`` CI review agent, and wardnet's AI SOC quarantine
+sandbox — the per-deployment credential scoping here is a security choice
+for this module, not a claim that the deployments are permanently separate
+or share nothing beyond a name; see ``ContextualWisdomLab/naruon#1527`` for
+the corrected reasoning (its ``docs/adr/0006-noema-bounded-context-separation.md``
+lives on that PR's own branch, not this one — this docstring cannot resolve
+it as a local path until that PR merges). It is given a small set of tools
+that plug into the existing service and runner seams:
 
-* **read/search mail** and **content-graph queries** are owner-scoped SQL reads.
+* **read/search mail** and **content-graph queries** are workspace-scoped SQL reads.
 * **task actions** update ``TicketTask`` rows and are audit-logged.
+* **calendar conflict check** validates the proposal but fails closed until a
+  scoped authoritative provider-calendar read seam exists.
 * **writeback** is dispatched to the self-hosted runner (the ``write_caldav`` /
   ``write_webdav`` actions handled by :class:`SelfHostedConnector`), preserving
   naruon's opt-in-writeback and audit-logged contract.
@@ -35,11 +53,15 @@ from db.models import (
     KnowledgeGraphEdgeRecord,
     TicketTask,
 )
-from services.llm_provider_selection import (
-    RuntimeLLMProvider,
-    resolve_runtime_llm_provider,
+from services.calendar_conflict_policy import (
+    CalendarCommitment,
+    CalendarPolicyValidationError,
 )
 from services.llm_provider_urls import build_llm_provider_http_client
+from services.orchestrator_gateway import (
+    OrchestratorGateway,
+    resolve_orchestrator_gateway,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from pydantic_ai import Agent
@@ -62,7 +84,9 @@ AGENT_ID = "noema-general-agent"
 
 # Task statuses the agent is allowed to set. Anything else is refused so the LLM
 # cannot write arbitrary status codes into the tenant's tickets.
-ALLOWED_TASK_STATUSES = frozenset({"open", "in_progress", "blocked", "done", "cancelled"})
+ALLOWED_TASK_STATUSES = frozenset(
+    {"open", "in_progress", "blocked", "done", "cancelled"}
+)
 
 # Runner actions the agent may dispatch. These are exactly the writeback actions
 # handled by SelfHostedConnector.
@@ -101,6 +125,7 @@ class NoemaAgentResult:
     notice: str | None = None
     provider_name: str | None = None
     tool_calls: tuple[str, ...] = ()
+    error_code: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -153,7 +178,9 @@ async def tool_search_mail(
     deps.tool_calls.append("search_mail")
     query = (query or "").strip()
     bounded = max(1, min(int(limit or 1), _MAX_MAIL_RESULTS))
-    statement = select(Email).where(*Email.owner_filters(deps.user_id, deps.organization_id))
+    statement = select(Email).where(
+        *Email.owner_filters(deps.user_id, deps.organization_id, deps.workspace_id),
+    )
     if query:
         pattern = f"%{query}%"
         statement = statement.where(
@@ -188,7 +215,9 @@ async def tool_read_mail(deps: NoemaAgentDeps, message_id: str) -> dict[str, Any
         return {"status": "error", "reason": "message_id is required"}
     statement = (
         select(Email)
-        .where(*Email.owner_filters(deps.user_id, deps.organization_id))
+        .where(
+            *Email.owner_filters(deps.user_id, deps.organization_id, deps.workspace_id)
+        )
         .where(Email.message_id == message_id)
         .limit(1)
     )
@@ -220,7 +249,9 @@ async def tool_content_graph_query(
 
     email_result = await deps.session.execute(
         select(Email.id)
-        .where(*Email.owner_filters(deps.user_id, deps.organization_id))
+        .where(
+            *Email.owner_filters(deps.user_id, deps.organization_id, deps.workspace_id)
+        )
         .where(Email.message_id == message_id)
         .limit(1)
     )
@@ -280,7 +311,9 @@ async def tool_list_tasks(
     status = (status or "").strip()
     if status:
         statement = statement.where(TicketTask.status == status)
-    statement = statement.order_by(TicketTask.updated_at.desc()).limit(_MAX_MAIL_RESULTS)
+    statement = statement.order_by(TicketTask.updated_at.desc()).limit(
+        _MAX_MAIL_RESULTS
+    )
     result = await deps.session.execute(statement)
     tasks = result.scalars().all()
     return [
@@ -376,16 +409,16 @@ async def tool_dispatch_writeback(
         "target_path": target_path,
         "content": content or "",
     }
-    dispatch_result = await dispatcher(
-        deps.organization_id, deps.workspace_id, command
-    )
+    dispatch_result = await dispatcher(deps.organization_id, deps.workspace_id, command)
     provider_write_executed = bool(
         isinstance(dispatch_result, dict)
         and dispatch_result.get("provider_write_executed", False)
     )
     await _record_audit(
         deps,
-        action="writeback_executed" if provider_write_executed else "writeback_dispatched",
+        action="writeback_executed"
+        if provider_write_executed
+        else "writeback_dispatched",
         resource_type="runner_writeback",
         resource_id=target_path,
         details=f"noema-agent {action} provider_write_executed={provider_write_executed}",
@@ -404,9 +437,63 @@ async def _default_dispatcher(
     """Resolve the live runner connection manager lazily to avoid import cycles."""
     from api.runner_ws import manager as runner_manager
 
-    return await runner_manager.dispatch_command(
-        organization_id, workspace_id, command
+    return await runner_manager.dispatch_command(organization_id, workspace_id, command)
+
+
+def _parse_commitment(
+    commitment_id: str, start_at: str, end_at: str, status: str
+) -> CalendarCommitment:
+    """Parse ISO 8601 timestamps into a validated :class:`CalendarCommitment`.
+
+    Raises :class:`CalendarPolicyValidationError` — the same typed failure
+    :mod:`services.calendar_conflict_policy` itself raises — on a malformed
+    timestamp, so callers only need to catch one exception type.
+    """
+    try:
+        parsed_start = datetime.datetime.fromisoformat((start_at or "").strip())
+        parsed_end = datetime.datetime.fromisoformat((end_at or "").strip())
+    except (TypeError, ValueError) as exc:
+        raise CalendarPolicyValidationError(
+            "calendar_timestamp_timezone_required",
+            "start_at/end_at must be ISO 8601 timestamps with a UTC offset",
+        ) from exc
+    return CalendarCommitment(
+        commitment_id=commitment_id,
+        start_at=parsed_start,
+        end_at=parsed_end,
+        status=status,  # type: ignore[arg-type]  # validated by __post_init__
     )
+
+
+async def tool_check_calendar_conflict(
+    deps: NoemaAgentDeps,
+    proposed_commitment_id: str,
+    proposed_start_at: str,
+    proposed_end_at: str,
+    proposed_status: str,
+    existing: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Refuse to assert availability without authoritative calendar evidence.
+
+    Proposed timestamps still use the deterministic policy's validation
+    contract. Naruon currently exposes only an outbound CalDAV write seam; it has no
+    scoped inbound provider-calendar reader. ``existing`` is therefore
+    untrusted conversational evidence and cannot establish availability.
+    """
+    deps.tool_calls.append("check_calendar_conflict")
+    try:
+        _parse_commitment(
+            proposed_commitment_id, proposed_start_at, proposed_end_at, proposed_status
+        )
+    except CalendarPolicyValidationError as exc:
+        return {"status": "error", "error_code": exc.error_code, "reason": str(exc)}
+
+    return {
+        "status": "error",
+        "error_code": "calendar_authoritative_evidence_unavailable",
+        "decision_code": "review_required",
+        "reason": "Authoritative scoped provider calendar evidence is unavailable",
+    }
 
 
 # Introspectable catalog of the tools the agent exposes. Used for wiring tests
@@ -426,6 +513,11 @@ NOEMA_TOOL_SPECS: tuple[dict[str, Any], ...] = (
         "capability": "tasks.update",
     },
     {
+        "name": "check_calendar_conflict",
+        "impl": tool_check_calendar_conflict,
+        "capability": "calendar.conflict_check",
+    },
+    {
         "name": "dispatch_writeback",
         "impl": tool_dispatch_writeback,
         "capability": "calendar.writeback",
@@ -435,10 +527,13 @@ NOEMA_TOOL_SPECS: tuple[dict[str, Any], ...] = (
 SYSTEM_PROMPT = (
     "You are Noema, the general assistant for a naruon email workspace. "
     "Use the provided tools to read and search the owner's mail, inspect the "
-    "content graph of an email, and manage tasks. Only change task status or "
-    "dispatch a writeback when the user clearly asks for it. Writebacks target "
-    "the customer's own systems and require opt-in; if a writeback is skipped, "
-    "explain that it must be enabled. Be concise and cite message ids you used."
+    "content graph of an email, and manage tasks. When a message proposes or "
+    "moves a meeting, use check_calendar_conflict, but never claim a time is "
+    "available unless that tool has authoritative provider evidence. Only "
+    "change task status or dispatch a writeback when the user clearly asks "
+    "for it. Writebacks target the customer's own systems and require opt-in; "
+    "if a writeback is skipped, explain that it must be enabled. Be concise "
+    "and cite message ids you used."
 )
 
 
@@ -447,6 +542,7 @@ def _load_pydantic_ai() -> Any | None:
     try:
         import pydantic_ai  # noqa: F401
         from pydantic_ai import Agent, RunContext
+
         # pydantic-ai 2.x renamed ``OpenAIModel`` to ``OpenAIChatModel``. Import
         # the current name; the old alias no longer exists on 2.x.
         from pydantic_ai.models.openai import OpenAIChatModel
@@ -463,12 +559,15 @@ def _load_pydantic_ai() -> Any | None:
 
 
 async def build_noema_agent(
-    provider: RuntimeLLMProvider,
+    gateway: OrchestratorGateway,
 ) -> tuple["Agent | None", Callable[[], Awaitable[None]]]:
-    """Build the pydantic-ai agent for a resolved provider.
+    """Build the pydantic-ai agent for a resolved contextual-orchestrator gateway.
 
     Returns ``(agent, closer)``. ``agent`` is ``None`` when pydantic-ai is not
-    installed; ``closer`` always closes any opened HTTP client.
+    installed, or when the gateway's ``base_url`` fails SSRF/allowlist
+    validation (a stored credential can still be malformed); ``closer``
+    always closes any opened HTTP client. Never falls back to a direct
+    tenant LLM-provider client on either condition.
     """
     from openai import AsyncOpenAI
 
@@ -480,10 +579,14 @@ async def build_noema_agent(
         return None, _noop_closer
 
     validated_base_url, http_client = await build_llm_provider_http_client(
-        provider.base_url
+        gateway.base_url
     )
+    if validated_base_url is None:
+        await http_client.aclose()
+        return None, _noop_closer
+
     openai_client = AsyncOpenAI(
-        api_key=provider.api_key,
+        api_key=gateway.inference_token,
         base_url=validated_base_url,
         http_client=http_client,
     )
@@ -492,7 +595,7 @@ async def build_noema_agent(
         await openai_client.close()
 
     model = modules["OpenAIChatModel"](
-        provider.chat_model,
+        gateway.model_alias,
         provider=modules["OpenAIProvider"](openai_client=openai_client),
     )
     agent = modules["Agent"](
@@ -509,7 +612,9 @@ async def build_noema_agent(
         return await tool_search_mail(ctx.deps, query, limit)
 
     @agent.tool
-    async def read_mail(ctx: RunContext[NoemaAgentDeps], message_id: str) -> dict[str, Any]:
+    async def read_mail(
+        ctx: RunContext[NoemaAgentDeps], message_id: str
+    ) -> dict[str, Any]:
         """Read the full body of a single owned email by message id."""
         return await tool_read_mail(ctx.deps, message_id)
 
@@ -533,6 +638,32 @@ async def build_noema_agent(
     ) -> dict[str, Any]:
         """Update the status of an owned task (audit-logged)."""
         return await tool_update_task_status(ctx.deps, task_uid, status)
+
+    @agent.tool
+    async def check_calendar_conflict(
+        ctx: RunContext[NoemaAgentDeps],
+        proposed_commitment_id: str,
+        proposed_start_at: str,
+        proposed_end_at: str,
+        proposed_status: str,
+        existing: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        """Check a proposed meeting time against known commitments for a conflict.
+
+        Timestamps are ISO 8601 with a UTC offset; ``proposed_status`` and each
+        row's ``status`` in ``existing`` are one of confirmed/tentative/desired/
+        cancelled. ``existing`` rows come from commitments already surfaced in
+        this conversation (e.g. via search_mail/read_mail), not a live provider
+        fetch.
+        """
+        return await tool_check_calendar_conflict(
+            ctx.deps,
+            proposed_commitment_id,
+            proposed_start_at,
+            proposed_end_at,
+            proposed_status,
+            existing,
+        )
 
     @agent.tool
     async def dispatch_writeback(
@@ -564,21 +695,26 @@ async def run_noema_agent(
 
     This is the entrypoint referenced by ``registered_agents.json``.
     """
-    provider = await resolve_runtime_llm_provider(
+    gateway = await resolve_orchestrator_gateway(
         session, user_id=user_id, organization_id=organization_id
     )
-    if provider is None:
+    if gateway is None:
         return NoemaAgentResult(
             status="unavailable",
-            notice="No LLM provider is configured for this workspace.",
+            notice=(
+                "The contextual-orchestrator gateway is not configured for "
+                "this workspace."
+            ),
+            error_code="orchestrator_gateway_unavailable",
         )
 
-    agent, closer = await build_noema_agent(provider)
+    agent, closer = await build_noema_agent(gateway)
     if agent is None:
         return NoemaAgentResult(
             status="unavailable",
             notice="The pydantic-ai runtime is not installed; agent is disabled.",
-            provider_name=provider.provider_name,
+            provider_name=gateway.model_alias,
+            error_code="pydantic_ai_unavailable",
         )
 
     deps = NoemaAgentDeps(
@@ -594,7 +730,7 @@ async def run_noema_agent(
         return NoemaAgentResult(
             status="ok",
             output=str(getattr(result, "output", "")),
-            provider_name=provider.provider_name,
+            provider_name=gateway.model_alias,
             tool_calls=tuple(deps.tool_calls),
         )
     except Exception as exc:  # noqa: BLE001 - degrade gracefully, never propagate
@@ -602,8 +738,9 @@ async def run_noema_agent(
         return NoemaAgentResult(
             status="error",
             notice="The agent run could not be completed.",
-            provider_name=provider.provider_name,
+            provider_name=gateway.model_alias,
             tool_calls=tuple(deps.tool_calls),
+            error_code="noema_agent_run_failed",
         )
     finally:
         await closer()

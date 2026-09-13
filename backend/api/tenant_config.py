@@ -66,6 +66,8 @@ class TenantConfigCreate(BaseModel):
     openai_api_key: Optional[str] = None
     google_client_id: Optional[str] = None
     google_client_secret: Optional[str] = None
+    noema_orchestrator_base_url: Optional[str] = None
+    noema_orchestrator_token: Optional[str] = None
 
 
 class TenantConfigResponse(BaseModel):
@@ -88,6 +90,8 @@ class TenantConfigResponse(BaseModel):
     openai_api_key: Optional[str] = None
     google_client_id: Optional[str] = None
     google_client_secret: Optional[str] = None
+    noema_orchestrator_base_url: Optional[str] = None
+    has_noema_orchestrator_token: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -99,7 +103,9 @@ SECRET_FIELDS = {
     "oauth_client_secret",
     "openai_api_key",
     "google_client_secret",
+    "noema_orchestrator_token",
 }
+RESPONSE_MASKED_SECRET_FIELDS = SECRET_FIELDS - {"noema_orchestrator_token"}
 
 MAILBOX_MANAGE_FORBIDDEN = (
     "Mailbox settings are personal and can only be managed by the authenticated user"
@@ -224,6 +230,15 @@ def validate_mail_config_update(
     _validate_pop3_config(pop3_server, pop3_port)
 
 
+def _tenant_config_response(db_config: TenantConfig) -> TenantConfigResponse:
+    response = TenantConfigResponse.model_validate(db_config)
+    for secret_field in RESPONSE_MASKED_SECRET_FIELDS:
+        if getattr(response, secret_field):
+            setattr(response, secret_field, "********")
+    response.has_noema_orchestrator_token = bool(db_config.noema_orchestrator_token)
+    return response
+
+
 @router.post("")
 async def create_or_update_config(
     config: TenantConfigCreate,
@@ -294,10 +309,4 @@ async def get_config(
     if not db_config:
         return TenantConfigResponse(user_id=session_user_id)
 
-    response = TenantConfigResponse.model_validate(db_config)
-
-    for secret_field in SECRET_FIELDS:
-        if getattr(response, secret_field):
-            setattr(response, secret_field, "********")
-
-    return response
+    return _tenant_config_response(db_config)

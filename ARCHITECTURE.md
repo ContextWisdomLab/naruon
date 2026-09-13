@@ -20,6 +20,21 @@ Runtime database connectivity is secret-injected: `backend/core/config.py` has
 no fallback `DATABASE_URL`, so missing database configuration fails at startup
 rather than silently using shared development credentials.
 
+## Reply follow-up scheduling boundary (Proposed, PR #1486)
+
+`ReplySlaScheduler` binds its existing ORM session to one checked-out connection
+for the entire PostgreSQL advisory-lease cycle, including per-workspace task
+commits and rollbacks. Normal release requires boolean confirmation. Acquisition
+uncertainty, cancellation, or failure invalidates that connection before session
+cleanup; a disconnected backend must not be replaced inside the same sweep.
+Healthy owner failures roll back and later owners are reloaded asynchronously.
+Manual escalation requests can race this scheduler: the shared service refreshes
+expired mail after a commit conflict and relies on savepoint rollback to remove
+failed inserts. The scheduler reloads owner configuration between workspaces.
+This retains source-linked task identity and the existing workspace queries.
+It does not promise exactly-once execution, provider writeback, or support for
+transaction-pooling proxies. See [decision and evidence](docs/doctoring/reply_sla_physical_lease.md).
+
 ## Topic-intelligence boundary
 
 Naruon has no live Structural Topic Modeling endpoint, fitted topic artifact,

@@ -189,13 +189,6 @@ in this repo.
 
 ## PR automation and review defaults
 
-- Stacked-PR trigger tests must parse the YAML event configuration, not search
-  source text for `**`: a comment can satisfy that search, and a later
-  `!feature/**` pattern can exclude the very stack being validated. Preserve the
-  Actions `on` key when choosing a YAML loader, inspect ordered branch patterns,
-  and retain rejection tests for both cases. The installed hash-locked PyYAML
-  dependency is sufficient; do not add a second parser for this contract.
-
 - Follow `docs/development/merge-gate-policy.md` for PR gate interpretation.
 - PR Governance must stay metadata-only: no PR-head checkout, no admin merge, no
   review dismissal, and no security-check suppression.

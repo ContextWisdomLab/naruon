@@ -39,7 +39,13 @@ def test_project_source_segments_maps_content_segments():
 
 
 @pytest.mark.asyncio
-async def test_projection_persists_with_workspace_scope_when_objects_found(monkeypatch):
+async def test_projection_persists_with_the_callers_resolved_workspace(monkeypatch):
+    # workspace_id is the caller's already-resolved workspace (the same value
+    # the imported Email row itself was stored under) -- the function must
+    # pass it through verbatim rather than recomputing its own default from
+    # organization_id/user_id, or a non-default import workspace would put
+    # the email and its derived project-graph objects in different
+    # workspaces.
     persist_mock = AsyncMock()
     monkeypatch.setattr(
         import_service, "persist_project_graph_projection", persist_mock
@@ -50,21 +56,24 @@ async def test_projection_persists_with_workspace_scope_when_objects_found(monke
     ]
 
     await import_service._persist_project_graph_projection(
-        session, segments, user_id="user1", organization_id="org1"
+        session,
+        segments,
+        user_id="user1",
+        organization_id="org1",
+        workspace_id="workspace-org1",
     )
 
     persist_mock.assert_awaited_once()
     kwargs = persist_mock.await_args.kwargs
     assert kwargs["user_id"] == "user1"
     assert kwargs["organization_id"] == "org1"
-    # Mirrors the scope convention enforced by the project graph repository.
     assert kwargs["workspace_id"] == "workspace-org1"
     assert kwargs["extraction"].objects  # real extractor produced candidates
     session.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_projection_falls_back_to_user_workspace_without_org(monkeypatch):
+async def test_projection_passes_through_a_non_default_workspace(monkeypatch):
     persist_mock = AsyncMock()
     monkeypatch.setattr(
         import_service, "persist_project_graph_projection", persist_mock
@@ -73,11 +82,15 @@ async def test_projection_falls_back_to_user_workspace_without_org(monkeypatch):
     segments = [_segment("seg1", "We must deliver the milestone by 2026-01-01.", 0)]
 
     await import_service._persist_project_graph_projection(
-        session, segments, user_id="user1", organization_id=""
+        session,
+        segments,
+        user_id="user1",
+        organization_id="",
+        workspace_id="workspace-custom-tenant",
     )
 
     kwargs = persist_mock.await_args.kwargs
-    assert kwargs["workspace_id"] == "workspace-user1"
+    assert kwargs["workspace_id"] == "workspace-custom-tenant"
 
 
 @pytest.mark.asyncio
@@ -89,7 +102,7 @@ async def test_projection_noop_when_no_segments(monkeypatch):
     session = AsyncMock()
 
     await import_service._persist_project_graph_projection(
-        session, [], user_id="u", organization_id="o"
+        session, [], user_id="u", organization_id="o", workspace_id="workspace-o"
     )
 
     persist_mock.assert_not_awaited()
@@ -107,7 +120,7 @@ async def test_projection_noop_when_no_objects_extracted(monkeypatch):
     segments = [_segment("seg1", "hello there, nice weather today", 0)]
 
     await import_service._persist_project_graph_projection(
-        session, segments, user_id="u", organization_id="o"
+        session, segments, user_id="u", organization_id="o", workspace_id="workspace-o"
     )
 
     persist_mock.assert_not_awaited()
@@ -125,7 +138,7 @@ async def test_projection_swallows_failure_and_rolls_back(monkeypatch):
 
     # Best-effort: a projection failure must not propagate to the import.
     await import_service._persist_project_graph_projection(
-        session, segments, user_id="u", organization_id="o"
+        session, segments, user_id="u", organization_id="o", workspace_id="workspace-o"
     )
 
     session.rollback.assert_awaited_once()

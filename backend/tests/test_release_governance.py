@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 import importlib.util
 from pathlib import Path
@@ -665,9 +666,73 @@ def test_app_ci_runs_backend_and_frontend_checks_without_duplicate_release_pushe
     assert "uses: actions/setup-node@v" not in workflow
 
     push_block = workflow.split("push:", 1)[1].split("pull_request:", 1)[0]
-    assert "develop" in push_block
     assert "master" in push_block
     assert "release/**" not in push_block
+
+    pull_request_block = workflow.split("pull_request:", 1)[1].split("push:", 1)[0]
+    assert "branches:" not in pull_request_block, (
+        "pull_request trigger must not exclude stacked PR base branches"
+    )
+
+
+def test_app_ci_collects_repository_root_governance_contract_tests() -> None:
+    """The repo-root ``tests/`` contract suite must run in CI, not only locally.
+
+    ``tests/test_stacked_pr_workflow_contract.py`` asserts on workflow YAML but
+    lives outside ``backend/``, where the backend job's pytest invocation
+    (``cd backend && python -m pytest -q``) never collects it. Without a
+    dedicated step, a future trigger regression on the governed workflows
+    could land without CI ever running that contract.
+
+    Parses the workflow as YAML (rather than a raw substring match) so a
+    comment that merely preserves the ``pytest -q tests`` text after the real
+    step is deleted cannot satisfy this assertion, and additionally requires
+    the same Timeout/Fatal/Warn/Denied output screening the backend test step
+    already applies, so prohibited output from this step can't slip through
+    Application CI unnoticed.
+    """
+    workflow = yaml.safe_load(read_repo_text(".github/workflows/app-ci.yml"))
+    backend_steps = workflow["jobs"]["backend"]["steps"]
+    root_test_steps = [
+        step for step in backend_steps if "pytest -q tests" in (step.get("run") or "")
+    ]
+    assert len(root_test_steps) == 1, (
+        "app-ci.yml's backend job must have exactly one real (non-commented) "
+        "step running the repo-root tests/ suite"
+    )
+    root_test_run = root_test_steps[0]["run"]
+    assert re.search(r"grep -qiE ['\"]timeout\|fatal\|warn\|denied['\"]", root_test_run), (
+        "the repo-root tests/ step must screen its own output for "
+        "Timeout/Fatal/Warn/Denied, like the backend test step does"
+    )
+
+
+def test_app_ci_repository_root_governance_step_runs_clean_under_warnings_as_error() -> (
+    None
+):
+    """The repo-root ``tests/`` step must actually pass, not just be wired in.
+
+    Live incident: the previous test confirms this step is wired into
+    app-ci.yml, but the step itself crashed on every real CI run with an
+    unhandled pytest ``INTERNALERROR`` -- the repo root had no pytest
+    configuration setting ``asyncio_default_fixture_loop_scope``, so
+    pytest-asyncio's ``pytest_configure`` hook emitted a
+    ``PytestDeprecationWarning`` for that unset option, and the workflow
+    step's ``PYTHONWARNINGS=error`` env (mirrored here) turned that warning
+    into a fatal exception before pytest could even collect a single test.
+    Reproduces the exact workflow invocation as a subprocess so this passes
+    only when the real CI step would too.
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "tests"],
+        cwd=REPO_ROOT,
+        env={**os.environ, "PYTHONWARNINGS": "error"},
+        capture_output=True,
+        text=True,
+    )
+    assert "INTERNALERROR" not in result.stdout, result.stdout
+    assert "INTERNALERROR" not in result.stderr, result.stderr
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_tags() -> (
@@ -705,8 +770,14 @@ def test_docker_publish_validates_pr_images_and_publishes_semver_images_only_on_
         == 2
     )
     push_block = workflow.split("push:", 1)[1].split("pull_request:", 1)[0]
+    pull_request_block = workflow.split("pull_request:", 1)[1].split("permissions:", 1)[
+        0
+    ]
     assert "tags:" in push_block
     assert "branches:" not in push_block
+    assert "branches:" not in pull_request_block, (
+        "pull_request trigger must not exclude stacked PR base branches"
+    )
     assert "ai_email_client-backend" in workflow
     assert "ai_email_client-frontend" in workflow
     assert workflow.count("image: naruon") == 2

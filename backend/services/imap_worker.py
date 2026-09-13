@@ -25,6 +25,7 @@ async def process_fetched_email(
     email_data: EmailData,
     user_id: str,
     organization_id: str | None,
+    workspace_id: str,
     owner_addresses: Iterable[str] | None = None,
     is_read: bool = True,
 ):
@@ -59,8 +60,7 @@ async def process_fetched_email(
 
     # Check if duplicate
     stmt = select(Email).where(
-        Email.user_id == user_id,
-        Email.organization_id == (organization_id if organization_id else None),
+        *Email.owner_filters(user_id, organization_id, workspace_id),
         Email.fingerprint == fingerprint,
     )
     result = await session.execute(stmt)
@@ -74,12 +74,21 @@ async def process_fetched_email(
         return existing_email
 
     thread_id = await assign_thread_id(
-        session, email_data, user_id=user_id, organization_id=organization_id
+        session,
+        email_data,
+        user_id=user_id,
+        organization_id=organization_id,
+        workspace_id=workspace_id,
     )
 
     new_email = Email(
         user_id=user_id,
         organization_id=organization_id or None,
+        # Mirrors the workspace_id convention used across this codebase
+        # (services/email_import_service.py, services/project_graph/):
+        # workspace-<organization_id>, falling back to workspace-<user_id>
+        # for an org-less/personal scope.
+        workspace_id=workspace_id,
         message_id=email_data.get("message_id", ""),
         thread_id=thread_id,
         fingerprint=fingerprint,
@@ -98,8 +107,37 @@ async def process_fetched_email(
         await extract_knowledge_from_self_sent(session, new_email, owner_addresses)
     return new_email
 
+
 logger = logging.getLogger(__name__)
 MAX_IMAP_FETCH_MESSAGES = 10
+
+
+async def resolve_unambiguous_workspace_id(
+    session, user_id: str, organization_id: str | None
+) -> str | None:
+    """Resolve the single workspace an owner's already-imported mail belongs to.
+
+    Background mail sync (IMAP, POP3) has no signed session and therefore no
+    independently authoritative workspace claim to thread through -- the only
+    evidence available is whatever workspace this owner's mail has already
+    been imported under. Returns ``None`` (fail closed; the caller must skip
+    the sync) when zero or more than one distinct workspace is found, so a
+    first-run or genuinely multi-workspace mailbox is never guessed at.
+    """
+    workspace_ids = list(
+        await session.scalars(
+            select(Email.workspace_id)
+            .where(
+                Email.user_id == user_id,
+                Email.organization_id == organization_id,
+            )
+            .distinct()
+            .limit(2)
+        )
+    )
+    if len(workspace_ids) != 1:
+        return None
+    return workspace_ids[0]
 
 
 def flags_indicate_seen(fetch_data) -> bool:
@@ -112,7 +150,11 @@ def flags_indicate_seen(fetch_data) -> bool:
     for item in fetch_data or []:
         parts = item if isinstance(item, (tuple, list)) else (item,)
         for part in parts:
-            raw = part if isinstance(part, bytes) else str(part).encode("utf-8", "replace")
+            raw = (
+                part
+                if isinstance(part, bytes)
+                else str(part).encode("utf-8", "replace")
+            )
             upper = raw.upper()
             if b"FLAGS" in upper and b"\\SEEN" in upper:
                 return True
@@ -123,6 +165,7 @@ def flags_indicate_seen(fetch_data) -> bool:
 class ImapSyncConfig:
     user_id: str
     organization_id: str | None
+    workspace_id: str
     imap_server: str
     imap_port: int
     imap_username: str | None
@@ -187,10 +230,11 @@ class ImapSyncWorker:
                     TenantConfig.imap_port.isnot(None),
                 )
             )
-            configs = [
+            tenant_configs = [
                 ImapSyncConfig(
                     user_id=row.user_id,
                     organization_id=row.organization_id,
+                    workspace_id="",
                     imap_server=str(row.imap_server),
                     imap_port=int(row.imap_port),
                     imap_username=row.imap_username,
@@ -198,6 +242,27 @@ class ImapSyncWorker:
                 )
                 for row in result
             ]
+            configs = []
+            for config in tenant_configs:
+                workspace_id = await resolve_unambiguous_workspace_id(
+                    session, config.user_id, config.organization_id
+                )
+                if workspace_id is None:
+                    logger.info(
+                        "Skipping IMAP sync because an unambiguous workspace is unavailable"
+                    )
+                    continue
+                configs.append(
+                    ImapSyncConfig(
+                        user_id=config.user_id,
+                        organization_id=config.organization_id,
+                        workspace_id=workspace_id,
+                        imap_server=config.imap_server,
+                        imap_port=config.imap_port,
+                        imap_username=config.imap_username,
+                        imap_password=config.imap_password,
+                    )
+                )
 
         tasks = []
         for config in configs:
@@ -217,7 +282,7 @@ class ImapSyncWorker:
                 config.user_id,
             )
             return 0
-        
+
         logger.info(
             "Connecting to IMAP server %s:%s for user %s",
             imap_server,
@@ -252,6 +317,7 @@ class ImapSyncWorker:
         if imap_server is None or imap_port is None:
             imap_server, imap_port = self._validated_destination(config)
         import ssl
+
         ssl_context = ssl.create_default_context()
         imap_client = aioimaplib.IMAP4_SSL(
             imap_server, imap_port, ssl_context=ssl_context
@@ -316,6 +382,12 @@ class ImapSyncWorker:
 
         imported_count = 0
         owner_addresses = [config.imap_username] if config.imap_username else None
+        workspace_id = getattr(config, "workspace_id", "")
+        if not workspace_id:
+            logger.info(
+                "Skipping IMAP sync because an authoritative workspace is unavailable"
+            )
+            return 0
         async with AsyncSessionLocal() as session:
             try:
                 for raw_message, is_read in messages:
@@ -332,6 +404,7 @@ class ImapSyncWorker:
                         email_data,
                         config.user_id,
                         config.organization_id,
+                        workspace_id,
                         owner_addresses=owner_addresses,
                         is_read=is_read,
                     )
@@ -388,6 +461,4 @@ class ImapSyncWorker:
         header_block = value.split(b"\r\n\r\n", maxsplit=1)[0]
         if header_block == value:
             header_block = value.split(b"\n\n", maxsplit=1)[0]
-        return b":" in header_block and (
-            b"\r\n\r\n" in value or b"\n\n" in value
-        )
+        return b":" in header_block and (b"\r\n\r\n" in value or b"\n\n" in value)

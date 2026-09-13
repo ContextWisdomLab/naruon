@@ -33,6 +33,7 @@ async def test_assign_thread_id_batches_many_reference_lookups():
         },
         user_id="testuser",
         organization_id="org-acme",
+        workspace_id="workspace-a",
     )
 
     assert thread_id == "ref0@example.com"

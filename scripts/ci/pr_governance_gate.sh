@@ -258,7 +258,7 @@ IS_DRAFT="$(printf '%s' "$PR_JSON" | jq -r '.isDraft')"
 REVIEW_DECISION="$(printf '%s' "$PR_JSON" | jq -r '.reviewDecision // ""')"
 
 if [ "$IS_DRAFT" = "true" ]; then
-  add_blocker 'Draft PR: merge automation is paused.'
+  add_waiting 'Draft PR: merge automation is paused.'
 fi
 
 if [ "$MERGE_STATE" = "BEHIND" ]; then

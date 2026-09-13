@@ -137,7 +137,9 @@ class SecurityAuditEvent(Base):
     )
     actor_user_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
     actor_role: Mapped[str] = mapped_column(String, index=True, nullable=False)
-    organization_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    organization_id: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
     workspace_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
     event_action: Mapped[str] = mapped_column(String, index=True, nullable=False)
     resource_type: Mapped[str] = mapped_column(String, index=True, nullable=False)
@@ -163,6 +165,7 @@ class SecurityAuditEvent(Base):
             "workspace_id",
         ),
     )
+
 
 class LLMProvider(Base):
     __tablename__ = "llm_providers"
@@ -266,9 +269,7 @@ class ScopeweavePromotionLink(Base):
     object_uid: Mapped[str] = mapped_column(String, index=True, nullable=False)
     object_type: Mapped[str] = mapped_column(String, nullable=False)
     scopeweave_work_item_id: Mapped[str] = mapped_column(String, nullable=False)
-    scopeweave_work_item_url: Mapped[str | None] = mapped_column(
-        String, nullable=True
-    )
+    scopeweave_work_item_url: Mapped[str | None] = mapped_column(String, nullable=True)
     promoted_confidence: Mapped[float] = mapped_column(Float, nullable=False)
     citation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     promoted_by_user_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -620,7 +621,6 @@ class PromptTemplate(Base):
         ),
     )
 
-
     id: Mapped[int] = mapped_column(primary_key=True)
     prompt_uid: Mapped[str] = mapped_column(
         String,
@@ -681,9 +681,7 @@ class WorkflowDefinition(Base):
     steps_json: Mapped[list[dict[str, object]]] = mapped_column(
         JSON, default=list, nullable=False
     )
-    state_code: Mapped[str] = mapped_column(
-        String, default="draft", nullable=False
-    )
+    state_code: Mapped[str] = mapped_column(String, default="draft", nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
@@ -737,9 +735,7 @@ class AgentRunRecord(Base):
     organization_id: Mapped[str] = mapped_column(String, nullable=False)
     workspace_id: Mapped[str] = mapped_column(String, nullable=False)
     user_id: Mapped[str] = mapped_column(String, nullable=False)
-    status_code: Mapped[str] = mapped_column(
-        String, default="pending", nullable=False
-    )
+    status_code: Mapped[str] = mapped_column(String, default="pending", nullable=False)
     started_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
@@ -762,8 +758,9 @@ class Email(Base):
         UniqueConstraint(
             "user_id",
             "organization_id",
+            "workspace_id",
             "message_id",
-            name="uq_emails_owner_message_id",
+            name="uq_emails_workspace_message",
         ),
         Index(
             "ix_email_records_owner_date",
@@ -774,26 +771,35 @@ class Email(Base):
     )
 
     @classmethod
-    def owner_filters(cls, user_id: str, organization_id: str | None):
+    def owner_filters(
+        cls, user_id: str, organization_id: str | None, workspace_id: str
+    ):
         organization_filter = (
             cls.organization_id == organization_id
             if organization_id is not None
             else cls.organization_id.is_(None)
         )
-        return (cls.user_id == user_id, organization_filter)
+        return (
+            cls.user_id == user_id,
+            organization_filter,
+            cls.workspace_id == workspace_id,
+        )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # Owner scope columns are intentionally plaintext and indexed: signed-session
     # ABAC filters must be enforced by SQL before email rows are returned.
     user_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
     organization_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    # Finest-grained scope: api/data.py's _email_scope_filter enforces this
+    # unconditionally (mirroring _owner_scope_statement's pattern for every
+    # other workspace_id-bearing model), so a same-user/same-organization
+    # session in a different workspace cannot read or mutate these rows.
+    workspace_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
     message_id: Mapped[str] = mapped_column(String, index=True)
     thread_id: Mapped[str | None] = mapped_column(
         String, index=True, nullable=True
     )  # O3: email threading support
-    fingerprint: Mapped[str | None] = mapped_column(
-        String, index=True, nullable=True
-    )
+    fingerprint: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
     sender: Mapped[str] = mapped_column(String)
     reply_to: Mapped[str | None] = mapped_column(String, nullable=True)
     recipients: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -877,8 +883,16 @@ Index(
 
 class Attachment(Base):
     __tablename__ = "email_attachments"
+    __table_args__ = (
+        UniqueConstraint("attachment_uid", name="uq_email_attachments_uid"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    attachment_uid: Mapped[str] = mapped_column(
+        String(96),
+        default=lambda: f"attachment_{uuid.uuid4().hex}",
+        nullable=False,
+    )
     email_id: Mapped[int] = mapped_column(ForeignKey("email_records.id"))
     filename: Mapped[str] = mapped_column(String)
     content: Mapped[str] = mapped_column(Text)
@@ -894,9 +908,7 @@ class Attachment(Base):
     parser_key: Mapped[str] = mapped_column(
         String(64), default="plain_text", nullable=False
     )
-    parse_error_code: Mapped[str | None] = mapped_column(
-        String(120), nullable=True
-    )
+    parse_error_code: Mapped[str | None] = mapped_column(String(120), nullable=True)
     # Defer large pgvector payloads on default entity loads.
     embedding = mapped_column(Vector(1536), deferred=True)
 
@@ -1116,13 +1128,17 @@ class ProjectGraphObjectRecord(Base):
         ),
         Index("ix_project_graph_objects_email", "email_id"),
         Index("ix_project_graph_objects_primary_segment", "primary_content_segment_id"),
-        Index("ix_project_graph_objects_extractor", "extractor_name", "extractor_version"),
+        Index(
+            "ix_project_graph_objects_extractor", "extractor_name", "extractor_version"
+        ),
     )
 
     project_graph_object_id: Mapped[int] = mapped_column(primary_key=True)
     object_uid: Mapped[str] = mapped_column(String(96), nullable=False)
     user_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
-    organization_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    organization_id: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
     workspace_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
     email_id: Mapped[int] = mapped_column(
         ForeignKey("email_records.id"), nullable=False
@@ -1201,7 +1217,9 @@ class ProjectGraphEdgeRecord(Base):
     project_graph_edge_id: Mapped[int] = mapped_column(primary_key=True)
     edge_uid: Mapped[str] = mapped_column(String(96), nullable=False)
     user_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
-    organization_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    organization_id: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
     workspace_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
     source_uid: Mapped[str] = mapped_column(String(160), nullable=False)
     target_uid: Mapped[str] = mapped_column(String(160), nullable=False)
@@ -1267,7 +1285,9 @@ class ProjectGraphCorrectionRecord(Base):
         nullable=False,
     )
     user_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
-    organization_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    organization_id: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
     workspace_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
     actor_user_id: Mapped[str] = mapped_column(String, nullable=False)
     correction_action: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -1362,6 +1382,22 @@ class TenantConfig(Base):
     batch_attribution_group: Mapped[str | None] = mapped_column(String, nullable=True)
     batch_attribution_company: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Noema general-agent routing via contextual-orchestrator. All config here
+    # lives in the Fernet DB, never in os.getenv. The general-purpose Noema
+    # workspace agent (services/noema_agent.py) sends every chat-completion
+    # call through this gateway using this per-tenant credential -- never a
+    # direct tenant LLM-provider key, and never the separate credential
+    # ContextualWisdomLab/.github's central review-pipeline Noema uses. The
+    # bearer token is a secret so it is stored EncryptedString (Fernet at
+    # rest); the base URL is not a secret but is SSRF-guarded + allowlisted at
+    # call time, same as batch_orchestrator_base_url above.
+    noema_orchestrator_base_url: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )
+    noema_orchestrator_token: Mapped[str | None] = mapped_column(
+        EncryptedString, nullable=True
+    )
+
     def __repr__(self) -> str:
         return (
             f"<TenantConfig(id={self.id}, user_id='{self.user_id}', "
@@ -1395,9 +1431,15 @@ class SenderRelationship(Base):
         nullable=True,
     )
     sender_email: Mapped[str] = mapped_column(String, index=True, nullable=False)
-    parent_sender_email: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
-    source_message_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
-    source_thread_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    parent_sender_email: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
+    source_message_id: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
+    source_thread_id: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
     relationship_type: Mapped[str] = mapped_column(String, nullable=False)
     confidence_score: Mapped[float] = mapped_column(default=1.0)
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -1419,6 +1461,115 @@ class SenderRelationship(Base):
             func.coalesce(source_thread_id, ""),
             unique=True,
         ),
+    )
+
+
+class CalendarConflictJudgment(Base):
+    """A persisted `evaluate_calendar_conflicts` decision, correctable by a human."""
+
+    __tablename__ = "calendar_conflict_judgments"
+    __table_args__ = (
+        UniqueConstraint("judgment_uid", name="uq_calendar_conflict_judgments_uid"),
+        Index(
+            "ix_calendar_conflict_judgments_scope_thread",
+            "user_id",
+            "organization_id",
+            "workspace_id",
+            "source_thread_id",
+        ),
+    )
+
+    calendar_conflict_judgment_id: Mapped[int] = mapped_column(primary_key=True)
+    judgment_uid: Mapped[str] = mapped_column(
+        String(96),
+        default=lambda: f"conflict_judgment_{uuid.uuid4().hex}",
+        nullable=False,
+    )
+    user_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    organization_id: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
+    workspace_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    proposed_commitment_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    source_thread_id: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
+    source_message_id: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
+    decision_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    recommended_action: Mapped[str] = mapped_column(Text, nullable=False)
+    policy_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    conflicts_json: Mapped[list[dict[str, object]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    status_code: Mapped[str] = mapped_column(
+        String(32), default="proposed", nullable=False
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc),
+        nullable=False,
+    )
+
+    corrections: Mapped[list["CalendarConflictCorrection"]] = relationship(
+        "CalendarConflictCorrection",
+        back_populates="judgment",
+    )
+
+
+class CalendarConflictCorrection(Base):
+    """A human override/confirmation of one `CalendarConflictJudgment`."""
+
+    __tablename__ = "calendar_conflict_corrections"
+    __table_args__ = (
+        UniqueConstraint("correction_uid", name="uq_calendar_conflict_corrections_uid"),
+        Index(
+            "ix_calendar_conflict_corrections_judgment",
+            "calendar_conflict_judgment_id",
+        ),
+    )
+
+    calendar_conflict_correction_id: Mapped[int] = mapped_column(primary_key=True)
+    correction_uid: Mapped[str] = mapped_column(
+        String(96),
+        default=lambda: f"conflict_correction_{uuid.uuid4().hex}",
+        nullable=False,
+    )
+    calendar_conflict_judgment_id: Mapped[int] = mapped_column(
+        ForeignKey("calendar_conflict_judgments.calendar_conflict_judgment_id"),
+        nullable=False,
+    )
+    user_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    organization_id: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
+    workspace_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    actor_user_id: Mapped[str] = mapped_column(String, nullable=False)
+    correction_action: Mapped[str] = mapped_column(String(64), nullable=False)
+    before_json: Mapped[dict[str, object]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    after_json: Mapped[dict[str, object]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    correction_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        nullable=False,
+    )
+
+    judgment: Mapped["CalendarConflictJudgment"] = relationship(
+        "CalendarConflictJudgment",
+        back_populates="corrections",
     )
 
 
@@ -1448,7 +1599,9 @@ class CarddavAccount(Base):
         nullable=False,
     )
     user_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
-    organization_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    organization_id: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
     workspace_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
     server_url: Mapped[str] = mapped_column(String, nullable=False)
     # New tables use two-word snake_case column names; the Python attribute
@@ -1457,7 +1610,9 @@ class CarddavAccount(Base):
     credentials_encrypted: Mapped[str] = mapped_column(EncryptedString, nullable=False)
     discovery_source: Mapped[str | None] = mapped_column(String, nullable=True)
     account_index: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    writeback_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    writeback_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
@@ -1470,13 +1625,17 @@ class CalendarWritebackSource(Base):
 
     source_uid: Mapped[str] = mapped_column(String, primary_key=True)
     user_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
-    organization_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    organization_id: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
     workspace_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
     account_ref: Mapped[str | None] = mapped_column(String, nullable=True)
     provider_name: Mapped[str] = mapped_column(String, nullable=False)
     source_protocol: Mapped[str] = mapped_column(String, nullable=False)
     source_host: Mapped[str] = mapped_column(String, nullable=False)
-    writeback_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    writeback_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
     etag_value: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -1499,7 +1658,9 @@ class ReplyTracker(Base):
     user_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
     message_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
     status_code: Mapped[str] = mapped_column(String, default="waiting", index=True)
-    follow_up_date: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    follow_up_date: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
@@ -1523,12 +1684,16 @@ class WebdavAccount(Base):
         nullable=False,
     )
     user_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
-    organization_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    organization_id: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
     workspace_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
     server_url: Mapped[str] = mapped_column(String, nullable=False)
     username: Mapped[str] = mapped_column(String, nullable=False)
     credentials_encrypted: Mapped[str] = mapped_column(EncryptedString, nullable=False)
-    writeback_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    writeback_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
     etag_value: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -1548,7 +1713,9 @@ class ProjectFolder(Base):
         nullable=False,
     )
     user_id: Mapped[str] = mapped_column(String, index=True, nullable=False)
-    organization_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    organization_id: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
     project_name: Mapped[str] = mapped_column(String, index=True, nullable=False)
     webdav_path: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -1560,7 +1727,9 @@ class ProjectFolder(Base):
 class Workspace(Base):
     __tablename__ = "workspace_entities"
 
-    workspace_id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: f"workspace_{uuid.uuid4().hex}")
+    workspace_id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: f"workspace_{uuid.uuid4().hex}"
+    )
     workspace_name: Mapped[str] = mapped_column(String, nullable=False)
     workspace_domain: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -1572,15 +1741,25 @@ class Workspace(Base):
         back_populates="workspace_entity"
     )
 
+
 class Document(Base):
     __tablename__ = "workspace_documents"
 
-    document_id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: f"doc_{uuid.uuid4().hex}")
-    workspace_id: Mapped[str] = mapped_column(String, ForeignKey("workspace_entities.workspace_id"), index=True, nullable=False)
+    document_id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=lambda: f"doc_{uuid.uuid4().hex}"
+    )
+    workspace_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("workspace_entities.workspace_id"),
+        index=True,
+        nullable=False,
+    )
     # Owning organization (nullable for personal-scope docs). Persisted so the
     # NewsDOM recognition worker can resolve the org's provider without joining
     # through the (org-less) workspace entity.
-    organization_id: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    organization_id: Mapped[str | None] = mapped_column(
+        String, index=True, nullable=True
+    )
     document_name: Mapped[str] = mapped_column(String, nullable=False)
     document_type: Mapped[str] = mapped_column(String, nullable=False)
     document_content: Mapped[str] = mapped_column(Text, nullable=True)

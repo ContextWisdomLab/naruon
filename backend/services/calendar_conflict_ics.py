@@ -8,6 +8,7 @@ from typing import Any
 from icalendar import Calendar
 
 from services.calendar_conflict_policy import (
+    MAX_EXISTING_COMMITMENTS,
     CalendarCommitment,
     CalendarConflictDecision,
     CalendarPolicyValidationError,
@@ -21,8 +22,7 @@ _ICS_STATUS_MAP: dict[str, CommitmentStatus] = {
     "TENTATIVE": "tentative",
     "CANCELLED": "cancelled",
 }
-_MAX_EXISTING_ICS_COMMITMENTS = 500
-_MAX_CONVERTED_VEVENTS = _MAX_EXISTING_ICS_COMMITMENTS + 1
+_MAX_CONVERTED_VEVENTS = MAX_EXISTING_COMMITMENTS + 1
 _MAX_ICS_DOCUMENT_BYTES = 262_144
 _RECURRENCE_PROPERTY_NAMES = ("RRULE", "RDATE", "EXDATE")
 
@@ -69,7 +69,7 @@ def evaluate_calendar_conflicts_from_ics(
     """Evaluate one proposed VEVENT against existing VEVENT evidence."""
     proposed_commitment = parse_proposed_calendar_commitment_from_ics(proposed_ics)
     existing_commitments = parse_existing_calendar_commitments_from_ics(existing_ics)
-    if len(existing_commitments) > _MAX_EXISTING_ICS_COMMITMENTS:
+    if len(existing_commitments) > MAX_EXISTING_COMMITMENTS:
         raise CalendarPolicyValidationError(
             "calendar_existing_batch_exceeded",
             "existing iCalendar evidence exceeds the bounded commitment batch",

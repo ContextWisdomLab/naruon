@@ -1,0 +1,7 @@
+Message-ID: <observed-queue-question@example.invalid>
+From: Archive Author <archive-author@example.invalid>
+To: Archive List <archive-list@example.invalid>
+Subject: Queue lease question
+Date: Sun, 27 Apr 2014 19:31:42 +0000
+
+Is there a problem with 100 open sessions (behind a connection pooler?)

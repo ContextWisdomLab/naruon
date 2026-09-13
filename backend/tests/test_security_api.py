@@ -660,9 +660,12 @@ def test_access_surface_rejects_hmac_bearer_session_without_authoritative_worksp
     previous_secret = settings.AUTH_SESSION_HMAC_SECRET
     original_overrides = dict(app.dependency_overrides)
     settings.AUTH_SESSION_HMAC_SECRET = SecretStr(TEST_SESSION_HMAC_SECRET)
-    token = _signed_session_token(
-        _valid_session_payload(workspace="another_workspace_id")
-    )
+    # This route's own check (_require_authoritative_workspace_scope) is
+    # keyed on session_verifier=="hmac" alone, not on the workspace claim's
+    # value, so an otherwise-valid, org-consistent workspace claim isolates
+    # that behavior from the org/workspace-derivation check in
+    # _auth_context_from_session_payload.
+    token = _signed_session_token(_valid_session_payload())
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides.pop(get_auth_context, None)
     app.dependency_overrides.pop(get_current_user, None)

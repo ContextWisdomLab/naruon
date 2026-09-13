@@ -3,5 +3,6 @@
   "mail.triage": "noema-general-agent",
   "mail.search": "noema-general-agent",
   "tasks.followup": "noema-general-agent",
+  "calendar.conflict_check": "noema-general-agent",
   "calendar.writeback": "noema-general-agent"
 }

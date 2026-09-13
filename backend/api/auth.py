@@ -517,12 +517,16 @@ def _auth_context_from_session_payload(
     organization_id = _optional_string_claim(payload, "org")
     if organization_id is None:
         raise _authentication_error()
+    # Workspace membership is the independently signed claim produced by the
+    # verified session authority. Workspace identifiers are opaque and are not
+    # derived from organization display/identity values.
+    workspace_id = _required_string_claim(payload, "workspace")
     return AuthContext(
         user_id=_required_string_claim(payload, "sub"),
         role=role,
         organization_id=organization_id,
         group_ids=_tuple_string_claim(payload, "groups"),
-        workspace_id=_required_string_claim(payload, "workspace"),
+        workspace_id=workspace_id,
         session_verifier=cast(SessionVerifier, session_verifier),
     )
 

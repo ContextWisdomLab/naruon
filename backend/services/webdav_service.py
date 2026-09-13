@@ -216,7 +216,8 @@ class WebDavService:
                 Email,
                 (TicketTask.related_email_id == Email.id)
                 & (Email.user_id == user_id)
-                & (Email.organization_id == organization_id),
+                & (Email.organization_id == organization_id)
+                & (Email.workspace_id == workspace_id),
             )
             .where(
                 TicketTask.task_uid == source_task_id,

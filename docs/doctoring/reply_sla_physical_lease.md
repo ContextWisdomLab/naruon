@@ -1,7 +1,7 @@
 # Reply follow-up physical-connection lease
 
 Status: **Proposed**. Date: 2026-09-05. Decision owner: Naruon maintainers.
-This is the scheduler supplement to ADR-0005, not a new allocated ADR number.
+This is a scheduler decision record for PR #1486; it does not inherit or supplement attachment-quarantine ADR-0005.
 The installed `adr-author` package lacks its required
 `adr-identity.instructions.md`; its MADR context/options/consequences structure
 is used without claiming allocator, state-machine or acceptance validation.
@@ -199,7 +199,7 @@ the same migration, regression and deployment verification before resuming.
 
 The existing sibling import-lock repair remains in PR #1317, not copied here.
 Attachment worker evidence in #1469 does not certify this scheduler or #1486's
-other workers. The canonical Gap ledger remains owned by PR #1557; this branch
+other workers. The canonical Gap ledger remains owned by PR #1602; this branch
 does not create a second competing baseline. Hosted checks, independent review,
 protected merge, immutable release and deployed behavior remain separate gates.
 

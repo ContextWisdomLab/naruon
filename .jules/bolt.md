@@ -26,13 +26,6 @@
 ## 2024-05-24 - [React Component Memoization]
 **Learning:** In React components like `WorkspaceHome`, when layout state or polling changes trigger parent re-renders, expensive child components like `EmailDetail` will also re-render unnecessarily if not memoized.
 **Action:** Always consider `React.memo` for heavy child components that rely on stable props (like IDs) when the parent component has frequent unrelated state updates.
-<<<<<<< HEAD
-## 2025-03-05 - Avoid Unnecessary NetworkGraph Component Rerenders
-
-**Learning:** When heavy DOM-manipulating visualization components like `NetworkGraph` (using `vis-network`) are mounted inside complex layouts, unrelated state changes in parent components cause them to re-render. Since these libraries manage their own internal DOM states, frequent React re-renders cause costly layout thrashing and block the main thread.
-**Action:** Always wrap heavy, zero-prop visualization components or those taking stable props with `React.memo` to prevent unnecessary component tree reconciliation and DOM manipulations.
-=======
 ## 2025-02-12 - Replaced Chained Array Methods with Bounded Loops in React Component Hooks
 **Learning:** In large React components, calculating derived arrays by chaining methods like `.map().filter().slice(0, N)` inside `useMemo` iterates over the entire input array multiple times and creates unnecessary intermediate array allocations, even when only a small subset is needed.
 **Action:** Replace chained higher-order array methods with a single `for...of` loop that stops once the desired subset is collected. The loop remains O(N) in the worst case when too few qualifying items exist, uses O(1) extra working space for a fixed-size result bound, and avoids the chained methods' intermediate arrays while permitting early termination after the bound is reached.
->>>>>>> 860aaf912a68b4f7eaf9c971aea1657cc7c0b519

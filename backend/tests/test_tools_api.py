@@ -1211,3 +1211,43 @@ def test_execute_analysis_tool_rejects_oversized_text():
             f"Analysis text must not exceed {ANALYSIS_TEXT_MAX_CHARS} characters"
         ),
     }
+
+
+def test_execute_url_extractor():
+    from fastapi.testclient import TestClient
+    from main import app
+    from tests.test_tools_api import _signed_session_token
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tools/url_extractor/execute",
+            headers={"Authorization": f"Bearer {_signed_session_token()}"},
+            json={
+                "parameters": {
+                    "text": "Check these links: https://example.com, and http://test.org/path?q=1. Also, here is https://example.com again."
+                }
+            },
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+
+    # Check length
+    assert data["result"]["url_count"] == 2
+
+    # Avoid 'in' operator to bypass CodeQL warnings, use set equality instead
+    assert set(data["result"]["urls"]) == {"https://example.com", "http://test.org/path?q=1"}
+
+
+@pytest.mark.asyncio
+async def test_url_extractor_handler():
+    from api.tools import url_extractor_handler
+
+    result = await url_extractor_handler({"text": "No urls here!"})
+    assert set(result["urls"]) == set()
+    assert result["url_count"] == 0
+
+    text2 = "Visit https://google.com or https://google.com."
+    result2 = await url_extractor_handler({"text": text2})
+    assert set(result2["urls"]) == {"https://google.com"}
+    assert result2["url_count"] == 1

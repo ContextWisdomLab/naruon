@@ -147,14 +147,9 @@ def test_tenant_config_endpoint(client, mock_db, monkeypatch):
     assert data["google_client_secret"] is None
 
 
-def test_noema_orchestrator_gateway_config_round_trips_and_masks_the_token(
+def test_noema_orchestrator_gateway_config_returns_presence_without_the_token(
     client, mock_db
 ):
-    # backend/services/orchestrator_gateway.py resolves
-    # noema_orchestrator_base_url/noema_orchestrator_token from TenantConfig,
-    # but nothing could ever set them without this wiring -- Devin Review
-    # correctly flagged that the feature was otherwise unreachable through
-    # any supported configuration call.
     post_payload = {
         "user_id": "test_user",
         "noema_orchestrator_base_url": "https://orchestrator.internal/v1",
@@ -172,7 +167,9 @@ def test_noema_orchestrator_gateway_config_round_trips_and_masks_the_token(
     assert get_response.status_code == 200
     data = get_response.json()
     assert data["noema_orchestrator_base_url"] == "https://orchestrator.internal/v1"
-    assert data["noema_orchestrator_token"] == "********"
+    assert data["has_noema_orchestrator_token"] is True
+    assert "noema_orchestrator_token" not in data
+    assert "orch-token-123" not in get_response.text
 
 
 def test_validate_mail_config_update_revalidates_existing_mail_hosts(monkeypatch):
